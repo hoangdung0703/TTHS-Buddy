@@ -70,7 +70,7 @@ RAG grounding là bắt buộc. LLM chỉ được trả lời dựa trên conte
 Mọi nội dung pháp lý phải có trích dẫn Điều/Khoản. Bất kỳ câu trả lời nào đề cập nội dung luật đều phải kèm Điều/Khoản cụ thể làm nguồn. Câu trả lời không có chunk nguồn tương ứng thì không được khẳng định nội dung pháp lý.
 Chiến lược chunking: tách BLTTHS và văn bản liên quan theo từng Điều, không tách theo số token cố định. Mỗi chunk = một Điều (hoặc một Khoản nếu Điều đó quá dài). Không dùng RecursiveCharacterTextSplitter cho văn bản luật — phải giữ nguyên cấu trúc pháp lý.
 Metadata cho vector. Mỗi chunk khi embed phải lưu: source_document, dieu_number, dieu_title, khoan_number (có thể null), law_version, chunk_text.
-Auth cho mọi route không public. Mọi route /api trừ /health và /auth/* đều yêu cầu Supabase JWT hợp lệ trong header Authorization: Bearer <token>, được verify ở phía server.
+Auth cho mọi route không public. Mọi route /api trừ /health và /auth/* đều yêu cầu Supabase JWT hợp lệ trong header Authorization: Bearer <token>, được verify ở phía server. Với project Supabase mới, token thực tế được verify qua JWKS (ES256); SUPABASE_JWT_SECRET vẫn được giữ trong cấu hình để tương thích và cấu hình đầy đủ, nhưng không phải cơ chế verify chính.
 Xử lý lỗi tập trung. Mọi lỗi trả về theo 1 format JSON thống nhất — không để lộ raw stack trace hay thông báo lỗi nội bộ ra client.
 CORS. Giới hạn ở http://localhost:3000 trong môi trường development.
 Type safety. Frontend: TypeScript strict mode, không dùng any. Backend: Pydantic models cho mọi request/response, type hint cho mọi function.
@@ -155,7 +155,7 @@ Mọi prompt cho LLM đặt trong module prompts/ riêng, dạng hằng số đ�
 ENVIRONMENT=development
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-SUPABASE_JWT_SECRET=your_supabase_jwt_secret
+SUPABASE_JWT_SECRET=your_supabase_jwt_secret  # kept for compatibility; Supabase JWTs are verified via JWKS (ES256) in the current project setup
 
 # Google AI (Gemini)
 GOOGLE_API_KEY=your_google_api_key_here

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from pydantic import ValidationError
 
 from app.api.health import router as health_router
+from app.api.protected_test import router as protected_test_router
 from app.core.config import (
     create_qdrant_client,
     create_supabase_client,
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     add_cors_middleware(app)
     register_exception_handlers(app)
     app.include_router(health_router)
+    app.include_router(protected_test_router)
     return app
 
 

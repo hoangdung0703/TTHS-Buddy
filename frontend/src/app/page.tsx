@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 
-export default function HomePage(): JSX.Element {
+export default function HomePage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-16">
       <section className="w-full max-w-4xl overflow-hidden rounded-3xl border border-border bg-card/90 shadow-2xl backdrop-blur">
@@ -21,10 +21,10 @@ export default function HomePage(): JSX.Element {
             </div>
             <div className="flex flex-wrap gap-3">
               <Button asChild>
-                <Link href="http://localhost:8000/api/health">Check backend health</Link>
+                <Link href="/login">Sign in</Link>
               </Button>
               <Button variant="secondary" asChild>
-                <Link href="https://nextjs.org/docs/app">App Router ready</Link>
+                <Link href="/register">Create account</Link>
               </Button>
             </div>
           </div>

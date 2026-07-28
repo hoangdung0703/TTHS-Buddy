@@ -5,3 +5,4 @@ pydantic-settings>=2.6,<3.0
 supabase>=2.8,<3.0
 qdrant-client>=1.12,<2.0
 python-dotenv>=1.0,<2.0
+PyJWT>=2.13,<3.0
