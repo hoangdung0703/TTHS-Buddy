@@ -1,6 +1,9 @@
 node_modules/
 __pycache__/
 *.pyc
+*.md
+!README.md
+!**/README.md
 /.next/
 frontend/.next/
 frontend/node_modules/
