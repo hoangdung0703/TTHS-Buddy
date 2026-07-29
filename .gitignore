@@ -15,3 +15,10 @@ venv/
 frontend/.env
 backend/.env
 .DS_Store
+
+# Ingestion raw sources and derived output - regeneratable from raw_documents/ + the
+# pipeline scripts, and some sources are copyrighted (giao trinh, bai bao khoa hoc).
+# Not safe to keep in git history, especially if the repo may ever go public.
+ingestion/raw_documents/*.pdf
+ingestion/chunks*.json
+*.log
