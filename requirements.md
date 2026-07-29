@@ -135,12 +135,22 @@ Số liệu cuối cùng Phase 3 (dùng cho phần Methodology/Data Collection c
 - Đã embed + upsert vào Qdrant: 2586 (1 chunk mất do trùng lặp thật trong chính văn bản nguồn — BLHS Điều 189 Khoản 3, 2 đoạn gần giống hệt nhau trong file gốc, không phải lỗi parser)
 - extraction_method breakdown: text_layer 1555, ocr_fallback 417, tesseract_fallback 613, mixed 3
 
-Phase 4 — Pipeline RAG hỏi đáp (Tính năng lõi)
-[ ] rag_service.py — với 1 câu hỏi của user: embed câu hỏi → similarity search Qdrant (top-k, cấu hình được) → build prompt có căn cứ → gọi Gemini → trả về câu trả lời + nguồn trích dẫn
-[ ] Nhận diện intent câu hỏi: nếu câu hỏi nêu rõ số Điều, ưu tiên match chính xác theo metadata thay vì chỉ semantic search
-[ ] POST /api/chat/query — nhận { question: string }, trả về { answer: string, citations: [{dieu_number, dieu_title, law_version}], related_articles: [{dieu_number, dieu_title}] } — related_articles lấy từ 1-2 chunk liên quan retrieve được trong cùng lượt search nhưng không phải nguồn chính được trích dẫn (dùng cho Phase 6 liên kết chủ đề và cho card "Gợi ý học tập" ở Phase 7/frontend, thay thế hẳn helper mock getRelatedArticles đã dùng tạm ở Phase 8)
-[ ] System prompt bắt buộc: chỉ trả lời từ context, luôn trích dẫn Điều/Khoản, có thông báo fallback rõ ràng khi context không đủ
-[ ] Log mọi câu hỏi + chunk đã retrieve + câu trả lời vào Postgres (dùng cho đánh giá sau này — độ chính xác trích dẫn, groundedness)
+Phase 4 — Pipeline RAG hỏi đáp (Tính năng lõi) — ĐÃ HOÀN THÀNH
+[x] rag_service.py — với 1 câu hỏi của user: embed câu hỏi → similarity search Qdrant (top-k, cấu hình được) → build prompt có căn cứ → gọi Gemini → trả về câu trả lời + nguồn trích dẫn
+[x] Nhận diện intent câu hỏi: nếu câu hỏi nêu rõ số Điều, ưu tiên match chính xác theo metadata (Qdrant scroll + filter theo dieu_number) thay vì chỉ semantic search
+[x] POST /api/chat/query — nhận { question: string }, trả về { answer: string, citations: [{dieu_number, dieu_title, law_version}], related_articles: [{dieu_number, dieu_title}] }
+[x] System prompt bắt buộc: chỉ trả lời từ context, luôn trích dẫn Điều/Khoản, có thông báo fallback rõ ràng khi context không đủ
+[x] Log mọi câu hỏi + chunk đã retrieve + câu trả lời vào Postgres (bảng chat_query_logs)
+
+Retrieval phân tầng thật đã áp dụng (bổ sung so với thiết kế gốc):
+- Ưu tiên legal_text trước — exact-match theo dieu_number khi câu hỏi nêu rõ số Điều, sau đó mới đến semantic search.
+- academic_reference chỉ được kéo vào khi câu hỏi mang tính phân tích (phát hiện qua từ khóa "phân tích/tại sao/ý nghĩa"...) hoặc khi legal_text không đủ điểm số liên quan.
+- Câu trả lời có dùng academic_reference luôn tách rõ 2 phần "Về mặt quy định pháp luật" và "Về mặt học thuật", không trình bày ngang hàng.
+- Citations/related_articles dedup theo (dieu_number, law_version) để không trùng khi 1 Điều bị tách nhiều Khoản.
+- Khi model trả lời fallback (không tìm thấy), citations/related_articles bị ép về rỗng — tránh trường hợp gắn "nguồn" cho câu trả lời tự nhận là không có căn cứ (bug đã phát hiện và sửa lúc test).
+- Payload index source_type và dieu_number đã tạo trên Qdrant collection (bắt buộc để filter hoạt động, thiếu sẽ lỗi 400).
+
+Việc cần làm thủ công khi setup lại từ đầu (dự án không dùng ORM/migration runner): chạy 1 lần file backend/migrations/0001_chat_query_logs.sql trong Supabase SQL Editor để tạo bảng chat_query_logs trước khi logging hoạt động — lỗi log bị catch nên không crash API nếu bảng chưa tồn tại, nhưng log sẽ không được ghi.
 
 Phase 5a — Module trắc nghiệm (MCQ)
 [ ] Ngân hàng đề: nạp bộ câu hỏi do nhóm sinh viên luật cung cấp (dạng JSON seed, mỗi câu gồm question_text, mcq_options, mcq_correct, essay_sample_answer, essay_key_points, dieu_number, topic_category — cấu trúc dùng chung cho cả MCQ và tự luận ở Phase 5b, KHÔNG soạn 2 bộ đề riêng)
