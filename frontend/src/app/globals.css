@@ -9,19 +9,20 @@
   --card-foreground: 222 47% 11%;
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
-  --primary: 222 47% 18%;
+  /* Primary accent = steel blue #4682B4 (hsl(207 44% 49%)). Change this value only to re-theme. */
+  --primary: 207 44% 49%;
   --primary-foreground: 210 40% 98%;
   --secondary: 220 14% 93%;
   --secondary-foreground: 222 47% 11%;
   --muted: 220 14% 95%;
   --muted-foreground: 215 16% 47%;
-  --accent: 204 94% 94%;
-  --accent-foreground: 222 47% 11%;
+  --accent: 207 70% 94%;
+  --accent-foreground: 207 55% 24%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 210 40% 98%;
   --border: 214 32% 91%;
   --input: 214 32% 91%;
-  --ring: 222 47% 18%;
+  --ring: 207 44% 49%;
 }
 
 * {
@@ -30,8 +31,8 @@
 
 html {
   background:
-    radial-gradient(circle at top left, rgba(18, 40, 76, 0.08), transparent 30%),
-    radial-gradient(circle at bottom right, rgba(17, 24, 39, 0.06), transparent 35%),
+    radial-gradient(circle at top left, rgba(70, 130, 180, 0.08), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(39, 85, 124, 0.06), transparent 35%),
     hsl(var(--background));
 }
 

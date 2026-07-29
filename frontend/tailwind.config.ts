@@ -18,6 +18,20 @@ const config: Config = {
     },
     extend: {
       colors: {
+        // Full steel-blue ramp (base 500 = #4682B4) for spots that need a specific shade
+        // rather than the semantic primary/accent tokens below. Change the brand hue here only.
+        "steel-blue": {
+          50: "#EFF6FB",
+          100: "#DBE9F5",
+          200: "#BED6E9",
+          300: "#96BBD9",
+          400: "#6B9EC7",
+          500: "#4682B4",
+          600: "#356B97",
+          700: "#27557C",
+          800: "#1C405F",
+          900: "#112B41"
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
