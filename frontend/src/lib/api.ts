@@ -6,7 +6,6 @@ import {
   MOCK_ESSAY_QUESTIONS,
   MOCK_KEYWORDS_YESTERDAY,
   MOCK_QUIZ_QUESTIONS,
-  MOCK_RELATED_ARTICLES,
   MOCK_WEAK_TOPICS,
   resolveMockChatAnswer,
   withMockDelay
@@ -22,9 +21,9 @@ import type {
   QuizGenerateResponse,
   QuizSubmitRequest,
   QuizSubmitResponse,
-  RelatedArticle,
   WeakTopic
 } from "@/lib/types";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -48,11 +47,21 @@ function isMockDataEnabled(): boolean {
   return process.env.NEXT_PUBLIC_USE_MOCK_DATA !== "false";
 }
 
+// Every real (non-mock) route requires a Supabase JWT (see backend require_supabase_user) -
+// attach it here once so individual api.ts functions don't each have to remember to.
+async function getAuthHeader(): Promise<Record<string, string>> {
+  const { data } = await getSupabaseClient().auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function apiFetch<TResponse>(path: string, init: RequestInit = {}): Promise<TResponse> {
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...authHeader,
       ...init.headers
     }
   });
@@ -129,7 +138,8 @@ export async function getKeywordsYesterday(): Promise<KeywordYesterday[]> {
     return withMockDelay(MOCK_KEYWORDS_YESTERDAY);
   }
 
-  return apiFetch<KeywordYesterday[]>("/api/dashboard/keywords-yesterday");
+  const { keywords } = await apiFetch<{ keywords: KeywordYesterday[] }>("/api/dashboard/keywords-yesterday");
+  return keywords;
 }
 
 export async function getWeakTopics(): Promise<WeakTopic[]> {
@@ -137,17 +147,14 @@ export async function getWeakTopics(): Promise<WeakTopic[]> {
     return withMockDelay(MOCK_WEAK_TOPICS);
   }
 
-  return apiFetch<WeakTopic[]>("/api/dashboard/weak-topics");
+  const { weak_topics: weakTopics } = await apiFetch<{ weak_topics: WeakTopic[] }>("/api/dashboard/weak-topics");
+  return weakTopics;
 }
 
-// See the RelatedArticle comment in lib/types.ts - this is not one of the documented
-// Phase 7 routes, kept mock-only until a real endpoint is defined.
-export async function getRelatedArticles(): Promise<RelatedArticle[]> {
-  return withMockDelay(MOCK_RELATED_ARTICLES);
-}
-
-// See the DashboardStats comment in lib/types.ts - backs the quick-stat cards and the
-// simplified quiz progress card, kept mock-only until real log aggregation exists.
 export async function getDashboardStats(): Promise<DashboardStats> {
-  return withMockDelay(MOCK_DASHBOARD_STATS);
+  if (isMockDataEnabled()) {
+    return withMockDelay(MOCK_DASHBOARD_STATS);
+  }
+
+  return apiFetch<DashboardStats>("/api/dashboard/stats");
 }

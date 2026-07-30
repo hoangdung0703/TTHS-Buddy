@@ -11,7 +11,6 @@ import type {
   QuizAnswer,
   QuizQuestion,
   QuizSubmitResponse,
-  RelatedArticle,
   WeakTopic
 } from "@/lib/types";
 
@@ -265,21 +264,7 @@ export const MOCK_WEAK_TOPICS: WeakTopic[] = [
 ];
 
 export const MOCK_DASHBOARD_STATS: DashboardStats = {
-  quizzes_completed: 8,
-  dieu_studied: 34,
-  conversations_count: 12,
-  average_quiz_score_percentage: 71
+  total_quiz_attempts: 8,
+  average_score: 71,
+  dieu_studied_count: 34
 };
-
-export const MOCK_RELATED_ARTICLES: RelatedArticle[] = [
-  {
-    dieu_number: "155",
-    dieu_title: "Khởi tố vụ án theo yêu cầu của bị hại",
-    reason: "Liên quan đến Điều bạn vừa học"
-  },
-  {
-    dieu_number: "173",
-    dieu_title: "Thời hạn tạm giam để điều tra",
-    reason: "Liên quan đến Điều bạn vừa học"
-  }
-];

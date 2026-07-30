@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, ArrowRight, BookOpenCheck, MessageSquare, MessagesSquare, RefreshCw } from "lucide-react";
+import { AlertCircle, BookOpenCheck, MessageSquare, MessagesSquare, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { useAuthSession } from "@/hooks/useAuthSession";
-import { getDashboardStats, getKeywordsYesterday, getRelatedArticles, getWeakTopics } from "@/lib/api";
-import type { DashboardStats, KeywordYesterday, RelatedArticle, WeakTopic } from "@/lib/types";
+import { getDashboardStats, getKeywordsYesterday, getWeakTopics } from "@/lib/api";
+import type { DashboardStats, KeywordYesterday, WeakTopic } from "@/lib/types";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -19,7 +19,6 @@ interface DashboardData {
   stats: DashboardStats;
   keywords: KeywordYesterday[];
   weakTopics: WeakTopic[];
-  relatedArticles: RelatedArticle[];
 }
 
 function getGreeting(hour: number): string {
@@ -54,9 +53,9 @@ export default function DashboardPage() {
   function loadDashboard(): void {
     setLoadState("loading");
 
-    Promise.all([getDashboardStats(), getKeywordsYesterday(), getWeakTopics(), getRelatedArticles()])
-      .then(([stats, keywords, weakTopics, relatedArticles]) => {
-        setData({ stats, keywords, weakTopics, relatedArticles });
+    Promise.all([getDashboardStats(), getKeywordsYesterday(), getWeakTopics()])
+      .then(([stats, keywords, weakTopics]) => {
+        setData({ stats, keywords, weakTopics });
         setLoadState("ready");
       })
       .catch(() => setLoadState("error"));
@@ -110,7 +109,7 @@ export default function DashboardPage() {
                     <BookOpenCheck className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-2xl font-semibold text-foreground">{data.stats.quizzes_completed}</p>
+                    <p className="text-2xl font-semibold text-foreground">{data.stats.total_quiz_attempts}</p>
                     <p className="text-xs text-muted-foreground">Bài đã làm</p>
                   </div>
                 </CardContent>
@@ -121,7 +120,7 @@ export default function DashboardPage() {
                     <BookOpenCheck className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-2xl font-semibold text-foreground">{data.stats.dieu_studied}</p>
+                    <p className="text-2xl font-semibold text-foreground">{data.stats.dieu_studied_count}</p>
                     <p className="text-xs text-muted-foreground">Điều đã học</p>
                   </div>
                 </CardContent>
@@ -132,8 +131,8 @@ export default function DashboardPage() {
                     <MessagesSquare className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-2xl font-semibold text-foreground">{data.stats.conversations_count}</p>
-                    <p className="text-xs text-muted-foreground">Cuộc hội thoại</p>
+                    <p className="text-2xl font-semibold text-foreground">{data.stats.average_score}%</p>
+                    <p className="text-xs text-muted-foreground">Điểm trung bình</p>
                   </div>
                 </CardContent>
               </Card>
@@ -167,11 +166,11 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-semibold text-foreground">{data.stats.average_quiz_score_percentage}%</p>
+                    <p className="text-3xl font-semibold text-foreground">{data.stats.average_score}%</p>
                     <p className="text-sm text-muted-foreground">điểm trung bình</p>
                   </div>
-                  <ProgressBar percentage={data.stats.average_quiz_score_percentage} />
-                  <p className="text-sm text-muted-foreground">{data.stats.quizzes_completed} bài đã làm</p>
+                  <ProgressBar percentage={data.stats.average_score} />
+                  <p className="text-sm text-muted-foreground">{data.stats.total_quiz_attempts} bài đã làm</p>
                 </CardContent>
               </Card>
             </div>
@@ -204,29 +203,6 @@ export default function DashboardPage() {
                     </div>
                   ))
                 )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Gợi ý học tập hôm nay</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {data.relatedArticles.map((article) => (
-                  <Link
-                    key={article.dieu_number}
-                    href="/chat"
-                    className="flex items-center justify-between rounded-md border border-border px-4 py-3 text-sm transition-colors hover:bg-accent"
-                  >
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Điều {article.dieu_number} · {article.dieu_title}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{article.reason}</p>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                  </Link>
-                ))}
               </CardContent>
             </Card>
           </>

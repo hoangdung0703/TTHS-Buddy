@@ -85,21 +85,11 @@ export interface WeakTopic {
   score_percentage: number;
 }
 
-// Not part of the Phase 7 route list in requirements.md — a lightweight client-side
-// stand-in for the Phase 6 "related articles from the same retrieval" note in frontend.md,
-// surfaced on the dashboard's "study suggestions" card. Revisit once a real endpoint exists.
-export interface RelatedArticle {
-  dieu_number: string;
-  dieu_title: string;
-  reason: string;
-}
-
-// Also not one of the 8 documented routes - backs the dashboard's 3 quick-stat cards and the
-// simplified "Tien do trac nghiem" card (frontend.md: single average score + total count, no
-// per-category breakdown). Replace with real aggregation once Phase 5/7 logging exists.
+// Matches GET /api/dashboard/stats exactly as specified in requirements.md Phase 7 - backs the
+// dashboard's 3 quick-stat cards and the simplified "Tien do trac nghiem" card (single average
+// score + total count, no per-category breakdown, per the "bản rút gọn cho 05/09" scope note).
 export interface DashboardStats {
-  quizzes_completed: number;
-  dieu_studied: number;
-  conversations_count: number;
-  average_quiz_score_percentage: number;
+  total_quiz_attempts: number;
+  average_score: number;
+  dieu_studied_count: number;
 }
