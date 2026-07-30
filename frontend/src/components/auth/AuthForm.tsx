@@ -2,31 +2,20 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type CSSProperties, type FormEvent, useEffect, useState } from "react";
-import { BookOpenCheck, ListChecks, ScrollText } from "lucide-react";
+import { type FormEvent, useEffect, useState } from "react";
+import { ArrowLeft, Eye, EyeOff, Scale } from "lucide-react";
 
-import { Seal } from "@/components/brand/Seal";
-import { Badge } from "@/components/ui/badge";
+import { BackgroundOrbs } from "@/components/brand/BackgroundOrbs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import { cn } from "@/lib/utils";
 
-const appendixPoints = [
-  { numeral: "I", icon: ScrollText, label: "Mọi câu trả lời đều có căn cứ điều luật cụ thể", delay: 440 },
-  { numeral: "II", icon: ListChecks, label: "5 bộ đề trắc nghiệm, chấm điểm kèm giải thích", delay: 520 },
-  { numeral: "III", icon: BookOpenCheck, label: "Theo dõi từ khoá và chủ đề cần ôn tập", delay: 600 }
-];
-
-const quoteLines = [
-  { text: "Không ai", delay: 0 },
-  { text: "bị xem là", delay: 100 },
-  { text: "có tội.", delay: 200 }
-];
-
-function riseStyle(delayMs: number): CSSProperties {
-  return { animationDelay: `${delayMs}ms`, animationFillMode: "both" };
-}
+// Sizing/shape only — border, bg, text, and focus-ring colors now come from the shared
+// Input component's own semantic defaults (border-border/bg-background/ring-ring), which
+// resolve to this palette automatically. ring-offset-card is the one deliberate override:
+// these inputs sit on the card surface, not the page background, so the ring offset needs
+// to match its immediate surroundings to render crisply.
+const inputClass = "h-11 rounded-[0.6rem] bg-card px-3.5 focus-visible:ring-offset-card";
 
 type AuthMode = "sign-in" | "sign-up";
 
@@ -38,6 +27,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -86,107 +76,84 @@ export function AuthForm({ mode }: AuthFormProps) {
   }
 
   return (
-    <main className="relative z-[2] flex min-h-screen">
-      <aside className="relative hidden w-[42%] max-w-lg flex-col justify-between overflow-hidden bg-steel-blue-900 p-10 text-steel-blue-50 shadow-[10px_0_28px_rgba(17,27,41,0.12)] md:flex">
-        <div className="flex items-start justify-between">
-          <Link href="/" className="font-serif text-lg font-semibold text-white">
-            TTHS Buddy
+    <main className="relative flex min-h-screen flex-col items-center justify-center gap-8 bg-background px-4 py-12 font-sans">
+      <BackgroundOrbs />
+
+      <div className="relative z-10 flex w-full max-w-[420px] flex-col gap-8">
+        <div className="flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <Scale className="h-4 w-4" />
+            </span>
+            <span className="font-serif text-lg font-normal tracking-tight text-foreground">TTHS Buddy</span>
           </Link>
-          <Seal size={92} className="-mr-2 -mt-2 text-seal-red-400" delayMs={780} />
-        </div>
-
-        <div className="space-y-6">
-          <p className="font-serif text-4xl font-medium leading-[1.05] text-steel-blue-50">
-            {quoteLines.map(({ text, delay }) => (
-              <span key={text} className="block animate-rise-in" style={riseStyle(delay)}>
-                {text}
-              </span>
-            ))}
-          </p>
-          <Badge
-            variant="outline"
-            className="animate-rise-in border-steel-blue-700 bg-transparent text-steel-blue-200"
-            style={riseStyle(340)}
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
-            <span>#</span> Tinh thần Điều 13 · BLTTHS 2015
-          </Badge>
-
-          <ol className="border-t border-steel-blue-800/60 pt-1">
-            {appendixPoints.map(({ numeral, icon: Icon, label, delay }, index) => (
-              <li
-                key={label}
-                className={cn(
-                  "flex animate-rise-in items-start gap-2.5 py-3 text-sm text-steel-blue-100",
-                  index > 0 && "border-t border-steel-blue-800/60"
-                )}
-                style={riseStyle(delay)}
-              >
-                <span className="w-5 shrink-0 font-serif text-xs font-semibold text-steel-blue-300">{numeral}.</span>
-                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-steel-blue-300" strokeWidth={1.75} />
-                <span>{label}</span>
-              </li>
-            ))}
-          </ol>
+            <ArrowLeft size={13} strokeWidth={1.8} />
+            Trang chủ
+          </Link>
         </div>
 
-        <p className="text-[11px] font-medium uppercase leading-5 tracking-[0.18em] text-steel-blue-300">
-          Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp
-        </p>
-      </aside>
-
-      <section className="flex flex-1 items-center justify-center px-6 py-16">
-        <div className="w-full max-w-md">
-          <div className="mb-8 flex items-center justify-between md:hidden">
-            <Link href="/" className="font-serif text-lg font-semibold text-foreground">
-              TTHS Buddy
-            </Link>
-            <Seal size={64} />
-          </div>
-
-          <div className="animate-rise-in space-y-2">
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-steel-blue-600">
-              {isSignIn ? "Đăng nhập" : "Đăng ký"}
-            </p>
-            <h1 className="font-serif text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
-              {isSignIn ? "Chào mừng trở lại" : "Tạo tài khoản của bạn"}
+        <div className="w-full rounded-[1.25rem] border border-primary/[0.07] bg-card p-8 shadow-[0_8px_48px_rgba(30,36,96,0.10),0_1px_4px_rgba(30,36,96,0.06)] sm:p-11">
+          <div className="mb-8">
+            <h1 className="mb-2 font-serif text-[1.75rem] font-light leading-tight tracking-tight text-foreground">
+              {isSignIn ? (
+                "Chào mừng trở lại"
+              ) : (
+                <>
+                  Bắt đầu hành trình
+                  <br />
+                  <span className="italic text-primary">học tập</span>
+                </>
+              )}
             </h1>
-            <p className="text-sm text-muted-foreground">
-              Dùng email và mật khẩu để {isSignIn ? "tiếp tục học" : "bắt đầu học"}.
+            <p className="text-sm font-light text-muted-foreground">
+              {isSignIn ? "Tiếp tục hành trình ôn tập của bạn." : "Miễn phí. Không cần thẻ tín dụng."}
             </p>
           </div>
 
-          <form
-            className="mt-8 animate-rise-in space-y-4 [animation-delay:120ms]"
-            style={{ animationFillMode: "both" }}
-            onSubmit={handleSubmit}
-          >
-            <label className="block space-y-2">
+          <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+            <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-foreground">Email</span>
               <Input
                 type="email"
+                placeholder="ten@example.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
                 autoComplete="email"
+                className={inputClass}
               />
             </label>
 
-            <label className="block space-y-2">
+            <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-foreground">Mật khẩu</span>
-              <Input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-                autoComplete={isSignIn ? "current-password" : "new-password"}
-                minLength={6}
-              />
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder={isSignIn ? "••••••••" : "Tối thiểu 6 ký tự"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  autoComplete={isSignIn ? "current-password" : "new-password"}
+                  minLength={6}
+                  className={`${inputClass} pr-10`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                >
+                  {showPassword ? <EyeOff size={15} strokeWidth={1.6} /> : <Eye size={15} strokeWidth={1.6} />}
+                </button>
+              </div>
             </label>
 
             {error.length > 0 ? (
-              <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
-              </p>
+              <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
             ) : null}
 
             {message.length > 0 ? (
@@ -195,19 +162,32 @@ export function AuthForm({ mode }: AuthFormProps) {
               </p>
             ) : null}
 
-            <Button className="w-full" size="lg" type="submit" disabled={loading}>
-              {loading ? "Đang xử lý..." : isSignIn ? "Đăng nhập" : "Đăng ký"}
+            <Button
+              type="submit"
+              disabled={loading}
+              className="mt-1 h-auto w-full rounded-full px-6 py-3.5 text-[0.93rem] font-medium tracking-[0.01em] shadow-[0_4px_20px_rgba(30,36,96,0.22)] focus-visible:ring-offset-card active:scale-[0.99]"
+            >
+              {loading ? "Đang xử lý..." : isSignIn ? "Đăng nhập" : "Tạo tài khoản miễn phí"}
             </Button>
           </form>
 
-          <p className="mt-6 text-sm text-muted-foreground">
+          {!isSignIn && (
+            <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground/80">
+              Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp.
+            </p>
+          )}
+
+          <p className="mt-6 text-center text-sm text-muted-foreground">
             {isSignIn ? "Chưa có tài khoản?" : "Đã có tài khoản?"}{" "}
-            <Link className="font-medium text-foreground underline underline-offset-4" href={isSignIn ? "/register" : "/login"}>
+            <Link
+              className="font-medium text-primary underline-offset-4 hover:underline"
+              href={isSignIn ? "/register" : "/login"}
+            >
               {isSignIn ? "Đăng ký" : "Đăng nhập"}
             </Link>
           </p>
         </div>
-      </section>
+      </div>
     </main>
   );
 }

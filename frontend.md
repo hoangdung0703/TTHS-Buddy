@@ -6,11 +6,20 @@ Phong cách: Academic/legal-tech hiện đại — gọn gàng, đáng tin cậy
 
 Nguyên tắc thiết kế:
 - Whitespace rộng rãi, border mỏng thay vì shadow đậm
-- Typography sans-serif, rõ ràng, phân cấp bằng độ đậm nhạt (weight) thay vì màu sắc
-- Màu accent chính: xanh navy/slate đậm (dùng cho logo, nút chính, tag nổi bật)
-- Nền: off-white/xám rất nhạt, tránh nền trắng tinh gây chói
-- Tránh màu sắc sặc sỡ, playful — chỉ dùng màu cảnh báo (amber/đỏ nhạt) cho trạng thái cần chú ý (điểm thấp, cần ôn tập)
+- Typography: Fraunces (serif, heading/display) + Inter (sans, UI/body) qua next/font/google
 - Bo góc vừa phải (rounded-lg), không bo tròn quá mức kiểu app tiêu dùng
+
+Bảng màu editorial (be ấm + indigo-navy) — DUY NHẤT xuyên suốt toàn dự án kể từ bản đồng bộ token gốc, không còn tách biệt landing/app như trước:
+- Nền chính (`--background`): `#F5F0E8` (be ấm) — HSL `37 39% 94%`
+- Nền card/popover (`--card`): `#FAF7F2` (be ấm nhạt hơn nền chính) — HSL `38 44% 96%`
+- Chữ chính (`--foreground`): `#1A1830` (mực đậm gần đen) — HSL `245 33% 14%`
+- Chữ phụ/muted (`--muted-foreground`): `#6B6580` — HSL `253 12% 45%`
+- Accent chính/primary (`--primary`): indigo-navy `#1E2460` — HSL `235 52% 25%` — dùng cho logo, nút chính, tag nổi bật, tin nhắn user trong chat
+- Accent phụ (`--accent`): vàng đồng (gold) `#B89A52` — HSL `42 42% 52%` — dùng cho eyebrow label, citation pill, icon badge trang trí
+- Nền phụ (`--secondary`) `#E8E2D6`, nền muted trung tính (`--muted`) `#DDD8CE`
+- Border/input: navy nhạt hoá, HSL `235 20% 88%`; ring focus dùng thẳng giá trị primary, HSL `235 52% 25%`
+- Toàn bộ định nghĩa nằm ở `frontend/src/app/globals.css` (`:root`), KHÔNG có namespace Tailwind riêng cho landing nữa — mọi nơi dùng class ngữ nghĩa chuẩn (`bg-background`, `text-foreground`, `bg-primary`, `text-accent`...) tự động ăn đúng bảng màu này.
+- QUAN TRỌNG — màu mang Ý NGHĨA CHỨC NĂNG (đỏ/vàng/xanh theo ngưỡng điểm quiz, trạng thái đúng/sai) KHÔNG dùng token ngữ nghĩa ở trên — luôn hardcode trực tiếp Tailwind red-400/amber-400/emerald-600... (xem `progress-bar.tsx`, `quiz/page.tsx`) để không bao giờ đổi màu theo re-theme thương hiệu. Chỉ dùng màu cảnh báo (amber/đỏ nhạt) cho trạng thái cần chú ý (điểm thấp, cần ôn tập), không dùng cho mục đích trang trí.
 
 Bố cục chung toàn app:
 - Sidebar trái cố định: logo "TTHS Buddy" + subtitle "Học tập · BLTTHS 2015", điều hướng chính (Tổng quan, Trợ lý AI), nút "Hội thoại mới", ô tìm kiếm hội thoại, danh sách lịch sử hội thoại (mỗi item có tiêu đề, tag chủ đề nhỏ, thời gian)
@@ -21,8 +30,8 @@ Bố cục chung toàn app:
 2. Màn hình Chat
 
 Bố cục:
-- Tin nhắn user: căn phải, nền accent đậm (navy), chữ trắng
-- Tin nhắn AI: căn trái, nền trắng/rất nhạt, có avatar/icon logo nhỏ kèm nhãn "TTHS Buddy · AI · [tên chủ đề]"
+- Tin nhắn user: căn phải, nền accent đậm (`bg-primary`, navy `#1E2460`), chữ trắng
+- Tin nhắn AI: căn trái, nền card be ấm nhạt (`bg-card`, không phải trắng tinh), có avatar/icon logo nhỏ kèm nhãn "TTHS Buddy · AI · [tên chủ đề]"
 - Nội dung câu trả lời AI: format có heading phụ (in đậm), danh sách đánh số khi liệt kê hệ quả/điều kiện, không dùng bảng nếu không cần thiết
 
 Khối trích dẫn (citation) — thành phần quan trọng nhất, bắt buộc có ở mọi câu trả lời liên quan luật:
@@ -78,8 +87,8 @@ Streak "X ngày học liên tiếp":
 
 4. Component dùng chung
 - Pill/badge: bo tròn đầy đủ (rounded-full), padding ngang rộng hơn dọc, dùng cho citation tag, suggested question chip, category label
-- Card: nền trắng, border mỏng màu xám nhạt, bo góc rounded-lg, padding đồng nhất, không dùng shadow nặng
-- Progress bar: bo tròn, màu theo ngưỡng — xanh lá/xanh dương khi tốt, amber khi trung bình, đỏ nhạt khi cần chú ý (dưới 50%)
+- Card: nền be ấm nhạt (`bg-card`, không phải trắng tinh), border mỏng, bo góc rounded-lg, padding đồng nhất, không dùng shadow nặng
+- Progress bar: bo tròn, màu theo ngưỡng — navy/primary khi tốt (≥75%), amber-400 khi trung bình (50-74%), red-400 khi cần chú ý (dưới 50%) — 2 mốc dưới luôn hardcode Tailwind, không đổi theo re-theme
 - Nút hành động phụ (VD "Ôn tập ngay"): outline hoặc nền nhạt, không cạnh tranh thị giác với nút hành động chính (VD "Hỏi trợ lý AI")
 
 

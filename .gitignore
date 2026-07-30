@@ -23,3 +23,9 @@ backend/.env
 ingestion/raw_documents/*.pdf
 ingestion/chunks*.json
 *.log
+
+# Figma code export kept locally as a design reference only - a disposable Vite/shadcn
+# scaffold (its own package.json, component dump) re-exportable from Figma if needed again.
+# Verified it sits outside frontend/, so frontend/tsconfig.json's include globs can't reach
+# it and it can't affect the Next.js build; ignored here purely to keep it out of git history.
+design/figma-export/

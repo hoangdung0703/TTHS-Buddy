@@ -1,175 +1,143 @@
-"use client";
-
 import Link from "next/link";
-import { type CSSProperties, useState } from "react";
-import { BookOpenCheck, ListChecks, ScrollText } from "lucide-react";
+import { BarChart2, ListChecks, MessageSquareQuote, Scale } from "lucide-react";
 
-import { Seal } from "@/components/brand/Seal";
-import { Badge } from "@/components/ui/badge";
+import { BackgroundOrbs } from "@/components/brand/BackgroundOrbs";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
-const appendixItems = [
+const features = [
   {
-    numeral: "I",
-    icon: ScrollText,
-    title: "Trợ lý AI có trích dẫn",
+    icon: MessageSquareQuote,
+    title: "Trợ lý AI có trích dẫn điều luật",
     description: "Mọi câu trả lời đều kèm căn cứ điều luật cụ thể — không suy diễn, không bịa nguồn."
   },
   {
-    numeral: "II",
     icon: ListChecks,
     title: "5 bộ đề trắc nghiệm",
-    description: "MCQ và câu Nhận định Đúng/Sai theo từng bộ, chấm điểm và giải thích ngay sau khi nộp."
+    description:
+      "Mỗi bộ trộn chung câu hỏi MCQ và Nhận định Đúng/Sai, chấm điểm và giải thích ngay sau khi nộp."
   },
   {
-    numeral: "III",
-    icon: BookOpenCheck,
+    icon: BarChart2,
     title: "Theo dõi tiến độ học tập",
     description: "Nhìn lại từ khoá đã hỏi, chủ đề cần ôn tập và kết quả trắc nghiệm ở một nơi."
   }
 ];
 
-const headlineLines = [
-  { text: "Không ai", delay: 0 },
-  { text: "bị xem là", delay: 120 },
-  { text: "có tội.", delay: 240, accent: true }
-];
-
-const proceedingStages = [
-  { label: "Điều tra", delay: 520 },
-  { label: "Truy tố", delay: 670 },
-  { label: "Xét xử", delay: 820 }
-];
-
-function riseStyle(delayMs: number): CSSProperties {
-  return { animationDelay: `${delayMs}ms`, animationFillMode: "both" };
-}
-
 export default function HomePage() {
-  const [unlocked, setUnlocked] = useState(false);
-
   return (
-    <main className="relative z-[2] flex min-h-screen flex-col overflow-x-clip">
-      <div className="border-b border-border/70 bg-muted/30 py-2 text-center">
-        <span className="text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-          Hồ sơ học tập · Số 13/TTHS-Buddy · Tài liệu tham khảo, không thay thế văn bản pháp lý
-        </span>
-      </div>
+    <div className="relative min-h-screen overflow-x-hidden bg-background font-sans text-foreground">
+      <BackgroundOrbs />
 
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-8 md:px-10">
-        <div className="flex items-baseline gap-2">
-          <span className="font-serif text-lg font-semibold text-foreground">TTHS Buddy</span>
-          <span className="hidden text-xs text-muted-foreground sm:inline">Học tập · BLTTHS 2015</span>
-        </div>
-        {/* Always-reachable fallback: signing in/up never depends on discovering the seal. */}
-        <nav className="flex items-center gap-4">
-          <Link href="/login" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+      <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-8 pb-4 pt-8">
+        <Link href="/" className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Scale className="h-4 w-4" />
+          </span>
+          <span className="font-serif text-lg font-normal tracking-tight text-foreground">TTHS Buddy</span>
+        </Link>
+        <nav className="flex items-center gap-8">
+          <Link href="/login" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
             Đăng nhập
           </Link>
-          <Link href="/register" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+          <Link
+            href="/register"
+            className="text-sm font-medium text-foreground transition-colors hover:text-primary"
+          >
             Đăng ký
           </Link>
         </nav>
       </header>
 
-      <section className="mx-auto grid w-full max-w-6xl flex-1 gap-x-8 px-6 pb-24 pt-6 md:grid-cols-[1fr_auto] md:px-10 md:pt-10">
-        <div className="min-w-0">
-          <h1 className="font-serif text-6xl font-semibold leading-[0.98] tracking-tight text-foreground sm:text-7xl md:text-8xl">
-            {headlineLines.map(({ text, delay, accent }) => (
-              <span
-                key={text}
-                className={cn("block animate-rise-in", accent && "text-steel-blue-600")}
-                style={riseStyle(delay)}
-              >
-                {text}
-              </span>
-            ))}
-          </h1>
+      <main className="relative z-10">
+        <section className="mx-auto grid max-w-6xl grid-cols-12 gap-8 px-8 pb-24 pt-20">
+          <div className="col-span-12 md:col-span-8 md:col-start-2">
+            <p className="mb-8 text-sm font-medium uppercase tracking-[0.12em] text-accent">
+              Tố tụng Hình sự · Trợ lý học tập AI
+            </p>
+            <h1 className="mb-8 font-serif text-[clamp(2.6rem,5vw,4.2rem)] font-light leading-[1.15] tracking-tight text-foreground">
+              Mọi câu trả lời
+              <br />
+              đều có trích dẫn <span className="italic text-primary">điều luật</span>
+              <br />
+              cụ thể, không phỏng đoán.
+            </h1>
+            <p className="mb-12 max-w-xl text-[1.1rem] font-light leading-[1.75] text-muted-foreground">
+              Trợ lý học tập chuyên về Luật Tố tụng Hình sự Việt Nam (BLTTHS 2015) — giải thích điều khoản có
+              căn cứ, luyện đề, và theo dõi tiến độ học tập của bạn.
+            </p>
+            <Button
+              asChild
+              className="h-auto rounded-full px-9 py-3.5 text-[0.95rem] font-medium tracking-[0.01em] shadow-[0_4px_24px_rgba(30,36,96,0.18)] transition-transform hover:-translate-y-px"
+            >
+              <Link href="/register">Bắt đầu học miễn phí</Link>
+            </Button>
+          </div>
 
-          <p className="mt-6 max-w-xl animate-rise-in text-base leading-7 text-muted-foreground md:text-lg" style={riseStyle(420)}>
-            Trước một bản án có hiệu lực — đó là điểm khởi đầu của Tố tụng Hình sự, và cũng là điểm khởi đầu của TTHS Buddy: công cụ học luật cho sinh viên, hỏi đáp có căn cứ, luyện đề theo bộ.
-          </p>
+          <div className="col-span-12 mt-12 flex items-end justify-center pb-4 md:col-span-3 md:col-start-10 md:mt-0">
+            <LawIllustration />
+          </div>
+        </section>
+
+        <div className="mx-auto max-w-6xl px-8">
+          <div className="border-t border-border" />
         </div>
 
-        <div className="relative mt-10 flex shrink-0 flex-col items-start md:mt-2 md:w-56 md:items-end">
-          <button
-            type="button"
-            onClick={() => setUnlocked(true)}
-            aria-pressed={unlocked}
-            aria-label={unlocked ? "Đã xác nhận" : "Chạm vào dấu để tiếp tục"}
-            className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            <Seal size={168} className="mr-2 max-md:h-24 max-md:w-24" delayMs={1000} />
-          </button>
-
-          {unlocked ? (
-            <div className="mt-5 flex animate-rise-in flex-col items-start gap-3 md:items-end" style={riseStyle(0)}>
-              <Button asChild size="lg">
-                <Link href="/register">Bắt đầu học miễn phí</Link>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                <Link href="/login">Đăng nhập</Link>
-              </Button>
-            </div>
-          ) : (
-            <p
-              className="mr-2 mt-4 animate-rise-in text-xs text-muted-foreground md:text-right"
-              style={riseStyle(1900)}
-            >
-              Chạm vào dấu để tiếp tục
-            </p>
-          )}
-
-          <div className="mt-10 flex flex-col items-start gap-2.5 border-l border-border pl-4 text-left md:items-end md:border-l-0 md:border-r md:pl-0 md:pr-4 md:text-right">
-            {proceedingStages.map(({ label, delay }) => (
-              <span
-                key={label}
-                className="animate-rise-in text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"
-                style={riseStyle(delay)}
-              >
-                {label}
-              </span>
+        <section className="mx-auto max-w-6xl px-8 py-24">
+          <p className="mb-16 text-sm uppercase tracking-[0.1em] text-muted-foreground">Tính năng</p>
+          <div className="grid grid-cols-1 gap-16 md:grid-cols-3">
+            {features.map(({ icon: Icon, title, description }) => (
+              <div key={title} className="flex flex-col gap-4">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/[0.08] text-primary">
+                  <Icon size={18} strokeWidth={1.5} />
+                </div>
+                <h3 className="font-serif text-[1.1rem] font-normal leading-snug tracking-tight text-foreground">
+                  {title}
+                </h3>
+                <p className="text-[0.9rem] font-light leading-[1.75] text-muted-foreground">{description}</p>
+              </div>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      <section className="mx-auto w-full max-w-6xl px-6 pb-20 md:px-10">
-        <Badge variant="accent" className="mb-6 animate-rise-in" style={riseStyle(2000)}>
-          <span className="text-steel-blue-700">#</span> Tinh thần Điều 13 · BLTTHS 2015
-        </Badge>
-
-        <p className="mb-2 animate-rise-in text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground" style={riseStyle(2050)}>
-          Phụ lục đính kèm hồ sơ
+      <footer className="relative z-10 mx-auto flex max-w-6xl flex-col gap-4 px-8 pb-10 pt-8 md:flex-row md:items-center md:justify-between">
+        <span className="font-serif text-base font-normal text-foreground/50">TTHS Buddy</span>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp
         </p>
-
-        <ol className="animate-rise-in border-y border-border" style={riseStyle(2100)}>
-          {appendixItems.map(({ numeral, icon: Icon, title, description }, index) => (
-            <li
-              key={numeral}
-              className={cn(
-                "flex animate-rise-in items-start gap-4 py-5 transition-colors duration-200 hover:bg-muted/40",
-                index > 0 && "border-t border-border"
-              )}
-              style={riseStyle(2150 + index * 90)}
-            >
-              <span className="w-8 shrink-0 font-serif text-base font-semibold text-steel-blue-600">{numeral}.</span>
-              <Icon className="mt-0.5 h-5 w-5 shrink-0 text-steel-blue-600" strokeWidth={1.75} />
-              <div>
-                <p className="font-medium text-foreground">{title}</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <footer className="border-t border-border py-6 text-center">
-        <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-          TTHS Buddy · Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp
-        </span>
       </footer>
-    </main>
+    </div>
+  );
+}
+
+function LawIllustration() {
+  return (
+    <svg
+      viewBox="0 0 160 200"
+      fill="none"
+      aria-label="Minh họa sách luật và cân công lý"
+      className="w-full max-w-[140px] opacity-70"
+    >
+      <path d="M20 140 C20 140 78 130 80 130 C82 130 140 140 140 140" stroke="#1E2460" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M20 140 C18 115 22 90 28 72 C40 72 72 78 80 80" stroke="#1E2460" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M140 140 C142 115 138 90 132 72 C120 72 88 78 80 80" stroke="#1E2460" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="80" y1="80" x2="80" y2="130" stroke="#1E2460" strokeWidth="1.1" strokeLinecap="round" />
+      <line x1="34" y1="100" x2="74" y2="97" stroke="#1E2460" strokeWidth="0.9" strokeLinecap="round" opacity="0.5" />
+      <line x1="33" y1="108" x2="73" y2="105" stroke="#1E2460" strokeWidth="0.9" strokeLinecap="round" opacity="0.4" />
+      <line x1="33" y1="116" x2="72" y2="113" stroke="#1E2460" strokeWidth="0.9" strokeLinecap="round" opacity="0.3" />
+      <line x1="86" y1="97" x2="126" y2="100" stroke="#1E2460" strokeWidth="0.9" strokeLinecap="round" opacity="0.5" />
+      <line x1="87" y1="105" x2="127" y2="108" stroke="#1E2460" strokeWidth="0.9" strokeLinecap="round" opacity="0.4" />
+      <line x1="88" y1="113" x2="127" y2="116" stroke="#1E2460" strokeWidth="0.9" strokeLinecap="round" opacity="0.3" />
+      <line x1="80" y1="20" x2="80" y2="68" stroke="#1E2460" strokeWidth="1.1" strokeLinecap="round" />
+      <circle cx="80" cy="18" r="2.2" fill="#1E2460" opacity="0.7" />
+      <line x1="48" y1="36" x2="112" y2="36" stroke="#1E2460" strokeWidth="1.1" strokeLinecap="round" />
+      <line x1="48" y1="36" x2="40" y2="52" stroke="#1E2460" strokeWidth="0.9" strokeLinecap="round" opacity="0.75" />
+      <line x1="48" y1="36" x2="56" y2="52" stroke="#1E2460" strokeWidth="0.9" strokeLinecap="round" opacity="0.75" />
+      <path d="M38 52 Q48 57 58 52" stroke="#1E2460" strokeWidth="1.1" strokeLinecap="round" />
+      <line x1="112" y1="36" x2="104" y2="52" stroke="#1E2460" strokeWidth="0.9" strokeLinecap="round" opacity="0.75" />
+      <line x1="112" y1="36" x2="120" y2="52" stroke="#1E2460" strokeWidth="0.9" strokeLinecap="round" opacity="0.75" />
+      <path d="M102 54 Q112 59 122 54" stroke="#1E2460" strokeWidth="1.1" strokeLinecap="round" />
+      <circle cx="80" cy="36" r="1.8" fill="none" stroke="#1E2460" strokeWidth="1" opacity="0.6" />
+    </svg>
   );
 }

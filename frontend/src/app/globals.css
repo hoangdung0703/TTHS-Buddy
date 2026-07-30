@@ -3,26 +3,36 @@
 @tailwind utilities;
 
 :root {
-  --background: 225 33% 98%;
-  --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  /* Primary accent = steel blue #4682B4 (hsl(207 44% 49%)). Change this value only to re-theme. */
-  --primary: 207 44% 49%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 220 14% 93%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 220 14% 95%;
-  --muted-foreground: 215 16% 47%;
-  --accent: 207 70% 94%;
-  --accent-foreground: 207 55% 24%;
+  /* Editorial palette (design/figma-export reference), now the ONE theme for the whole
+     app - was previously scoped to Welcome/Sign in/Sign up only via a separate
+     tailwind.config.ts "editorial" namespace; that namespace has been folded into these
+     semantic tokens so every component (dashboard, chat, quiz, essay included) picks it
+     up automatically. Source hex, for reference when re-deriving these HSL triplets:
+     background #F5F0E8, card #FAF7F2, foreground #1A1830, muted-foreground #6B6580,
+     primary/navy #1E2460, accent/gold #B89A52, secondary #E8E2D6, muted #DDD8CE. */
+  --background: 37 39% 94%;
+  --foreground: 245 33% 14%;
+  --card: 38 44% 96%;
+  --card-foreground: 245 33% 14%;
+  --popover: 38 44% 96%;
+  --popover-foreground: 245 33% 14%;
+  --primary: 235 52% 25%;
+  --primary-foreground: 37 39% 94%;
+  --secondary: 40 28% 87%;
+  --secondary-foreground: 245 33% 14%;
+  --muted: 40 18% 84%;
+  --muted-foreground: 253 12% 45%;
+  --accent: 42 42% 52%;
+  --accent-foreground: 245 33% 14%;
+  /* Functional/status red - deliberately independent of the brand re-theme. Quiz/essay
+     correct-incorrect states and dashboard "needs review" thresholds use explicit
+     Tailwind reds/ambers/emeralds directly (see progress-bar.tsx, quiz/page.tsx), not
+     this token, but keep it a genuine red regardless. */
   --destructive: 0 84% 60%;
   --destructive-foreground: 210 40% 98%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 207 44% 49%;
+  --border: 235 20% 88%;
+  --input: 235 20% 88%;
+  --ring: 235 52% 25%;
 }
 
 * {
@@ -31,27 +41,13 @@
 
 html {
   background:
-    radial-gradient(circle at top left, rgba(70, 130, 180, 0.08), transparent 30%),
-    radial-gradient(circle at bottom right, rgba(39, 85, 124, 0.06), transparent 35%),
+    radial-gradient(circle at top left, rgba(30, 36, 96, 0.08), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(184, 154, 82, 0.06), transparent 35%),
     hsl(var(--background));
 }
 
 body {
   @apply relative min-h-screen bg-background text-foreground antialiased font-sans;
-}
-
-/* Dossier-paper grain — a fixed, pointer-events-none wash over every page so the flat
-   digital background reads a little closer to stock paper. Kept faint on purpose. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  opacity: 0.05;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
 }
 
 a {
