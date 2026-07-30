@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RAW_DOCUMENTS_DIR = PROJECT_ROOT / "ingestion" / "raw_documents"
 CHUNKS_OUTPUT_PATH = PROJECT_ROOT / "ingestion" / "chunks.json"
+QUESTION_BANK_OUTPUT_PATH = PROJECT_ROOT / "ingestion" / "question_bank.json"
 
 
 class IngestionSettings(BaseSettings):

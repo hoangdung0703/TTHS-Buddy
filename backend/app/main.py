@@ -5,8 +5,10 @@ from fastapi import FastAPI
 from pydantic import ValidationError
 
 from app.api.chat import router as chat_router
+from app.api.essay import router as essay_router
 from app.api.health import router as health_router
 from app.api.protected_test import router as protected_test_router
+from app.api.quiz import router as quiz_router
 from app.core.config import (
     create_qdrant_client,
     create_supabase_client,
@@ -58,6 +60,8 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(protected_test_router)
     app.include_router(chat_router)
+    app.include_router(quiz_router)
+    app.include_router(essay_router)
     return app
 
 

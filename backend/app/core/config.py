@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_VECTOR_SIZE = 768
+QUESTION_BANK_PATH = PROJECT_ROOT / "ingestion" / "question_bank.json"
 
 
 class Settings(BaseSettings):

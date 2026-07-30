@@ -1,0 +1,2047 @@
+[
+  {
+    "question_id": "mcq4-set1-q1",
+    "question_text": "Theo Bộ luật Tố tụng hình sự, khi có nhiều người cùng tham gia tố tụng với tư cách người bào chữa cho một bị can thì:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ được có tối đa 02 người bào chữa.",
+      "Không bị giới hạn số lượng người bào chữa nếu đáp ứng điều kiện luật định.",
+      "Chỉ luật sư mới được tham gia.",
+      "Chỉ được thêm người bào chữa khi Viện kiểm sát đồng ý."
+    ],
+    "mcq_correct": "Không bị giới hạn số lượng người bào chữa nếu đáp ứng điều kiện luật định.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "BLTTHS không quy định giới hạn số lượng người bào chữa cho một người bị buộc tội, miễn người đó đáp ứng điều kiện theo luật."
+  },
+  {
+    "question_id": "mcq4-set1-q2",
+    "question_text": "Trong giai đoạn điều tra, quyết định khởi tố bị can thuộc thẩm quyền của:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Viện kiểm sát.",
+      "Tòa án.",
+      "Cơ quan điều tra.",
+      "Cơ quan thi hành án hình sự."
+    ],
+    "mcq_correct": "Cơ quan điều tra.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Cơ quan điều tra ra quyết định khởi tố bị can và phải gửi Viện kiểm sát để xem xét phê chuẩn trong trường hợp luật quy định."
+  },
+  {
+    "question_id": "mcq4-set1-q3",
+    "question_text": "Trong các biện pháp ngăn chặn sau đây, biện pháp nào không làm hạn chế quyền tự do thân thể của người bị áp dụng?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Tạm giam.",
+      "Tạm giữ.",
+      "Bảo lĩnh.",
+      "Bắt người."
+    ],
+    "mcq_correct": "Bảo lĩnh.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Bảo lĩnh là biện pháp thay thế tạm giam, người được bảo lĩnh vẫn được tại ngoại nhưng phải thực hiện các nghĩa vụ theo quy định."
+  },
+  {
+    "question_id": "mcq4-set1-q4",
+    "question_text": "Sau khi nhận được tố giác về tội phạm, nếu vụ việc thuộc thẩm quyền của cơ quan khác thì cơ quan đang tiếp nhận phải:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Lưu hồ sơ.",
+      "Chuyển ngay cho cơ quan có thẩm quyền.",
+      "Đợi Viện kiểm sát yêu cầu.",
+      "Từ chối tiếp nhận."
+    ],
+    "mcq_correct": "Chuyển ngay cho cơ quan có thẩm quyền.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Cơ quan tiếp nhận phải chuyển ngay tố giác, tin báo về tội phạm đến cơ quan có thẩm quyền giải quyết."
+  },
+  {
+    "question_id": "mcq4-set1-q5",
+    "question_text": "A bị bắt quả tang khi đang thực hiện hành vi cướp giật tài sản. Sau khi bắt giữ, Cơ quan điều tra muốn khám xét chỗ ở của A. Trong trường hợp này:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Được khám ngay mà không cần căn cứ nào khác.",
+      "Chỉ được khám khi có căn cứ theo BLTTHS và tuân thủ thủ tục luật định.",
+      "Chỉ cần sự đồng ý của A.",
+      "Không bao giờ được khám."
+    ],
+    "mcq_correct": "Chỉ được khám khi có căn cứ theo BLTTHS và tuân thủ thủ tục luật định.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Việc bắt quả tang không đồng nghĩa với việc được tự động khám xét chỗ ở. Khám xét phải có căn cứ và thực hiện đúng trình tự, thủ tục của BLTTHS."
+  },
+  {
+    "question_id": "mcq4-set1-q6",
+    "question_text": "Trong quá trình điều tra, Điều tra viên thu giữ dữ liệu camera từ một cửa hàng gần hiện trường vụ án. Để dữ liệu này có giá trị chứng cứ, yêu cầu nào sau đây là quan trọng nhất?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Điều tra viên xác nhận dữ liệu là đúng.",
+      "Dữ liệu được thu thập hợp pháp, bảo đảm tính toàn vẹn và có thể kiểm tra, đối chiếu.",
+      "Chủ cửa hàng ký xác nhận là đủ.",
+      "Bị can đồng ý sử dụng dữ liệu."
+    ],
+    "mcq_correct": "Dữ liệu được thu thập hợp pháp, bảo đảm tính toàn vẹn và có thể kiểm tra, đối chiếu.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Chứng cứ điện tử phải được thu thập, bảo quản và kiểm tra theo đúng quy định để bảo đảm giá trị chứng minh."
+  },
+  {
+    "question_id": "mcq4-set1-q7",
+    "question_text": "Sau khi kết thúc điều tra, Viện kiểm sát nhận thấy còn thiếu chứng cứ quan trọng để xác định vai trò đồng phạm của một bị can nhưng việc bổ sung chứng cứ vẫn có thể thực hiện được. Viện kiểm sát nên:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Truy tố ngay.",
+      "Đình chỉ vụ án.",
+      "Trả hồ sơ để điều tra bổ sung.",
+      "Chuyển hồ sơ cho Tòa án xét xử."
+    ],
+    "mcq_correct": "Trả hồ sơ để điều tra bổ sung.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Khi còn thiếu chứng cứ quan trọng nhưng vẫn có khả năng bổ sung, Viện kiểm sát có quyền trả hồ sơ để điều tra bổ sung theo BLTTHS."
+  },
+  {
+    "question_id": "mcq4-set1-q8",
+    "question_text": "Bản án sơ thẩm tuyên bị cáo B phạm tội. Sau đó, chỉ người bị hại kháng cáo yêu cầu tăng hình phạt. Viện kiểm sát không kháng nghị. Khi xét xử phúc thẩm, Tòa án:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Không được tăng hình phạt trong mọi trường hợp.",
+      "Có thể tăng hình phạt nếu việc kháng cáo của người bị hại là hợp pháp và có căn cứ.",
+      "Chỉ được giảm hình phạt.",
+      "Phải giữ nguyên bản án."
+    ],
+    "mcq_correct": "Có thể tăng hình phạt nếu việc kháng cáo của người bị hại là hợp pháp và có căn cứ.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Tòa án phúc thẩm xem xét trong phạm vi kháng cáo, kháng nghị. Nếu kháng cáo hợp lệ và có căn cứ theo luật, Tòa án có thể sửa bản án theo hướng tăng hình phạt."
+  },
+  {
+    "question_id": "mcq4-set1-q9",
+    "question_text": "Trong vụ án X, Cơ quan điều tra đã thu thập lời khai của nhân chứng theo đúng trình tự. Tuy nhiên, tại phiên tòa, nhân chứng khai khác hoàn toàn với lời khai trước đó và có căn cứ cho thấy lời khai tại phiên tòa bị tác động. Hội đồng xét xử nên:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ sử dụng lời khai tại phiên tòa.",
+      "Chỉ sử dụng lời khai trong hồ sơ điều tra.",
+      "Đánh giá toàn bộ chứng cứ của vụ án, đối chiếu các lời khai với các chứng cứ khác trước khi quyết định giá trị chứng minh.",
+      "Loại bỏ toàn bộ lời khai của nhân chứng."
+    ],
+    "mcq_correct": "Đánh giá toàn bộ chứng cứ của vụ án, đối chiếu các lời khai với các chứng cứ khác trước khi quyết định giá trị chứng minh.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Không có loại chứng cứ nào mặc nhiên có giá trị cao hơn. Hội đồng xét xử phải đánh giá khách quan, toàn diện và đầy đủ tất cả chứng cứ."
+  },
+  {
+    "question_id": "mcq4-set1-q10",
+    "question_text": "Trong quá trình điều tra vụ án về tham ô tài sản, Cơ quan điều tra phát hiện một hành vi khác của bị can có dấu hiệu cấu thành tội phạm nhưng chưa được khởi tố. Viện kiểm sát yêu cầu khởi tố bổ sung đối với hành vi này. Cơ quan điều tra cho rằng chưa đủ căn cứ nên không thực hiện yêu cầu. Trong trường hợp này, cách xử lý nào phù hợp nhất theo BLTTHS?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Viện kiểm sát trực tiếp kết tội bị can về hành vi mới.",
+      "Tòa án quyết định việc khởi tố bổ sung trong giai đoạn điều tra.",
+      "Viện kiểm sát thực hiện quyền kiểm sát, yêu cầu điều tra bổ sung hoặc áp dụng thẩm quyền theo quy định của BLTTHS để bảo đảm việc giải quyết vụ án đúng pháp luật.",
+      "Vụ án phải đình chỉ toàn bộ."
+    ],
+    "mcq_correct": "Viện kiểm sát thực hiện quyền kiểm sát, yêu cầu điều tra bổ sung hoặc áp dụng thẩm quyền theo quy định của BLTTHS để bảo đảm việc giải quyết vụ án đúng pháp luật.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Quan hệ giữa Cơ quan điều tra và Viện kiểm sát là quan hệ phối hợp và kiểm sát. Khi có căn cứ theo luật, Viện kiểm sát có quyền yêu cầu, kiểm sát việc khởi tố và điều tra để bảo đảm không bỏ lọt tội phạm, không làm oan người vô tội."
+  },
+  {
+    "question_id": "mcq4-set1-q11",
+    "question_text": "Khi hỏi cung bị can tại cơ sở giam giữ hoặc tại trụ sở Cơ quan điều tra, việc hỏi cung phải được thực hiện như thế nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ cần lập biên bản bằng văn bản.",
+      "Phải được ghi âm hoặc ghi hình có âm thanh.",
+      "Chỉ ghi âm khi bị can yêu cầu.",
+      "Chỉ ghi hình khi vụ án thuộc loại đặc biệt nghiêm trọng."
+    ],
+    "mcq_correct": "Phải được ghi âm hoặc ghi hình có âm thanh.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "183",
+    "topic_category": "Hỏi cung bị can",
+    "quiz_set": 1,
+    "explanation": "Theo Điều 183 BLTTHS, việc hỏi cung bị can tại cơ sở giam giữ hoặc trụ sở Cơ quan điều tra phải được ghi âm hoặc ghi hình có âm thanh. Đây là cơ chế bảo đảm tính khách quan và hạn chế bức cung, dùng nhục hình."
+  },
+  {
+    "question_id": "mcq4-set1-q12",
+    "question_text": "Trong vụ án chỉ được khởi tố theo yêu cầu của bị hại, người bị hại tự nguyện rút yêu cầu khởi tố trước ngày mở phiên tòa sơ thẩm. Cơ quan tiến hành tố tụng phải xử lý như thế nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Tiếp tục giải quyết vụ án trong mọi trường hợp.",
+      "Đình chỉ vụ án, trừ trường hợp có căn cứ xác định việc rút yêu cầu trái với ý muốn của người bị hại do bị ép buộc hoặc cưỡng bức.",
+      "Tạm đình chỉ vụ án trong thời hạn 30 ngày.",
+      "Chuyển vụ án sang giải quyết dân sự."
+    ],
+    "mcq_correct": "Đình chỉ vụ án, trừ trường hợp có căn cứ xác định việc rút yêu cầu trái với ý muốn của người bị hại do bị ép buộc hoặc cưỡng bức.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "155",
+    "topic_category": "Khởi tố vụ án hình sự theo yêu cầu của bị hại",
+    "quiz_set": 1,
+    "explanation": "Theo Điều 155 BLTTHS, khi người đã yêu cầu khởi tố tự nguyện rút yêu cầu thì vụ án phải được đình chỉ. Nếu có căn cứ cho rằng việc rút yêu cầu do bị ép buộc hoặc cưỡng bức thì cơ quan tố tụng vẫn tiếp tục giải quyết vụ án."
+  },
+  {
+    "question_id": "mcq4-set1-q13",
+    "question_text": "Tòa án đang xét xử bị cáo về tội có khung hình phạt cao nhất là 07 năm tù. Qua xét xử, Hội đồng xét xử cho rằng hành vi của bị cáo có thể cấu thành một tội khác nặng hơn tội danh mà Viện kiểm sát đã truy tố. Tòa án phải xử lý thế nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Tự tuyên bị cáo phạm tội nặng hơn mà không cần thực hiện thủ tục nào khác.",
+      "Chỉ được xét xử đúng tội danh Viện kiểm sát đã truy tố.",
+      "Trả hồ sơ để Viện kiểm sát xem xét việc truy tố về tội danh nặng hơn; nếu Viện kiểm sát vẫn giữ nguyên quyết định truy tố thì Tòa án có quyền xét xử theo tội danh nặng hơn trong giới hạn luật định.",
+      "Đình chỉ vụ án."
+    ],
+    "mcq_correct": "Trả hồ sơ để Viện kiểm sát xem xét việc truy tố về tội danh nặng hơn; nếu Viện kiểm sát vẫn giữ nguyên quyết định truy tố thì Tòa án có quyền xét xử theo tội danh nặng hơn trong giới hạn luật định.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Theo quy định về giới hạn xét xử, khi có căn cứ xét xử bị cáo về tội nặng hơn, Tòa án phải trả hồ sơ để Viện kiểm sát xem xét. Nếu Viện kiểm sát vẫn giữ nguyên quyết định truy tố, Tòa án được xét xử theo tội danh nặng hơn nhưng phải bảo đảm quyền bào chữa của bị cáo."
+  },
+  {
+    "question_id": "mcq4-set1-q14",
+    "question_text": "A bị khởi tố trong cùng một vụ án về hai hành vi: trộm cắp tài sản và cố ý gây thương tích. Việc điều tra hai hành vi trong cùng một vụ án làm kéo dài đáng kể thời hạn giải quyết và có thể ảnh hưởng đến việc xử lý kịp thời hành vi trộm cắp đã được chứng minh đầy đủ. Cơ quan điều tra có thể xử lý thế nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Bắt buộc phải điều tra cả hai hành vi trong cùng một vụ án.",
+      "Có thể tách vụ án hình sự nếu việc tách không ảnh hưởng đến việc xác định sự thật khách quan, toàn diện của vụ án.",
+      "Chỉ được tách vụ án khi bị can đồng ý.",
+      "Chỉ Viện kiểm sát mới có quyền tách vụ án trong giai đoạn điều tra."
+    ],
+    "mcq_correct": "Có thể tách vụ án hình sự nếu việc tách không ảnh hưởng đến việc xác định sự thật khách quan, toàn diện của vụ án.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Cơ quan điều tra có thể tách vụ án để điều tra riêng khi cần thiết, với điều kiện việc tách không làm ảnh hưởng đến việc xác định sự thật khách quan, toàn diện và không bỏ lọt tội phạm."
+  },
+  {
+    "question_id": "mcq4-set1-q15",
+    "question_text": "Bản án sơ thẩm tuyên bị cáo A 05 năm tù. Chỉ A kháng cáo xin giảm hình phạt; Viện kiểm sát không kháng nghị và người bị hại không kháng cáo. Tại phiên tòa phúc thẩm, Hội đồng xét xử phát hiện cấp sơ thẩm đã áp dụng mức hình phạt quá nhẹ. Hội đồng xét xử phúc thẩm được xử lý thế nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Có quyền tăng hình phạt đối với A vì hình phạt sơ thẩm quá nhẹ.",
+      "Không được tăng hình phạt đối với A vì không có kháng cáo hoặc kháng nghị theo hướng bất lợi cho bị cáo.",
+      "Phải hủy bản án sơ thẩm để xét xử lại.",
+      "Chuyển hồ sơ cho Viện kiểm sát kháng nghị bổ sung tại phiên tòa."
+    ],
+    "mcq_correct": "Không được tăng hình phạt đối với A vì không có kháng cáo hoặc kháng nghị theo hướng bất lợi cho bị cáo.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 1,
+    "explanation": "Tòa án phúc thẩm không được làm xấu hơn tình trạng của bị cáo khi chỉ có kháng cáo xin giảm nhẹ và không có kháng cáo, kháng nghị theo hướng tăng nặng. Đây là nguyên tắc không làm bất lợi cho người kháng cáo."
+  },
+  {
+    "question_id": "mcq4-set2-q1",
+    "question_text": "Theo quy định của BLTTHS, người phiên dịch có trách nhiệm nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ dịch những nội dung có lợi cho người được phiên dịch.",
+      "Dịch trung thực, khách quan, đầy đủ, kịp thời nội dung cần dịch.",
+      "Đưa ra ý kiến cá nhân về vụ án.",
+      "Có quyền từ chối dịch nếu cảm thấy không phù hợp."
+    ],
+    "mcq_correct": "Dịch trung thực, khách quan, đầy đủ, kịp thời nội dung cần dịch.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 2,
+    "explanation": "Người phiên dịch phải dịch trung thực, khách quan, đầy đủ và kịp thời, không được thêm bớt nội dung."
+  },
+  {
+    "question_id": "mcq4-set2-q2",
+    "question_text": "Theo quy định của BLTTHS, thế nào là chứng cứ?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Bất kỳ thông tin nào liên quan đến vụ án.",
+      "Những gì có thật, được thu thập theo trình tự, thủ tục do BLTTHS quy định và được dùng làm căn cứ giải quyết vụ án.",
+      "Chỉ lời khai của người tham gia tố tụng.",
+      "Chỉ kết luận giám định."
+    ],
+    "mcq_correct": "Những gì có thật, được thu thập theo trình tự, thủ tục do BLTTHS quy định và được dùng làm căn cứ giải quyết vụ án.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "86",
+    "topic_category": "Chứng cứ",
+    "quiz_set": 2,
+    "explanation": "Điều 86 BLTTHS quy định đầy đủ khái niệm chứng cứ."
+  },
+  {
+    "question_id": "mcq4-set2-q3",
+    "question_text": "Theo quy định của BLTTHS, thời hạn kháng cáo bản án sơ thẩm là bao nhiêu ngày kể từ ngày tuyên án?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "07 ngày",
+      "10 ngày",
+      "15 ngày",
+      "30 ngày"
+    ],
+    "mcq_correct": "15 ngày",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "333",
+    "topic_category": "Thời hạn kháng cáo",
+    "quiz_set": 2,
+    "explanation": "Điều 333 BLTTHS: thời hạn kháng cáo đối với bản án sơ thẩm là 15 ngày."
+  },
+  {
+    "question_id": "mcq4-set2-q4",
+    "question_text": "Theo quy định của BLTTHS, thời hạn chuẩn bị xét xử sơ thẩm đối với tội phạm ít nghiêm trọng là:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Không quá 30 ngày",
+      "Không quá 45 ngày",
+      "Không quá 01 tháng",
+      "Không quá 02 tháng"
+    ],
+    "mcq_correct": "Không quá 01 tháng",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "277",
+    "topic_category": "Thời hạn chuẩn bị xét xử",
+    "quiz_set": 2,
+    "explanation": "Điều 277 BLTTHS quy định thời hạn chuẩn bị xét xử đối với tội ít nghiêm trọng là 01 tháng."
+  },
+  {
+    "question_id": "mcq4-set2-q5",
+    "question_text": "Trong trường hợp nào sau đây, việc xét xử có thể được tiến hành kín?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Bị cáo dưới 18 tuổi.",
+      "Có nhiều người tham gia tố tụng.",
+      "Vụ án liên quan đến bí mật đời tư, bí mật gia đình hoặc bí mật kinh doanh theo yêu cầu chính đáng.",
+      "Người bị hại yêu cầu."
+    ],
+    "mcq_correct": "Vụ án liên quan đến bí mật đời tư, bí mật gia đình hoặc bí mật kinh doanh theo yêu cầu chính đáng.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "25",
+    "topic_category": "Tòa án xét xử kịp thời, công bằng, công khai",
+    "quiz_set": 2,
+    "explanation": "Điều 25 BLTTHS quy định xét xử công khai là nguyên tắc, chỉ xét xử kín trong các trường hợp luật định."
+  },
+  {
+    "question_id": "mcq4-set2-q6",
+    "question_text": "Theo BLTTHS, người bào chữa có quyền thu thập chứng cứ bằng cách nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khám xét nơi ở của người bị buộc tội.",
+      "Yêu cầu cơ quan, tổ chức, cá nhân cung cấp tài liệu, đồ vật, dữ liệu điện tử liên quan đến việc bào chữa.",
+      "Tự triệu tập người làm chứng.",
+      "Áp dụng biện pháp nghiệp vụ điều tra."
+    ],
+    "mcq_correct": "Yêu cầu cơ quan, tổ chức, cá nhân cung cấp tài liệu, đồ vật, dữ liệu điện tử liên quan đến việc bào chữa.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "73",
+    "topic_category": "Quyền và nghĩa vụ của người bào chữa",
+    "quiz_set": 2,
+    "explanation": "Điều 73 BLTTHS quy định quyền thu thập tài liệu, đồ vật, dữ liệu điện tử của người bào chữa."
+  },
+  {
+    "question_id": "mcq4-set2-q7",
+    "question_text": "Trong giai đoạn điều tra, nếu phát hiện người bị buộc tội có dấu hiệu mắc bệnh tâm thần, Cơ quan điều tra phải:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Tiếp tục điều tra bình thường.",
+      "Trưng cầu giám định pháp y tâm thần.",
+      "Đình chỉ ngay vụ án.",
+      "Chờ người đó khỏi bệnh."
+    ],
+    "mcq_correct": "Trưng cầu giám định pháp y tâm thần.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 2,
+    "explanation": "Việc xác định năng lực trách nhiệm hình sự phải thông qua giám định pháp y tâm thần."
+  },
+  {
+    "question_id": "mcq4-set2-q8",
+    "question_text": "Trong trường hợp nào sau đây, Cơ quan điều tra phải trả tự do ngay cho người bị tạm giữ?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Người bị tạm giữ khai báo thành khẩn.",
+      "Có người bảo lãnh.",
+      "Hết thời hạn tạm giữ mà không đủ căn cứ khởi tố bị can.",
+      "Người bị tạm giữ bị bệnh."
+    ],
+    "mcq_correct": "Hết thời hạn tạm giữ mà không đủ căn cứ khởi tố bị can.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 2,
+    "explanation": "Khi hết thời hạn tạm giữ mà không đủ căn cứ khởi tố thì phải trả tự do ngay."
+  },
+  {
+    "question_id": "mcq4-set2-q9",
+    "question_text": "Trong giai đoạn điều tra, ai có thẩm quyền ra quyết định áp dụng biện pháp tạm giam?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Điều tra viên.",
+      "Viện trưởng Viện kiểm sát.",
+      "Thủ trưởng hoặc Phó Thủ trưởng Cơ quan điều tra được giao nhiệm vụ.",
+      "Chánh án Tòa án."
+    ],
+    "mcq_correct": "Thủ trưởng hoặc Phó Thủ trưởng Cơ quan điều tra được giao nhiệm vụ.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 2,
+    "explanation": "Quyết định của CQĐT phải được Viện kiểm sát phê chuẩn theo quy định."
+  },
+  {
+    "question_id": "mcq4-set2-q10",
+    "question_text": "Trong giai đoạn xét xử sơ thẩm, nếu bị cáo vắng mặt không có lý do chính đáng thì Tòa án sẽ xử lý như thế nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Hoãn phiên tòa.",
+      "Áp giải bị cáo.",
+      "Xét xử vắng mặt.",
+      "Tùy từng trường hợp có thể hoãn, áp giải hoặc xét xử vắng mặt theo BLTTHS."
+    ],
+    "mcq_correct": "Tùy từng trường hợp có thể hoãn, áp giải hoặc xét xử vắng mặt theo BLTTHS.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "290",
+    "topic_category": "Sự có mặt của bị cáo tại phiên tòa",
+    "quiz_set": 2,
+    "explanation": "Điều 290 BLTTHS quy định nhiều phương án xử lý tùy từng trường hợp."
+  },
+  {
+    "question_id": "mcq4-set2-q11",
+    "question_text": "Trong quá trình xét xử, Hội đồng xét xử được trả hồ sơ để điều tra bổ sung khi nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ khi cần xác minh thêm chứng cứ.",
+      "Chỉ khi phát hiện đồng phạm mới.",
+      "Chỉ khi không thể thu thập chứng cứ tại phiên tòa.",
+      "Khi thuộc một trong các căn cứ luật định như cần làm rõ chứng cứ, có đồng phạm khác, vi phạm tố tụng nghiêm trọng…"
+    ],
+    "mcq_correct": "Khi thuộc một trong các căn cứ luật định như cần làm rõ chứng cứ, có đồng phạm khác, vi phạm tố tụng nghiêm trọng…",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "280",
+    "topic_category": "Trả hồ sơ để điều tra bổ sung",
+    "quiz_set": 2,
+    "explanation": "Điều 280 BLTTHS quy định nhiều căn cứ trả hồ sơ điều tra bổ sung."
+  },
+  {
+    "question_id": "mcq4-set2-q12",
+    "question_text": "Trong giai đoạn xét xử phúc thẩm, Hội đồng xét xử có quyền nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ giữ nguyên bản án.",
+      "Chỉ sửa bản án.",
+      "Chỉ hủy án.",
+      "Giữ nguyên, sửa, hủy bản án sơ thẩm để điều tra hoặc xét xử lại theo quy định."
+    ],
+    "mcq_correct": "Giữ nguyên, sửa, hủy bản án sơ thẩm để điều tra hoặc xét xử lại theo quy định.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 2,
+    "explanation": "Đây là toàn bộ phạm vi quyền hạn của Hội đồng xét xử phúc thẩm."
+  },
+  {
+    "question_id": "mcq4-set2-q13",
+    "question_text": "Trong trường hợp nào sau đây, Viện kiểm sát có quyền hủy bỏ quyết định không khởi tố vụ án của Cơ quan điều tra?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khi có yêu cầu của bị hại.",
+      "Khi phát hiện quyết định đó không có căn cứ hoặc trái pháp luật.",
+      "Khi có thay đổi chính sách hình sự.",
+      "Khi có đơn tố cáo mới."
+    ],
+    "mcq_correct": "Khi phát hiện quyết định đó không có căn cứ hoặc trái pháp luật.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 2,
+    "explanation": "Đây là quyền kiểm sát hoạt động tư pháp của Viện kiểm sát."
+  },
+  {
+    "question_id": "mcq4-set2-q14",
+    "question_text": "Theo BLTTHS, trường hợp nào sau đây bắt buộc phải có người bào chữa?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Người bị buộc tội dưới 18 tuổi.",
+      "Người có nhược điểm về tâm thần hoặc thể chất.",
+      "Người bị truy tố về tội có khung hình phạt cao nhất là 20 năm tù, tù chung thân hoặc tử hình mà không tự bào chữa.",
+      "Tất cả các trường hợp trên."
+    ],
+    "mcq_correct": "Tất cả các trường hợp trên.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "76",
+    "topic_category": "Chỉ định người bào chữa",
+    "quiz_set": 2,
+    "explanation": "Điều 76 BLTTHS quy định các trường hợp bắt buộc phải có người bào chữa."
+  },
+  {
+    "question_id": "mcq4-set2-q15",
+    "question_text": "Theo BLTTHS, trong trường hợp nào Hội đồng xét xử phúc thẩm được hủy bản án sơ thẩm để điều tra lại?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khi thấy cần tăng hình phạt.",
+      "Khi có tình tiết mới nhưng không ảnh hưởng việc định tội.",
+      "Khi có vi phạm nghiêm trọng thủ tục tố tụng mà cấp phúc thẩm không thể khắc phục hoặc cần điều tra lại để làm rõ sự thật vụ án.",
+      "Khi bị cáo kháng cáo xin giảm nhẹ hình phạt."
+    ],
+    "mcq_correct": "Khi có vi phạm nghiêm trọng thủ tục tố tụng mà cấp phúc thẩm không thể khắc phục hoặc cần điều tra lại để làm rõ sự thật vụ án.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "358",
+    "topic_category": "Hủy bản án sơ thẩm để điều tra lại hoặc xét xử lại",
+    "quiz_set": 2,
+    "explanation": "Điều 358 BLTTHS quy định việc hủy bản án để điều tra lại chỉ áp dụng khi có vi phạm nghiêm trọng hoặc cần điều tra bổ sung mà cấp phúc thẩm không thể tự khắc phục."
+  },
+  {
+    "question_id": "mcq4-set3-q1",
+    "question_text": "Theo quy định của BLTTHS, người làm chứng có nghĩa vụ nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ cung cấp lời khai bằng văn bản.",
+      "Có mặt theo giấy triệu tập và khai báo trung thực những gì mình biết về vụ án.",
+      "Chỉ khai khi có người bào chữa.",
+      "Được từ chối khai báo trong mọi trường hợp."
+    ],
+    "mcq_correct": "Có mặt theo giấy triệu tập và khai báo trung thực những gì mình biết về vụ án.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "66",
+    "topic_category": "Người làm chứng",
+    "quiz_set": 3,
+    "explanation": "Điều 66 BLTTHS quy định người làm chứng phải có mặt theo giấy triệu tập và khai báo trung thực."
+  },
+  {
+    "question_id": "mcq4-set3-q2",
+    "question_text": "Theo quy định của BLTTHS, ai là người có quyền kháng nghị bản án, quyết định sơ thẩm?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Người bào chữa.",
+      "Viện trưởng Viện kiểm sát hoặc Kiểm sát viên được Viện trưởng phân công.",
+      "Người làm chứng.",
+      "Hội thẩm nhân dân."
+    ],
+    "mcq_correct": "Viện trưởng Viện kiểm sát hoặc Kiểm sát viên được Viện trưởng phân công.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "336",
+    "topic_category": "Kháng nghị của Viện kiểm sát",
+    "quiz_set": 3,
+    "explanation": "Điều 336 BLTTHS quy định thẩm quyền kháng nghị thuộc Viện kiểm sát."
+  },
+  {
+    "question_id": "mcq4-set3-q3",
+    "question_text": "Trong trường hợp nào sau đây, việc đình chỉ điều tra vụ án hình sự là bắt buộc?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Người bị buộc tội bỏ trốn.",
+      "Đã hết thời hạn điều tra mà không chứng minh được người bị buộc tội đã thực hiện hành vi phạm tội.",
+      "Người bị buộc tội bị bệnh.",
+      "Người bị buộc tội tự thú."
+    ],
+    "mcq_correct": "Đã hết thời hạn điều tra mà không chứng minh được người bị buộc tội đã thực hiện hành vi phạm tội.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 3,
+    "explanation": "Khi không đủ căn cứ buộc tội thì phải đình chỉ điều tra theo BLTTHS."
+  },
+  {
+    "question_id": "mcq4-set3-q4",
+    "question_text": "Theo quy định của BLTTHS, việc khởi tố vụ án theo yêu cầu của bị hại áp dụng đối với:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Mọi tội phạm ít nghiêm trọng.",
+      "Mọi tội xâm phạm sức khỏe.",
+      "Các trường hợp luật quy định tại khoản 1 của một số điều trong BLHS.",
+      "Tội tham nhũng."
+    ],
+    "mcq_correct": "Các trường hợp luật quy định tại khoản 1 của một số điều trong BLHS.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "155",
+    "topic_category": "Khởi tố vụ án hình sự theo yêu cầu của bị hại",
+    "quiz_set": 3,
+    "explanation": "Điều 155 BLTTHS quy định cụ thể các trường hợp chỉ được khởi tố theo yêu cầu của bị hại."
+  },
+  {
+    "question_id": "mcq4-set3-q5",
+    "question_text": "Ai có quyền quyết định áp giải người làm chứng?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Điều tra viên.",
+      "Thủ trưởng Cơ quan điều tra.",
+      "Hội thẩm nhân dân.",
+      "Kiểm sát viên."
+    ],
+    "mcq_correct": "Thủ trưởng Cơ quan điều tra.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 3,
+    "explanation": "Điều tra viên không tự mình quyết định áp giải; thẩm quyền thuộc Thủ trưởng CQĐT hoặc người có thẩm quyền theo luật."
+  },
+  {
+    "question_id": "mcq4-set3-q6",
+    "question_text": "Trong trường hợp nào việc khám xét chỗ ở được tiến hành không cần chờ lệnh của Viện kiểm sát hoặc Tòa án?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khi chủ nhà đồng ý.",
+      "Khi cần thu thập thêm tài liệu.",
+      "Khi có căn cứ xác định đang có người thực hiện tội phạm hoặc cần ngăn chặn ngay việc tiêu hủy chứng cứ.",
+      "Khi có đơn tố giác."
+    ],
+    "mcq_correct": "Khi có căn cứ xác định đang có người thực hiện tội phạm hoặc cần ngăn chặn ngay việc tiêu hủy chứng cứ.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 3,
+    "explanation": "BLTTHS cho phép khám xét khẩn cấp trong các trường hợp luật định."
+  },
+  {
+    "question_id": "mcq4-set3-q7",
+    "question_text": "Theo quy định của BLTTHS, ai có quyền quyết định thay đổi người tiến hành tố tụng?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Người bào chữa.",
+      "Điều tra viên.",
+      "Viện trưởng Viện kiểm sát, Chánh án Tòa án hoặc người có thẩm quyền tương ứng.",
+      "Người bị hại."
+    ],
+    "mcq_correct": "Viện trưởng Viện kiểm sát, Chánh án Tòa án hoặc người có thẩm quyền tương ứng.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 3,
+    "explanation": "Thẩm quyền thay đổi người tiến hành tố tụng thuộc người đứng đầu cơ quan hoặc người được luật giao."
+  },
+  {
+    "question_id": "mcq4-set3-q8",
+    "question_text": "Theo BLTTHS, trong xét xử sơ thẩm, Thẩm phán chủ tọa phiên tòa có quyền nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khởi tố vụ án hình sự.",
+      "Quyết định áp dụng biện pháp cưỡng chế đối với người làm chứng.",
+      "Quyết định thay đổi hoặc hủy bỏ biện pháp ngăn chặn theo thẩm quyền.",
+      "Trực tiếp truy tố bị can."
+    ],
+    "mcq_correct": "Quyết định thay đổi hoặc hủy bỏ biện pháp ngăn chặn theo thẩm quyền.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 3,
+    "explanation": "Chủ tọa phiên tòa có quyền quyết định một số vấn đề tố tụng trong phạm vi luật định."
+  },
+  {
+    "question_id": "mcq4-set3-q9",
+    "question_text": "Theo BLTTHS, người có quyền ra quyết định trả lại đồ vật, tài sản đã thu giữ là:",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Điều tra viên.",
+      "Người đã ra lệnh thu giữ.",
+      "Thẩm phán.",
+      "Kiểm sát viên."
+    ],
+    "mcq_correct": "Người đã ra lệnh thu giữ.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 3,
+    "explanation": "Việc trả lại vật chứng do người có thẩm quyền đang quản lý vụ án quyết định theo quy định của BLTTHS."
+  },
+  {
+    "question_id": "mcq4-set3-q10",
+    "question_text": "Nguyên tắc suy đoán vô tội được thể hiện rõ nhất trong trường hợp nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Công khai thông tin điều tra.",
+      "Bị can phải chứng minh mình vô tội.",
+      "Tòa án tuyên bị cáo không phạm tội khi chứng cứ buộc tội không đủ.",
+      "Bắt buộc tạm giam mọi bị can."
+    ],
+    "mcq_correct": "Tòa án tuyên bị cáo không phạm tội khi chứng cứ buộc tội không đủ.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "13",
+    "topic_category": "Suy đoán vô tội",
+    "quiz_set": 3,
+    "explanation": "Điều 13 BLTTHS quy định khi không đủ căn cứ buộc tội thì phải kết luận người bị buộc tội không có tội."
+  },
+  {
+    "question_id": "mcq4-set3-q11",
+    "question_text": "Trong quá trình xét xử phúc thẩm, Hội đồng xét xử có quyền nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ sửa bản án.",
+      "Chỉ hủy bản án.",
+      "Chỉ giữ nguyên bản án.",
+      "Giữ nguyên, sửa hoặc hủy bản án sơ thẩm theo quy định của BLTTHS."
+    ],
+    "mcq_correct": "Giữ nguyên, sửa hoặc hủy bản án sơ thẩm theo quy định của BLTTHS.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "355",
+    "topic_category": "Thẩm quyền của Hội đồng xét xử phúc thẩm đối với bản án",
+    "quiz_set": 3,
+    "explanation": "Điều 355 BLTTHS quy định đầy đủ các quyền của Hội đồng xét xử phúc thẩm."
+  },
+  {
+    "question_id": "mcq4-set3-q12",
+    "question_text": "Trong trường hợp nào sau đây, Viện kiểm sát được quyền hủy bỏ quyết định không khởi tố vụ án của Cơ quan điều tra?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Có yêu cầu của người bị hại.",
+      "Có đơn tố cáo mới.",
+      "Phát hiện quyết định không có căn cứ hoặc trái pháp luật.",
+      "Người bị tố giác nhận tội."
+    ],
+    "mcq_correct": "Phát hiện quyết định không có căn cứ hoặc trái pháp luật.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 3,
+    "explanation": "Đây là một trong các quyền kiểm sát hoạt động tư pháp của Viện kiểm sát."
+  },
+  {
+    "question_id": "mcq4-set3-q13",
+    "question_text": "Trong trường hợp nào sau đây, Hội đồng xét xử được trả hồ sơ để điều tra bổ sung?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Muốn xác minh thêm một tình tiết không ảnh hưởng vụ án.",
+      "Khi có căn cứ cho rằng còn đồng phạm chưa bị khởi tố.",
+      "Chỉ khi Viện kiểm sát yêu cầu.",
+      "Chỉ khi bị cáo đề nghị."
+    ],
+    "mcq_correct": "Khi có căn cứ cho rằng còn đồng phạm chưa bị khởi tố.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "280",
+    "topic_category": "Trả hồ sơ để điều tra bổ sung",
+    "quiz_set": 3,
+    "explanation": "Đây là một trong các căn cứ quy định tại Điều 280 BLTTHS."
+  },
+  {
+    "question_id": "mcq4-set3-q14",
+    "question_text": "Theo quy định của BLTTHS, trường hợp nào bắt buộc phải có người bào chữa?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Người dưới 18 tuổi.",
+      "Người có nhược điểm về tâm thần hoặc thể chất.",
+      "Người bị truy tố về tội có khung hình phạt cao nhất là 20 năm tù, tù chung thân hoặc tử hình mà không tự bào chữa.",
+      "Tất cả các trường hợp trên."
+    ],
+    "mcq_correct": "Tất cả các trường hợp trên.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "76",
+    "topic_category": "Chỉ định người bào chữa",
+    "quiz_set": 3,
+    "explanation": "Điều 76 BLTTHS quy định đây đều là các trường hợp bào chữa bắt buộc."
+  },
+  {
+    "question_id": "mcq4-set3-q15",
+    "question_text": "Trong trường hợp nào Hội đồng xét xử phúc thẩm phải hủy bản án sơ thẩm để điều tra lại?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khi xét thấy cần tăng hình phạt.",
+      "Khi có vi phạm nghiêm trọng thủ tục tố tụng hoặc thiếu chứng cứ quan trọng mà cấp phúc thẩm không thể tự bổ sung.",
+      "Khi bị cáo kháng cáo xin giảm nhẹ hình phạt.",
+      "Khi người bị hại yêu cầu."
+    ],
+    "mcq_correct": "Khi có vi phạm nghiêm trọng thủ tục tố tụng hoặc thiếu chứng cứ quan trọng mà cấp phúc thẩm không thể tự bổ sung.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "358",
+    "topic_category": "Hủy bản án sơ thẩm để điều tra lại hoặc xét xử lại",
+    "quiz_set": 3,
+    "explanation": "Điều 358 BLTTHS quy định việc hủy án để điều tra lại chỉ đặt ra khi tồn tại vi phạm nghiêm trọng hoặc thiếu sót về chứng cứ mà cấp phúc thẩm không thể khắc phục."
+  },
+  {
+    "question_id": "mcq4-set4-q1",
+    "question_text": "Theo quy định của Bộ luật Tố tụng hình sự, mục đích của biện pháp ngăn chặn là gì?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Trừng phạt người bị buộc tội.",
+      "Thu thập chứng cứ nhanh hơn.",
+      "Ngăn chặn việc người bị buộc tội bỏ trốn, tiếp tục phạm tội hoặc cản trở hoạt động tố tụng.",
+      "Thay thế việc xét xử."
+    ],
+    "mcq_correct": "Ngăn chặn việc người bị buộc tội bỏ trốn, tiếp tục phạm tội hoặc cản trở hoạt động tố tụng.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 4,
+    "explanation": "BLTTHS quy định biện pháp ngăn chặn nhằm bảo đảm hoạt động điều tra, truy tố, xét xử, thi hành án và ngăn ngừa người bị buộc tội bỏ trốn, tiếp tục phạm tội hoặc cản trở tố tụng."
+  },
+  {
+    "question_id": "mcq4-set4-q2",
+    "question_text": "Theo BLTTHS, nguyên tắc tranh tụng trong xét xử được bảo đảm nhằm mục đích nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ bảo vệ quyền của bị cáo.",
+      "Bảo đảm việc giải quyết vụ án khách quan, công bằng, đúng pháp luật.",
+      "Tăng quyền cho Viện kiểm sát.",
+      "Hạn chế quyền của người bào chữa."
+    ],
+    "mcq_correct": "Bảo đảm việc giải quyết vụ án khách quan, công bằng, đúng pháp luật.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "26",
+    "topic_category": "Tranh tụng trong xét xử được bảo đảm",
+    "quiz_set": 4,
+    "explanation": "Điều 26 BLTTHS quy định tranh tụng trong xét xử được bảo đảm để làm sáng tỏ sự thật khách quan của vụ án và bảo đảm xét xử công bằng."
+  },
+  {
+    "question_id": "mcq4-set4-q3",
+    "question_text": "Theo BLTTHS, chứng cứ chỉ có giá trị khi đáp ứng điều kiện nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Do Điều tra viên thu thập.",
+      "Do người bị hại cung cấp.",
+      "Là những gì có thật và được thu thập theo đúng trình tự, thủ tục luật định.",
+      "Được Kiểm sát viên chấp nhận."
+    ],
+    "mcq_correct": "Là những gì có thật và được thu thập theo đúng trình tự, thủ tục luật định.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "86",
+    "topic_category": "Chứng cứ",
+    "quiz_set": 4,
+    "explanation": "Điều 86 BLTTHS quy định chứng cứ phải là những gì có thật và được thu thập theo đúng trình tự, thủ tục do Bộ luật quy định."
+  },
+  {
+    "question_id": "mcq4-set4-q4",
+    "question_text": "Theo BLTTHS, ai có nghĩa vụ chứng minh tội phạm?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Người bị buộc tội.",
+      "Người bào chữa.",
+      "Cơ quan có thẩm quyền tiến hành tố tụng.",
+      "Người bị hại."
+    ],
+    "mcq_correct": "Cơ quan có thẩm quyền tiến hành tố tụng.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "15",
+    "topic_category": "Xác định sự thật của vụ án",
+    "quiz_set": 4,
+    "explanation": "Điều 15 BLTTHS quy định trách nhiệm chứng minh tội phạm thuộc về cơ quan có thẩm quyền tiến hành tố tụng; người bị buộc tội không có nghĩa vụ chứng minh mình vô tội."
+  },
+  {
+    "question_id": "mcq4-set4-q5",
+    "question_text": "Trong trường hợp nào sau đây, bị can có quyền thay đổi người bào chữa?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ khi được Viện kiểm sát đồng ý.",
+      "Chỉ khi có quyết định của Tòa án.",
+      "Khi thấy cần thiết theo quy định của BLTTHS.",
+      "Không được thay đổi người bào chữa."
+    ],
+    "mcq_correct": "Khi thấy cần thiết theo quy định của BLTTHS.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 4,
+    "explanation": "BLTTHS ghi nhận quyền lựa chọn, thay đổi hoặc từ chối người bào chữa của người bị buộc tội theo quy định của pháp luật."
+  },
+  {
+    "question_id": "mcq4-set4-q6",
+    "question_text": "Theo BLTTHS, trường hợp nào sau đây phải từ chối hoặc thay đổi người tiến hành tố tụng?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Người đó đã từng tham gia vụ án với tư cách người làm chứng.",
+      "Người đó là công chức.",
+      "Người đó có thẻ ngành.",
+      "Người đó làm việc tại cơ quan tiến hành tố tụng."
+    ],
+    "mcq_correct": "Người đó đã từng tham gia vụ án với tư cách người làm chứng.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 4,
+    "explanation": "Người đã tham gia vụ án với tư cách khác hoặc có căn cứ cho rằng không vô tư, khách quan thì phải từ chối hoặc bị thay đổi theo quy định của BLTTHS."
+  },
+  {
+    "question_id": "mcq4-set4-q7",
+    "question_text": "Theo BLTTHS, việc hỏi cung bị can vào ban đêm chỉ được thực hiện khi nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khi Điều tra viên thấy cần thiết.",
+      "Khi bị can đồng ý.",
+      "Khi không thể trì hoãn vì lý do cấp bách hoặc để ngăn chặn hậu quả nghiêm trọng.",
+      "Được thực hiện trong mọi trường hợp."
+    ],
+    "mcq_correct": "Khi không thể trì hoãn vì lý do cấp bách hoặc để ngăn chặn hậu quả nghiêm trọng.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 4,
+    "explanation": "BLTTHS quy định không hỏi cung bị can vào ban đêm, trừ trường hợp không thể trì hoãn và phải ghi rõ lý do trong biên bản."
+  },
+  {
+    "question_id": "mcq4-set4-q8",
+    "question_text": "Theo BLTTHS, trường hợp nào sau đây không được coi là nguồn chứng cứ?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Dữ liệu điện tử.",
+      "Kết luận giám định.",
+      "Tin đồn chưa được kiểm chứng.",
+      "Biên bản hoạt động điều tra."
+    ],
+    "mcq_correct": "Tin đồn chưa được kiểm chứng.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "87",
+    "topic_category": "Nguồn chứng cứ",
+    "quiz_set": 4,
+    "explanation": "Điều 87 BLTTHS quy định các nguồn chứng cứ; tin đồn hoặc thông tin chưa được kiểm chứng không phải là nguồn chứng cứ hợp pháp."
+  },
+  {
+    "question_id": "mcq4-set4-q9",
+    "question_text": "Theo BLTTHS, khi người bị buộc tội không biết tiếng Việt, cơ quan tiến hành tố tụng phải làm gì?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Đình chỉ giải quyết vụ án.",
+      "Chỉ lập biên bản bằng tiếng Việt.",
+      "Chỉ định hoặc yêu cầu người phiên dịch tham gia tố tụng.",
+      "Yêu cầu người thân dịch thay."
+    ],
+    "mcq_correct": "Chỉ định hoặc yêu cầu người phiên dịch tham gia tố tụng.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 4,
+    "explanation": "BLTTHS bảo đảm quyền sử dụng tiếng nói, chữ viết của người tham gia tố tụng thông qua người phiên dịch."
+  },
+  {
+    "question_id": "mcq4-set4-q10",
+    "question_text": "Theo BLTTHS, việc bắt người trong trường hợp phạm tội quả tang nhằm mục đích chủ yếu nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Ép người phạm tội nhận tội.",
+      "Ngăn chặn ngay hành vi phạm tội và bảo đảm xử lý kịp thời.",
+      "Thu giữ toàn bộ tài sản của người bị bắt.",
+      "Tạm giữ người đó vô thời hạn."
+    ],
+    "mcq_correct": "Ngăn chặn ngay hành vi phạm tội và bảo đảm xử lý kịp thời.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 4,
+    "explanation": "Bắt người phạm tội quả tang nhằm kịp thời ngăn chặn hành vi phạm tội và tạo điều kiện xử lý theo đúng quy định của pháp luật."
+  },
+  {
+    "question_id": "mcq4-set4-q11",
+    "question_text": "Theo BLTTHS, Hội đồng xét xử được quyền trả hồ sơ để điều tra bổ sung khi nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khi cần thay đổi Kiểm sát viên.",
+      "Khi còn những vấn đề quan trọng của vụ án chưa được làm rõ mà không thể bổ sung tại phiên tòa.",
+      "Khi bị cáo không nhận tội.",
+      "Khi người bị hại có yêu cầu."
+    ],
+    "mcq_correct": "Khi còn những vấn đề quan trọng của vụ án chưa được làm rõ mà không thể bổ sung tại phiên tòa.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 4,
+    "explanation": "BLTTHS quy định chỉ được trả hồ sơ điều tra bổ sung trong các trường hợp luật định nhằm làm rõ những vấn đề quan trọng của vụ án."
+  },
+  {
+    "question_id": "mcq4-set4-q12",
+    "question_text": "Theo BLTTHS, khi xét xử phúc thẩm, Tòa án có quyền nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ giữ nguyên bản án sơ thẩm.",
+      "Chỉ sửa bản án sơ thẩm.",
+      "Giữ nguyên, sửa, hủy bản án sơ thẩm hoặc đình chỉ xét xử phúc thẩm theo quy định của BLTTHS.",
+      "Chỉ hủy bản án sơ thẩm."
+    ],
+    "mcq_correct": "Giữ nguyên, sửa, hủy bản án sơ thẩm hoặc đình chỉ xét xử phúc thẩm theo quy định của BLTTHS.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "355",
+    "topic_category": "Thẩm quyền của Hội đồng xét xử phúc thẩm đối với bản án",
+    "quiz_set": 4,
+    "explanation": "Điều 355 BLTTHS quy định đầy đủ các quyền của Hội đồng xét xử phúc thẩm."
+  },
+  {
+    "question_id": "mcq4-set4-q13",
+    "question_text": "Theo BLTTHS, nguyên tắc xác định sự thật của vụ án yêu cầu cơ quan tiến hành tố tụng phải làm gì?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ thu thập chứng cứ buộc tội.",
+      "Chỉ thu thập chứng cứ gỡ tội.",
+      "Thu thập, kiểm tra và đánh giá đầy đủ cả chứng cứ buộc tội và gỡ tội.",
+      "Chỉ dựa vào lời nhận tội của bị can."
+    ],
+    "mcq_correct": "Thu thập, kiểm tra và đánh giá đầy đủ cả chứng cứ buộc tội và gỡ tội.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "15",
+    "topic_category": "Xác định sự thật của vụ án",
+    "quiz_set": 4,
+    "explanation": "Điều 15 BLTTHS yêu cầu cơ quan tiến hành tố tụng phải xác định sự thật khách quan, toàn diện và đầy đủ của vụ án."
+  },
+  {
+    "question_id": "mcq4-set4-q14",
+    "question_text": "Theo BLTTHS, lời nhận tội của bị can, bị cáo được sử dụng làm căn cứ kết tội trong trường hợp nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ cần có lời nhận tội.",
+      "Chỉ cần có xác nhận của Điều tra viên.",
+      "Phải phù hợp với các chứng cứ khác của vụ án.",
+      "Luôn có giá trị chứng minh cao nhất."
+    ],
+    "mcq_correct": "Phải phù hợp với các chứng cứ khác của vụ án.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 4,
+    "explanation": "BLTTHS quy định không được dùng lời nhận tội làm chứng cứ duy nhất để kết tội nếu không có chứng cứ khác phù hợp."
+  },
+  {
+    "question_id": "mcq4-set4-q15",
+    "question_text": "Theo BLTTHS, trường hợp nào sau đây phản ánh đúng nguyên tắc suy đoán vô tội?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Người bị buộc tội phải chứng minh mình vô tội.",
+      "Chỉ cần có đơn tố giác thì được coi là có tội.",
+      "Khi không đủ và không thể làm sáng tỏ căn cứ buộc tội thì phải kết luận người bị buộc tội không có tội.",
+      "Lời khai của bị hại luôn có giá trị quyết định."
+    ],
+    "mcq_correct": "Khi không đủ và không thể làm sáng tỏ căn cứ buộc tội thì phải kết luận người bị buộc tội không có tội.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "13",
+    "topic_category": "Suy đoán vô tội",
+    "quiz_set": 4,
+    "explanation": "Điều 13 BLTTHS quy định mọi nghi ngờ chưa được làm sáng tỏ theo trình tự luật định phải được giải thích theo hướng có lợi cho người bị buộc tội; nếu không đủ căn cứ buộc tội thì phải kết luận họ không có tội."
+  },
+  {
+    "question_id": "mcq4-set5-q1",
+    "question_text": "Theo quy định của BLTTHS, người bị giữ trong trường hợp khẩn cấp có quyền nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Tự quyết định thời hạn tạm giữ.",
+      "Nhờ người bào chữa hoặc được chỉ định người bào chữa theo quy định của pháp luật.",
+      "Từ chối mọi hoạt động điều tra.",
+      "Yêu cầu đình chỉ ngay vụ án."
+    ],
+    "mcq_correct": "Nhờ người bào chữa hoặc được chỉ định người bào chữa theo quy định của pháp luật.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "BLTTHS bảo đảm quyền bào chữa của người bị giữ trong trường hợp khẩn cấp ngay từ khi bị áp dụng biện pháp tố tụng."
+  },
+  {
+    "question_id": "mcq4-set5-q2",
+    "question_text": "Theo quy định của BLTTHS, trường hợp nào sau đây phải tiến hành giám định?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khi cần xác định nguyên nhân chết người.",
+      "Khi Điều tra viên thấy cần thiết.",
+      "Khi bị can yêu cầu.",
+      "Khi người bị hại yêu cầu."
+    ],
+    "mcq_correct": "Khi cần xác định nguyên nhân chết người.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "BLTTHS quy định một số trường hợp bắt buộc phải trưng cầu giám định, trong đó có việc xác định nguyên nhân chết người."
+  },
+  {
+    "question_id": "mcq4-set5-q3",
+    "question_text": "Theo BLTTHS, hoạt động đối chất được tiến hành khi nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khi các lời khai có mâu thuẫn cần làm rõ.",
+      "Khi bị can không nhận tội.",
+      "Khi người bị hại yêu cầu.",
+      "Trong mọi vụ án hình sự."
+    ],
+    "mcq_correct": "Khi các lời khai có mâu thuẫn cần làm rõ.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "Đối chất được tiến hành để làm rõ mâu thuẫn trong lời khai của những người tham gia tố tụng."
+  },
+  {
+    "question_id": "mcq4-set5-q4",
+    "question_text": "Theo BLTTHS, biên bản hoạt động điều tra phải có nội dung nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ cần chữ ký của Điều tra viên.",
+      "Chỉ cần ý kiến của Kiểm sát viên.",
+      "Ghi đầy đủ diễn biến hoạt động tố tụng và có chữ ký của những người theo quy định.",
+      "Không cần chữ ký nếu đã ghi âm."
+    ],
+    "mcq_correct": "Ghi đầy đủ diễn biến hoạt động tố tụng và có chữ ký của những người theo quy định.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "BLTTHS quy định biên bản phải được lập đầy đủ, chính xác và có chữ ký của những người tham gia theo quy định."
+  },
+  {
+    "question_id": "mcq4-set5-q5",
+    "question_text": "Theo quy định của BLTTHS, trường hợp nào sau đây được coi là bắt người phạm tội quả tang?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Bắt người sau khi bản án có hiệu lực.",
+      "Bắt người đang thực hiện tội phạm hoặc ngay sau khi thực hiện tội phạm bị phát hiện.",
+      "Bắt người chỉ vì có đơn tố giác.",
+      "Bắt người theo yêu cầu của người bị hại."
+    ],
+    "mcq_correct": "Bắt người đang thực hiện tội phạm hoặc ngay sau khi thực hiện tội phạm bị phát hiện.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "BLTTHS quy định phạm tội quả tang là trường hợp đang thực hiện hoặc ngay sau khi thực hiện hành vi phạm tội thì bị phát hiện."
+  },
+  {
+    "question_id": "mcq4-set5-q6",
+    "question_text": "Theo BLTTHS, việc thực nghiệm điều tra được tiến hành nhằm mục đích nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Ép bị can nhận tội.",
+      "Kiểm tra, xác minh các tài liệu, tình tiết có ý nghĩa đối với vụ án.",
+      "Thay thế hoạt động giám định.",
+      "Xác định mức hình phạt."
+    ],
+    "mcq_correct": "Kiểm tra, xác minh các tài liệu, tình tiết có ý nghĩa đối với vụ án.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "Thực nghiệm điều tra là hoạt động điều tra nhằm kiểm tra, xác minh các tình tiết liên quan đến vụ án."
+  },
+  {
+    "question_id": "mcq4-set5-q7",
+    "question_text": "Theo quy định của BLTTHS, ai có quyền yêu cầu thay đổi người giám định?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ Điều tra viên.",
+      "Chỉ Viện trưởng Viện kiểm sát.",
+      "Người tham gia tố tụng khi có căn cứ theo quy định của pháp luật.",
+      "Chỉ Thẩm phán."
+    ],
+    "mcq_correct": "Người tham gia tố tụng khi có căn cứ theo quy định của pháp luật.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "BLTTHS cho phép người tham gia tố tụng yêu cầu thay đổi người giám định khi có căn cứ cho rằng họ không khách quan."
+  },
+  {
+    "question_id": "mcq4-set5-q8",
+    "question_text": "Theo BLTTHS, khi nào vụ án hình sự được tạm đình chỉ điều tra?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Khi người bị buộc tội bỏ trốn và chưa xác định được nơi đang ở hoặc thuộc trường hợp luật định.",
+      "Khi bị hại yêu cầu.",
+      "Khi Điều tra viên xin nghỉ phép.",
+      "Khi người bào chữa vắng mặt."
+    ],
+    "mcq_correct": "Khi người bị buộc tội bỏ trốn và chưa xác định được nơi đang ở hoặc thuộc trường hợp luật định.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "BLTTHS quy định các căn cứ tạm đình chỉ điều tra, trong đó có trường hợp chưa xác định được bị can đang ở đâu."
+  },
+  {
+    "question_id": "mcq4-set5-q9",
+    "question_text": "Theo BLTTHS, việc nhận dạng được tiến hành nhằm mục đích nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Xác định giá trị tài sản.",
+      "Làm rõ việc nhận biết người, vật hoặc địa điểm có liên quan đến vụ án.",
+      "Xác định mức bồi thường.",
+      "Kiểm tra nhân thân bị can."
+    ],
+    "mcq_correct": "Làm rõ việc nhận biết người, vật hoặc địa điểm có liên quan đến vụ án.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "Nhận dạng là hoạt động điều tra nhằm xác định người, vật hoặc địa điểm có liên quan đến vụ án."
+  },
+  {
+    "question_id": "mcq4-set5-q10",
+    "question_text": "Theo BLTTHS, Kiểm sát viên có quyền nào trong giai đoạn điều tra?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Trực tiếp xét xử vụ án.",
+      "Kiểm sát hoạt động điều tra và thực hành quyền công tố theo quy định.",
+      "Ban hành bản án.",
+      "Quyết định hình phạt."
+    ],
+    "mcq_correct": "Kiểm sát hoạt động điều tra và thực hành quyền công tố theo quy định.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "Trong giai đoạn điều tra, Viện kiểm sát thực hành quyền công tố và kiểm sát hoạt động tư pháp."
+  },
+  {
+    "question_id": "mcq4-set5-q11",
+    "question_text": "Theo BLTTHS, trường hợp nào sau đây phải hủy bản án sơ thẩm để điều tra lại?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Bị cáo có đơn xin giảm nhẹ.",
+      "Có vi phạm nghiêm trọng thủ tục tố tụng hoặc thiếu chứng cứ quan trọng mà cấp phúc thẩm không thể bổ sung.",
+      "Người bị hại xin rút yêu cầu kháng cáo.",
+      "Bị cáo đã chấp hành một phần hình phạt."
+    ],
+    "mcq_correct": "Có vi phạm nghiêm trọng thủ tục tố tụng hoặc thiếu chứng cứ quan trọng mà cấp phúc thẩm không thể bổ sung.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "Đây là một trong những căn cứ để Hội đồng xét xử phúc thẩm hủy bản án sơ thẩm và giao hồ sơ điều tra lại theo BLTTHS."
+  },
+  {
+    "question_id": "mcq4-set5-q12",
+    "question_text": "Theo BLTTHS, trường hợp nào sau đây thuộc thẩm quyền xét xử của Tòa án cấp huyện?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Mọi vụ án hình sự.",
+      "Chỉ các vụ án do Viện kiểm sát tối cao truy tố.",
+      "Các vụ án thuộc thẩm quyền theo quy định của BLTTHS, trừ những vụ thuộc thẩm quyền của Tòa án cấp tỉnh.",
+      "Chỉ các vụ án có khung hình phạt đến 03 năm tù."
+    ],
+    "mcq_correct": "Các vụ án thuộc thẩm quyền theo quy định của BLTTHS, trừ những vụ thuộc thẩm quyền của Tòa án cấp tỉnh.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "BLTTHS phân định thẩm quyền xét xử giữa Tòa án cấp huyện và cấp tỉnh theo tính chất, mức độ của vụ án."
+  },
+  {
+    "question_id": "mcq4-set5-q13",
+    "question_text": "Theo BLTTHS, khi xét xử, nếu phát hiện có dấu hiệu bỏ lọt tội phạm thì Hội đồng xét xử có quyền nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Tự mình khởi tố bị can mới.",
+      "Kiến nghị hoặc ra quyết định theo thẩm quyền để xử lý theo quy định của BLTTHS.",
+      "Đình chỉ ngay vụ án.",
+      "Tuyên bị cáo có tội đối với hành vi chưa bị truy tố."
+    ],
+    "mcq_correct": "Kiến nghị hoặc ra quyết định theo thẩm quyền để xử lý theo quy định của BLTTHS.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "Hội đồng xét xử không được xét xử vượt quá giới hạn truy tố nhưng có quyền kiến nghị hoặc quyết định theo thẩm quyền khi phát hiện dấu hiệu bỏ lọt tội phạm."
+  },
+  {
+    "question_id": "mcq4-set5-q14",
+    "question_text": "Theo BLTTHS, nguyên tắc bảo đảm quyền bào chữa được thể hiện rõ nhất ở nội dung nào sau đây?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Người bị buộc tội chỉ được bào chữa sau khi kết thúc điều tra.",
+      "Người bị buộc tội có quyền tự bào chữa hoặc nhờ người khác bào chữa theo quy định của pháp luật.",
+      "Chỉ luật sư mới được tham gia bào chữa.",
+      "Viện kiểm sát quyết định người bào chữa trong mọi trường hợp."
+    ],
+    "mcq_correct": "Người bị buộc tội có quyền tự bào chữa hoặc nhờ người khác bào chữa theo quy định của pháp luật.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "Quyền bào chữa là một trong những nguyên tắc cơ bản của BLTTHS và được bảo đảm trong suốt quá trình tố tụng."
+  },
+  {
+    "question_id": "mcq4-set5-q15",
+    "question_text": "Theo quy định của BLTTHS, khi đánh giá chứng cứ, cơ quan có thẩm quyền tiến hành tố tụng phải căn cứ vào yếu tố nào?",
+    "question_type": "mcq_4choice",
+    "mcq_options": [
+      "Chỉ dựa vào lời nhận tội của bị can.",
+      "Chỉ dựa vào kết luận giám định.",
+      "Đánh giá khách quan, toàn diện và đầy đủ tất cả các chứng cứ đã được kiểm tra.",
+      "Chỉ dựa vào ý kiến của người bị hại."
+    ],
+    "mcq_correct": "Đánh giá khách quan, toàn diện và đầy đủ tất cả các chứng cứ đã được kiểm tra.",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": 5,
+    "explanation": "BLTTHS quy định mọi chứng cứ phải được đánh giá một cách khách quan, toàn diện và đầy đủ; không được kết luận vụ án chỉ dựa trên một nguồn chứng cứ duy nhất."
+  },
+  {
+    "question_id": "tf-set1-q1",
+    "question_text": "Trong mọi trường hợp, khi Cơ quan điều tra ra quyết định khởi tố bị can thì quyết định đó có hiệu lực ngay từ thời điểm ban hành và không phụ thuộc vào việc Viện kiểm sát có phê chuẩn hay không.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Sai",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "179",
+    "topic_category": "Khởi tố bị can",
+    "quiz_set": 1,
+    "explanation": "Căn cứ pháp lý: Điều 179 BLTTHS 2015. Không phải mọi quyết định khởi tố bị can đều mặc nhiên có hiệu lực ngay. Theo BLTTHS, đối với trường hợp pháp luật quy định phải được Viện kiểm sát phê chuẩn, quyết định khởi tố bị can chỉ được thực hiện theo đúng trình tự luật định. Cơ chế phê chuẩn nhằm bảo đảm kiểm sát việc khởi tố, tránh làm oan người vô tội."
+  },
+  {
+    "question_id": "tf-set1-q2",
+    "question_text": "Nếu bị cáo là người duy nhất kháng cáo xin giảm nhẹ hình phạt và Viện kiểm sát không kháng nghị thì Tòa án cấp phúc thẩm vẫn có quyền tăng hình phạt nếu phát hiện cấp sơ thẩm áp dụng hình phạt quá nhẹ.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Sai",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "357",
+    "topic_category": "Sửa bản án sơ thẩm",
+    "quiz_set": 1,
+    "explanation": "Căn cứ pháp lý: Khoản 2 Điều 357 BLTTHS 2015. Trong trường hợp chỉ có kháng cáo theo hướng có lợi cho bị cáo, Tòa án cấp phúc thẩm không được làm xấu hơn tình trạng của người kháng cáo nếu không có kháng nghị hoặc kháng cáo theo hướng tăng nặng. Đây là nguyên tắc rất dễ nhầm trong phần xét xử phúc thẩm."
+  },
+  {
+    "question_id": "tf-set1-q3",
+    "question_text": "Lời nhận tội của bị can phù hợp với lời khai của người bị hại thì đã đủ căn cứ để kết tội, dù không còn bất kỳ chứng cứ vật chất nào khác.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Sai",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "98",
+    "topic_category": "Lời khai của bị can, bị cáo",
+    "quiz_set": 1,
+    "explanation": "Căn cứ pháp lý: khoản 2 Điều 98 Bộ luật Tố tụng hình sự 2015. BLTTHS quy định không được dùng duy nhất lời nhận tội của bị can hoặc bị cáo làm căn cứ kết tội. Việc lời nhận tội phù hợp với lời khai của người bị hại vẫn chưa đủ nếu chưa được kiểm tra, đối chiếu với các chứng cứ khác của vụ án. Cơ quan tiến hành tố tụng phải đánh giá chứng cứ một cách khách quan, toàn diện và đầy đủ."
+  },
+  {
+    "question_id": "tf-set2-q1",
+    "question_text": "Trong mọi trường hợp, người bào chữa được tham gia hỏi cung bị can ngay sau khi có quyết định khởi tố bị can.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Sai",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "74",
+    "topic_category": "Thời điểm người bào chữa tham gia tố tụng",
+    "quiz_set": 2,
+    "explanation": "Căn cứ pháp lý: Khoản 1 Điều 74 BLTTHS 2015. Người bào chữa được tham gia tố tụng từ khi khởi tố bị can. Tuy nhiên, đối với vụ án xâm phạm an ninh quốc gia, Viện trưởng Viện kiểm sát có thẩm quyền có thể quyết định để người bào chữa tham gia từ khi kết thúc điều tra nếu việc tham gia sớm cần giữ bí mật điều tra."
+  },
+  {
+    "question_id": "tf-set2-q2",
+    "question_text": "Việc hỏi cung bị can vào ban đêm là hành vi bị nghiêm cấm và không có bất kỳ ngoại lệ nào.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Sai",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "183",
+    "topic_category": "Hỏi cung bị can",
+    "quiz_set": 2,
+    "explanation": "Căn cứ pháp lý: Khoản 3 Điều 183 BLTTHS 2015. BLTTHS quy định không được hỏi cung bị can vào ban đêm, trừ trường hợp không thể trì hoãn được, nhưng phải ghi rõ lý do vào biên bản hỏi cung."
+  },
+  {
+    "question_id": "tf-set2-q3",
+    "question_text": "Người làm chứng có quyền từ chối khai báo nếu lời khai của mình có thể làm phát sinh trách nhiệm hình sự đối với chính mình.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Đúng",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "66",
+    "topic_category": "Người làm chứng",
+    "quiz_set": 2,
+    "explanation": "Căn cứ pháp lý: Khoản 3 Điều 66 BLTTHS 2015. BLTTHS ghi nhận quyền của người làm chứng được từ chối khai báo nếu lời khai buộc tội chính mình hoặc người thân thích của mình theo quy định của Bộ luật."
+  },
+  {
+    "question_id": "tf-set3-q1",
+    "question_text": "Việc bắt người trong trường hợp phạm tội quả tang phải có lệnh bắt của người có thẩm quyền.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Sai",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "111",
+    "topic_category": "Bắt người phạm tội quả tang",
+    "quiz_set": 3,
+    "explanation": "Căn cứ pháp lý: Điều 111 BLTTHS 2015. Đối với bắt người phạm tội quả tang, bất kỳ người nào cũng có quyền bắt và giải ngay người bị bắt đến cơ quan có thẩm quyền. Trường hợp này không cần lệnh bắt."
+  },
+  {
+    "question_id": "tf-set3-q2",
+    "question_text": "Trong mọi trường hợp, người bị hại rút yêu cầu khởi tố thì vụ án hình sự phải được đình chỉ.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Sai",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "155",
+    "topic_category": "Khởi tố vụ án hình sự theo yêu cầu của bị hại",
+    "quiz_set": 3,
+    "explanation": "Căn cứ pháp lý: Khoản 2 Điều 155 BLTTHS 2015. Nếu có căn cứ xác định việc rút yêu cầu khởi tố trái với ý muốn của họ do bị ép buộc, cưỡng bức, mặc dù người bị hại đã rút yêu cầu, cơ quan tiến hành tố tụng vẫn tiếp tục giải quyết vụ án."
+  },
+  {
+    "question_id": "tf-set3-q3",
+    "question_text": "Biên bản về hoạt động điều tra không có chữ ký của người lập biên bản thì vẫn có giá trị chứng minh nếu có chữ ký của người chứng kiến.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Sai",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "133",
+    "topic_category": "Biên bản",
+    "quiz_set": 3,
+    "explanation": "Căn cứ pháp lý: Điều 133 BLTTHS 2015. Biên bản hoạt động điều tra phải có chữ ký của người lập biên bản, người tham gia tố tụng hoặc người có liên quan theo quy định. Thiếu chữ ký của người lập biên bản là vi phạm thủ tục tố tụng và ảnh hưởng đến giá trị pháp lý của biên bản."
+  },
+  {
+    "question_id": "tf-set4-q1",
+    "question_text": "Chỉ khi có quyết định khởi tố vụ án hình sự thì Cơ quan điều tra mới được tiến hành khám nghiệm hiện trường.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Sai",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "201",
+    "topic_category": "Khám nghiệm hiện trường",
+    "quiz_set": 4,
+    "explanation": "Căn cứ pháp lý: Khoản 4 Điều 201 BLTTHS 2015. Để kịp thời phát hiện, thu giữ và bảo quản dấu vết tội phạm, khám nghiệm hiện trường có thể được tiến hành trước khi ra quyết định khởi tố vụ án hình sự nếu cần thiết."
+  },
+  {
+    "question_id": "tf-set4-q2",
+    "question_text": "Người bị buộc tội có quyền nhưng không buộc phải chứng minh mình vô tội.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Đúng",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "15",
+    "topic_category": "Xác định sự thật của vụ án",
+    "quiz_set": 4,
+    "explanation": "Căn cứ pháp lý: Khoản 2 Điều 15 BLTTHS 2015. Trách nhiệm chứng minh tội phạm thuộc về cơ quan có thẩm quyền tiến hành tố tụng. Người bị buộc tội có quyền đưa ra chứng cứ, tài liệu, đồ vật và yêu cầu nhưng không có nghĩa vụ chứng minh mình vô tội."
+  },
+  {
+    "question_id": "tf-set4-q3",
+    "question_text": "Bị can có quyền tự bào chữa hoặc nhờ người khác bào chữa cho mình theo quy định của Bộ luật Tố tụng hình sự.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Đúng",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "60",
+    "topic_category": "Bị can",
+    "quiz_set": 4,
+    "explanation": "Căn cứ pháp lý: Điểm e khoản 2 Điều 60 BLTTHS 2015. Quyền bào chữa là một trong những quyền cơ bản của bị can. Bị can có thể tự bào chữa hoặc nhờ người bào chữa bảo vệ quyền và lợi ích hợp pháp của mình."
+  },
+  {
+    "question_id": "tf-set5-q1",
+    "question_text": "Việc xét xử của Tòa án được tiến hành công khai, trừ trường hợp Bộ luật Tố tụng hình sự có quy định khác.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Đúng",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "25",
+    "topic_category": "Tòa án xét xử kịp thời, công bằng, công khai",
+    "quiz_set": 5,
+    "explanation": "Căn cứ pháp lý: Khoản 1 Điều 25 BLTTHS 2015. Xét xử công khai là nguyên tắc chung của tố tụng hình sự. Chỉ trong các trường hợp luật quy định (ví dụ: cần giữ bí mật nhà nước, thuần phong mỹ tục, người dưới 18 tuổi…) thì Tòa án mới xét xử kín."
+  },
+  {
+    "question_id": "tf-set5-q2",
+    "question_text": "Người bị giữ trong trường hợp khẩn cấp, người bị bắt, người bị tạm giữ, bị can, bị cáo có quyền trình bày lời khai, trình bày ý kiến nhưng không buộc phải đưa ra lời khai chống lại chính mình hoặc buộc phải nhận mình có tội.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Đúng",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "13",
+    "topic_category": "Suy đoán vô tội",
+    "quiz_set": 5,
+    "explanation": "Căn cứ pháp lý: Điều 13 BLTTHS 2015 (Suy đoán vô tội) và các quy định về quyền của người bị buộc tội tại Điều 58, Điều 59, Điều 60, Điều 61 BLTTHS 2015. BLTTHS bảo đảm quyền im lặng ở mức độ không buộc người bị buộc tội phải khai báo chống lại chính mình hoặc phải nhận mình có tội."
+  },
+  {
+    "question_id": "tf-set5-q3",
+    "question_text": "Mọi hoạt động tố tụng hình sự phải được tiến hành theo quy định của Bộ luật Tố tụng hình sự.",
+    "question_type": "mcq_true_false",
+    "mcq_options": [
+      "Đúng",
+      "Sai"
+    ],
+    "mcq_correct": "Đúng",
+    "essay_sample_answer": null,
+    "essay_key_points": null,
+    "dieu_number": "7",
+    "topic_category": "Bảo đảm pháp chế xã hội chủ nghĩa trong tố tụng hình sự",
+    "quiz_set": 5,
+    "explanation": "Căn cứ pháp lý: Điều 7 BLTTHS 2015. Mọi cơ quan, người có thẩm quyền tiến hành tố tụng và người tham gia tố tụng đều phải tuân thủ đúng quy định của BLTTHS. Mọi hành vi tiến hành tố tụng trái luật đều không được pháp luật thừa nhận."
+  },
+  {
+    "question_id": "essay-q1",
+    "question_text": "Phân tích ý nghĩa của nguyên tắc suy đoán vô tội trong tố tụng hình sự.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Nguyên tắc suy đoán vô tội quy định người bị buộc tội được coi là không có tội cho đến khi có bản án kết tội đã có hiệu lực pháp luật. Nghĩa vụ chứng minh thuộc về cơ quan có thẩm quyền tiến hành tố tụng, nếu không đủ căn cứ buộc tội thì phải kết luận họ không có tội. Nguyên tắc này bảo vệ quyền con người và hạn chế oan sai.",
+    "essay_key_points": [
+      "Người bị buộc tội được coi là không có tội cho đến khi có bản án kết tội của tòa án đã có hiệu lực pháp luật.",
+      "Nghĩa vụ chứng minh tội phạm thuộc về các cơ quan có thẩm quyền tiến hành tố tụng.",
+      "Người bị buộc tội không có nghĩa vụ phải chứng minh mình vô tội.",
+      "Khi không đủ chứng cứ để buộc tội thì cơ quan có thẩm quyền phải kết luận người bị buộc tội không có tội.",
+      "Nguyên tắc này có ý nghĩa quan trọng trong việc bảo vệ quyền con người, chống oan sai và đảm bảo tính khách quan trong tố tụng."
+    ],
+    "dieu_number": "13",
+    "topic_category": "Suy đoán vô tội",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 13 và Điều 15 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q2",
+    "question_text": "Phân tích ý nghĩa của nguyên tắc bảo đảm quyền bào chữa của người bị buộc tội.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Người bị buộc tội có quyền tự bào chữa hoặc nhờ người khác bào chữa để bảo vệ quyền và lợi ích hợp pháp của mình. Cơ quan có thẩm quyền tiến hành tố tụng có trách nhiệm bảo đảm quyền bào chữa được thực hiện đầy đủ theo quy định của pháp luật. Nguyên tắc này góp phần bảo vệ quyền con người, bảo đảm tính khách quan và hạn chế oan, sai trong tố tụng hình sự.",
+    "essay_key_points": [
+      "Người bị buộc tội có quyền tự mình thực hiện việc bào chữa cho bản thân.",
+      "Người bị buộc tội có quyền nhờ người khác thực hiện việc bào chữa cho mình.",
+      "Các cơ quan có thẩm quyền tiến hành tố tụng có trách nhiệm bảo đảm quyền bào chữa được thực hiện đầy đủ.",
+      "Nguyên tắc này góp phần quan trọng vào việc bảo vệ quyền con người trong tố tụng hình sự.",
+      "Việc thực hiện nguyên tắc này giúp hạn chế tối đa các trường hợp oan, sai."
+    ],
+    "dieu_number": "16",
+    "topic_category": "Bảo đảm quyền bào chữa của người bị buộc tội, bảo vệ quyền",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 16 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q3",
+    "question_text": "Phân tích ý nghĩa của nguyên tắc bảo đảm tranh tụng trong xét xử.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Tranh tụng được bảo đảm trong suốt quá trình xét xử nhằm làm rõ sự thật khách quan của vụ án. Tòa án có trách nhiệm tạo điều kiện để Kiểm sát viên, người bào chữa và những người tham gia tố tụng thực hiện đầy đủ quyền tranh tụng. Nguyên tắc này góp phần nâng cao chất lượng xét xử, bảo đảm tính công bằng và khách quan của bản án.",
+    "essay_key_points": [
+      "Nguyên tắc tranh tụng được bảo đảm trong suốt quá trình xét xử.",
+      "Các bên tham gia tố tụng được bảo đảm quyền bình đẳng trong việc đưa ra chứng cứ và lập luận.",
+      "Tòa án có trách nhiệm tạo điều kiện thuận lợi để các bên thực hiện đầy đủ quyền tranh tụng.",
+      "Việc tranh tụng giúp làm rõ sự thật khách quan của vụ án.",
+      "Nguyên tắc này góp phần bảo đảm tính công bằng và khách quan của bản án."
+    ],
+    "dieu_number": "26",
+    "topic_category": "Tranh tụng trong xét xử được bảo đảm",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 26 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q4",
+    "question_text": "Phân tích ý nghĩa của nguyên tắc xác định sự thật của vụ án.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Cơ quan có thẩm quyền tiến hành tố tụng phải áp dụng mọi biện pháp hợp pháp để xác định đầy đủ, khách quan và toàn diện sự thật của vụ án. Việc giải quyết vụ án phải dựa trên chứng cứ đã được kiểm tra, đánh giá theo quy định của pháp luật. Nguyên tắc này bảo đảm xử lý đúng người, đúng tội, đúng pháp luật và tránh oan, sai.",
+    "essay_key_points": [
+      "Cơ quan có thẩm quyền tiến hành tố tụng phải xác định sự thật của vụ án một cách đầy đủ.",
+      "Cơ quan có thẩm quyền tiến hành tố tụng phải xác định sự thật của vụ án một cách khách quan.",
+      "Cơ quan có thẩm quyền tiến hành tố tụng phải xác định sự thật của vụ án một cách toàn diện.",
+      "Việc giải quyết vụ án phải dựa trên các chứng cứ hợp pháp đã được kiểm tra và đánh giá.",
+      "Nguyên tắc này bảo đảm việc xử lý vụ án đúng người và đúng tội."
+    ],
+    "dieu_number": "15",
+    "topic_category": "Xác định sự thật của vụ án",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 15 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q5",
+    "question_text": "Phân tích ý nghĩa của nguyên tắc Thẩm phán, Hội thẩm xét xử độc lập và chỉ tuân theo pháp luật.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Khi xét xử, Thẩm phán và Hội thẩm độc lập trong việc đánh giá chứng cứ và ra phán quyết, không bị bất kỳ cơ quan, tổ chức hoặc cá nhân nào can thiệp trái pháp luật. Mọi quyết định chỉ được căn cứ vào quy định của pháp luật và chứng cứ của vụ án. Nguyên tắc này bảo đảm tính độc lập của hoạt động xét xử và bảo vệ công lý.",
+    "essay_key_points": [
+      "Thẩm phán và Hội thẩm được bảo đảm tính độc lập trong quá trình xét xử.",
+      "Thẩm phán và Hội thẩm chỉ tuân theo các quy định của pháp luật khi thực hiện nhiệm vụ.",
+      "Không cơ quan, tổ chức hoặc cá nhân nào được can thiệp trái pháp luật vào hoạt động xét xử.",
+      "Thẩm phán và Hội thẩm có quyền độc lập trong việc đánh giá chứng cứ của vụ án.",
+      "Nguyên tắc này góp phần quan trọng vào việc bảo vệ công lý."
+    ],
+    "dieu_number": "23",
+    "topic_category": "Thẩm phán, Hội thẩm xét xử độc lập và chỉ tuân theo pháp luật",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 23 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q6",
+    "question_text": "Phân tích ý nghĩa của nguyên tắc bảo đảm pháp chế xã hội chủ nghĩa trong tố tụng hình sự.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Mọi hoạt động tố tụng hình sự phải được tiến hành theo đúng quy định của Bộ luật Tố tụng hình sự. Cơ quan, người có thẩm quyền và người tham gia tố tụng đều phải tuân thủ pháp luật, mọi hành vi vi phạm đều bị xử lý theo quy định. Nguyên tắc này bảo đảm tính nghiêm minh, thống nhất và hợp pháp của hoạt động tố tụng.",
+    "essay_key_points": [
+      "Mọi hoạt động tố tụng hình sự phải tuân thủ nghiêm ngặt các quy định của pháp luật.",
+      "Các hoạt động tố tụng phải được thực hiện đúng trình tự, thủ tục do Bộ luật Tố tụng hình sự quy định.",
+      "Tất cả các cơ quan, người có thẩm quyền và người tham gia tố tụng đều phải chấp hành pháp luật.",
+      "Mọi hành vi vi phạm pháp luật trong quá trình tố tụng đều phải bị xử lý theo quy định.",
+      "Nguyên tắc này bảo đảm tính nghiêm minh, thống nhất và hợp pháp của hoạt động tố tụng."
+    ],
+    "dieu_number": "7",
+    "topic_category": "Bảo đảm pháp chế xã hội chủ nghĩa trong tố tụng hình sự",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 7 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q7",
+    "question_text": "A bị Cơ quan điều tra khởi tố về tội Trộm cắp tài sản. Điều tra viên yêu cầu A phải tự chứng minh mình không phạm tội. Hãy nhận xét việc làm của Điều tra viên.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Việc làm của Điều tra viên là trái pháp luật. Nghĩa vụ chứng minh tội phạm thuộc về cơ quan có thẩm quyền tiến hành tố tụng, người bị buộc tội không có nghĩa vụ chứng minh mình vô tội. Hành vi này vi phạm nguyên tắc suy đoán vô tội.",
+    "essay_key_points": [
+      "Việc làm của Điều tra viên là trái pháp luật.",
+      "Cơ quan có thẩm quyền tiến hành tố tụng có nghĩa vụ chứng minh tội phạm.",
+      "Người bị buộc tội không có nghĩa vụ phải tự chứng minh mình vô tội.",
+      "Hành vi này đã vi phạm nguyên tắc suy đoán vô tội."
+    ],
+    "dieu_number": "13",
+    "topic_category": "Suy đoán vô tội",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 13, Điều 15 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q8",
+    "question_text": "Bị can B muốn mời luật sư bào chữa nhưng Cơ quan điều tra từ chối với lý do vụ án đơn giản, không cần luật sư. Hãy nhận xét.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Việc từ chối là không đúng pháp luật. Người bị buộc tội có quyền tự bào chữa hoặc nhờ người khác bào chữa, cơ quan tiến hành tố tụng phải bảo đảm thực hiện quyền này. Không được hạn chế quyền bào chữa trái quy định.",
+    "essay_key_points": [
+      "Bị can có quyền thực hiện quyền bào chữa trong quá trình tố tụng.",
+      "Bị can có quyền mời luật sư để tham gia bào chữa cho mình.",
+      "Cơ quan điều tra không được từ chối yêu cầu mời luật sư của bị can.",
+      "Cơ quan tiến hành tố tụng có trách nhiệm bảo đảm thực hiện quyền bào chữa của bị can."
+    ],
+    "dieu_number": "16",
+    "topic_category": "Bảo đảm quyền bào chữa của người bị buộc tội, bảo vệ quyền",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 16, Điều 72 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q9",
+    "question_text": "Trong phiên tòa, Thẩm phán không cho người bào chữa trình bày ý kiến vì cho rằng hồ sơ vụ án đã đầy đủ. Hãy nhận xét.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Cách xử lý này không phù hợp với BLTTHS. Tòa án phải bảo đảm quyền tranh tụng của các bên tại phiên tòa, tạo điều kiện để người bào chữa trình bày ý kiến. Việc hạn chế tranh tụng có thể ảnh hưởng đến tính khách quan của bản án.",
+    "essay_key_points": [
+      "Việc Thẩm phán hạn chế quyền tranh tụng của người bào chữa là không đúng quy định.",
+      "Hành vi của Thẩm phán trong trường hợp này là sai.",
+      "Người bào chữa có quyền được trình bày ý kiến của mình tại phiên tòa.",
+      "Việc hạn chế tranh tụng có thể làm ảnh hưởng đến tính khách quan của quá trình xét xử."
+    ],
+    "dieu_number": "26",
+    "topic_category": "Tranh tụng trong xét xử được bảo đảm",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 26 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q10",
+    "question_text": "Sau khi kết thúc điều tra, vẫn còn nhiều tình tiết của vụ án chưa được làm rõ nhưng Cơ quan điều tra đề nghị truy tố. Theo anh (chị), việc này có phù hợp không?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Không phù hợp. Cơ quan tiến hành tố tụng có trách nhiệm xác định đầy đủ, khách quan và toàn diện sự thật của vụ án trước khi đề nghị truy tố. Nếu chứng cứ chưa đầy đủ thì phải tiếp tục làm rõ theo quy định.",
+    "essay_key_points": [
+      "Việc đề nghị truy tố khi chưa thu thập đầy đủ chứng cứ là không phù hợp với quy định pháp luật.",
+      "Cơ quan điều tra chưa làm rõ được sự thật khách quan của vụ án.",
+      "Cơ quan điều tra không nên đề nghị truy tố khi vụ án chưa được làm rõ.",
+      "Quá trình điều tra phải đảm bảo tính khách quan và toàn diện đối với các tình tiết của vụ án."
+    ],
+    "dieu_number": "15",
+    "topic_category": "Xác định sự thật của vụ án",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 15 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q11",
+    "question_text": "Trong quá trình xét xử, một lãnh đạo địa phương gọi điện yêu cầu Thẩm phán xử bị cáo mức án thật nặng. Nếu Thẩm phán làm theo yêu cầu này thì có đúng không?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Không đúng. Thẩm phán và Hội thẩm xét xử độc lập, chỉ tuân theo pháp luật và không được để bất kỳ cá nhân, cơ quan hay tổ chức nào can thiệp trái pháp luật vào hoạt động xét xử. Bản án phải căn cứ vào chứng cứ và quy định của pháp luật.",
+    "essay_key_points": [
+      "Việc lãnh đạo địa phương gọi điện yêu cầu Thẩm phán xử bị cáo mức án nặng là hành vi can thiệp trái pháp luật vào hoạt động xét xử.",
+      "Thẩm phán và Hội thẩm khi thực hiện nhiệm vụ xét xử phải bảo đảm tính độc lập.",
+      "Trong quá trình xét xử, Thẩm phán và Hội thẩm chỉ tuân theo pháp luật.",
+      "Bản án của Tòa án phải được căn cứ vào các chứng cứ đã được thu thập và quy định của pháp luật."
+    ],
+    "dieu_number": "23",
+    "topic_category": "Thẩm phán, Hội thẩm xét xử độc lập và chỉ tuân theo pháp luật",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 23 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q12",
+    "question_text": "Phân biệt bị can và bị cáo.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Bị can là người đã bị khởi tố về hình sự, còn bị cáo là người đã bị Tòa án quyết định đưa ra xét xử. Bị can tham gia giai đoạn điều tra, truy tố; bị cáo tham gia giai đoạn xét xử. Việc phân biệt giúp xác định đúng quyền, nghĩa vụ và trình tự tố tụng.",
+    "essay_key_points": [
+      "Bị can là người đã bị khởi tố về hình sự.",
+      "Bị cáo là người đã bị Tòa án quyết định đưa ra xét xử.",
+      "Bị can và bị cáo tham gia vào các giai đoạn tố tụng khác nhau.",
+      "Bị can và bị cáo có các quyền và nghĩa vụ khác nhau trong quá trình tố tụng."
+    ],
+    "dieu_number": "60",
+    "topic_category": "Bị can",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 60, Điều 61 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q13",
+    "question_text": "Thế nào là chứng cứ? Điều kiện để một tài liệu được coi là chứng cứ.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Chứng cứ là những gì có thật, được thu thập theo trình tự, thủ tục luật định và dùng làm căn cứ giải quyết vụ án. Một tài liệu chỉ được coi là chứng cứ khi có thật, liên quan đến vụ án và được thu thập hợp pháp.",
+    "essay_key_points": [
+      "Chứng cứ là những gì có thật.",
+      "Chứng cứ phải có sự liên quan đến vụ án.",
+      "Chứng cứ phải được thu thập theo trình tự, thủ tục hợp pháp.",
+      "Chứng cứ được dùng làm căn cứ để giải quyết vụ án."
+    ],
+    "dieu_number": "86",
+    "topic_category": "Chứng cứ",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 86, Điều 87 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q14",
+    "question_text": "Vì sao không được kết tội chỉ dựa vào lời nhận tội của bị can, bị cáo?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Lời nhận tội chỉ là một nguồn chứng cứ và phải được kiểm tra, đối chiếu với các chứng cứ khác. Không được kết tội nếu chỉ có lời nhận tội mà không có chứng cứ phù hợp khác. Quy định này nhằm phòng, chống bức cung, nhục hình và hạn chế oan, sai.",
+    "essay_key_points": [
+      "Lời nhận tội của bị can, bị cáo chỉ là một trong các nguồn chứng cứ của vụ án.",
+      "Lời nhận tội không đủ căn cứ để kết tội bị can, bị cáo.",
+      "Việc kết tội phải dựa trên cơ sở lời nhận tội được kiểm tra và đối chiếu với các chứng cứ khác có trong hồ sơ vụ án.",
+      "Quy định này nhằm mục đích phòng, chống bức cung, nhục hình và hạn chế tình trạng oan, sai."
+    ],
+    "dieu_number": "98",
+    "topic_category": "Lời khai của bị can, bị cáo",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Khoản 2 Điều 98 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q15",
+    "question_text": "Tại sao BLTTHS quy định hoạt động tố tụng phải tuân theo trình tự, thủ tục luật định?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Trình tự, thủ tục tố tụng bảo đảm việc giải quyết vụ án đúng pháp luật và bảo vệ quyền, lợi ích hợp pháp của các chủ thể tham gia tố tụng. Mọi hoạt động tố tụng trái luật đều có thể làm mất giá trị chứng cứ hoặc dẫn đến vi phạm nghiêm trọng thủ tục tố tụng.",
+    "essay_key_points": [
+      "Hoạt động tố tụng phải được thực hiện theo đúng trình tự, thủ tục do pháp luật quy định.",
+      "Việc tuân thủ trình tự, thủ tục giúp bảo vệ quyền và lợi ích hợp pháp của các chủ thể tham gia tố tụng.",
+      "Việc thực hiện đúng quy định pháp luật đảm bảo tính hợp pháp của các chứng cứ thu thập được.",
+      "Việc tuân thủ nghiêm ngặt các quy định giúp tránh xảy ra các vi phạm trong quá trình tố tụng."
+    ],
+    "dieu_number": "7",
+    "topic_category": "Bảo đảm pháp chế xã hội chủ nghĩa trong tố tụng hình sự",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 7 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q16",
+    "question_text": "Khi nào một người được xác định là người bị buộc tội?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Người bị buộc tội là người bị bắt, bị tạm giữ, bị can hoặc bị cáo. Họ được xác định là người bị buộc tội kể từ khi có quyết định hoặc biện pháp tố tụng theo quy định của BLTTHS. Việc xác định tư cách này là cơ sở để bảo đảm các quyền tố tụng của họ.",
+    "essay_key_points": [
+      "Người bị buộc tội bao gồm người bị bắt.",
+      "Người bị buộc tội bao gồm người bị tạm giữ.",
+      "Người bị buộc tội bao gồm bị can.",
+      "Người bị buộc tội bao gồm bị cáo."
+    ],
+    "dieu_number": "4",
+    "topic_category": "Giải thích từ ngữ",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Khoản 1 Điều 4 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q17",
+    "question_text": "Vì sao phải bảo đảm quyền bình đẳng trước pháp luật trong tố tụng hình sự?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Mọi người đều bình đẳng trước pháp luật, không bị phân biệt về giới tính, dân tộc, chức vụ, nghề nghiệp hoặc địa vị xã hội. Nguyên tắc này bảo đảm việc giải quyết vụ án khách quan, công bằng và đúng pháp luật.",
+    "essay_key_points": [
+      "Mọi người đều có quyền bình đẳng trước pháp luật trong tố tụng hình sự.",
+      "Việc giải quyết vụ án không được phân biệt đối xử về giới tính, dân tộc, chức vụ, nghề nghiệp hoặc địa vị xã hội.",
+      "Nguyên tắc này bảo đảm việc giải quyết vụ án được thực hiện một cách công bằng.",
+      "Việc bảo đảm quyền bình đẳng giúp giải quyết vụ án đúng quy định của pháp luật."
+    ],
+    "dieu_number": "9",
+    "topic_category": "Bảo đảm quyền bình đẳng trước pháp luật",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 9 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q18",
+    "question_text": "Việc khởi tố vụ án hình sự có ý nghĩa gì?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Khởi tố vụ án là giai đoạn mở đầu của tố tụng hình sự nhằm xác định có hay không dấu hiệu tội phạm để tiến hành điều tra. Đây là căn cứ pháp lý để các hoạt động tố tụng tiếp theo được thực hiện hợp pháp.",
+    "essay_key_points": [
+      "Khởi tố vụ án hình sự là giai đoạn mở đầu của quá trình tố tụng hình sự.",
+      "Việc khởi tố vụ án nhằm xác định có hay không dấu hiệu của tội phạm.",
+      "Đây là căn cứ pháp lý để cơ quan có thẩm quyền tiến hành các hoạt động điều tra.",
+      "Quyết định khởi tố vụ án là cơ sở để các hoạt động tố tụng tiếp theo được thực hiện một cách hợp pháp."
+    ],
+    "dieu_number": "143",
+    "topic_category": "Căn cứ khởi tố vụ án hình sự",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 143 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q19",
+    "question_text": "Phân biệt vụ án hình sự và vụ việc hình sự.",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Vụ việc hình sự là sự việc có dấu hiệu tội phạm đang được xem xét, xác minh. Vụ án hình sự chỉ được xác lập sau khi cơ quan có thẩm quyền ra quyết định khởi tố vụ án. Vì vậy, không phải mọi vụ việc hình sự đều trở thành vụ án hình sự.",
+    "essay_key_points": [
+      "Vụ việc hình sự là sự việc có dấu hiệu tội phạm đang trong quá trình xem xét, xác minh.",
+      "Vụ án hình sự là sự việc đã được cơ quan có thẩm quyền ra quyết định khởi tố.",
+      "Vụ việc hình sự và vụ án hình sự không đồng nhất với nhau."
+    ],
+    "dieu_number": "143",
+    "topic_category": "Căn cứ khởi tố vụ án hình sự",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 143 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q20",
+    "question_text": "Việc tuân thủ thẩm quyền trong tố tụng hình sự có ý nghĩa gì?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Mỗi cơ quan tiến hành tố tụng chỉ được thực hiện những nhiệm vụ, quyền hạn do pháp luật quy định. Việc giải quyết vụ án đúng thẩm quyền bảo đảm tính hợp pháp của hoạt động tố tụng, tránh vi phạm thủ tục và bảo vệ quyền của người tham gia tố tụng.",
+    "essay_key_points": [
+      "Mỗi cơ quan tiến hành tố tụng phải thực hiện nhiệm vụ và quyền hạn đúng thẩm quyền được giao.",
+      "Hoạt động tố tụng phải được tiến hành tuân thủ đúng các quy định của pháp luật.",
+      "Việc giải quyết vụ án đúng thẩm quyền giúp tránh xảy ra các vi phạm về thủ tục tố tụng.",
+      "Việc tuân thủ thẩm quyền góp phần bảo vệ quyền và lợi ích hợp pháp của người tham gia tố tụng."
+    ],
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: BLTTHS năm 2015 (quy định về thẩm quyền của các cơ quan tiến hành tố tụng)."
+  },
+  {
+    "question_id": "essay-q21",
+    "question_text": "Tại sao chỉ Tòa án mới có quyền kết tội một người?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Chỉ Tòa án là cơ quan thực hiện quyền xét xử và được quyền ra bản án kết tội đã có hiệu lực pháp luật. Quy định này bảo đảm tính khách quan, công bằng và tránh việc kết tội tùy tiện của các cơ quan khác.",
+    "essay_key_points": [
+      "Chỉ có Tòa án mới là cơ quan có thẩm quyền kết tội một người.",
+      "Tòa án là cơ quan duy nhất thực hiện quyền xét xử trong bộ máy nhà nước.",
+      "Việc kết tội chỉ được xác lập thông qua bản án có hiệu lực pháp luật của Tòa án.",
+      "Quy định này nhằm bảo đảm tính khách quan trong quá trình giải quyết vụ án hình sự."
+    ],
+    "dieu_number": "13",
+    "topic_category": "Suy đoán vô tội",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 13 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q22",
+    "question_text": "Vì sao phải thay đổi người tiến hành tố tụng trong một số trường hợp?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Việc thay đổi người tiến hành tố tụng nhằm loại trừ khả năng thiên vị hoặc xung đột lợi ích, bảo đảm tính vô tư, khách quan khi giải quyết vụ án. Qua đó góp phần bảo đảm quyền và lợi ích hợp pháp của các bên.",
+    "essay_key_points": [
+      "Việc thay đổi người tiến hành tố tụng được thực hiện theo quy định của pháp luật.",
+      "Người tiến hành tố tụng phải đảm bảo sự vô tư trong quá trình giải quyết vụ án.",
+      "Việc thay đổi người tiến hành tố tụng nhằm đảm bảo tính khách quan khi giải quyết vụ án.",
+      "Việc thay đổi người tiến hành tố tụng giúp loại trừ khả năng xảy ra xung đột lợi ích."
+    ],
+    "dieu_number": "49",
+    "topic_category": "Các trường hợp phải từ chối hoặc thay đổi người có thẩm",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 49–54 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q23",
+    "question_text": "Tại sao BLTTHS quy định thời hạn tố tụng?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Thời hạn tố tụng giúp vụ án được giải quyết kịp thời, tránh kéo dài không cần thiết và bảo vệ quyền của người tham gia tố tụng. Đồng thời, đây cũng là căn cứ để kiểm soát hoạt động của các cơ quan tiến hành tố tụng.",
+    "essay_key_points": [
+      "Thời hạn tố tụng giúp vụ án được giải quyết một cách kịp thời.",
+      "Quy định về thời hạn tố tụng giúp tránh tình trạng vụ án bị kéo dài không cần thiết.",
+      "Việc quy định thời hạn tố tụng góp phần bảo vệ quyền và lợi ích hợp pháp của người tham gia tố tụng.",
+      "Thời hạn tố tụng là căn cứ pháp lý để kiểm soát hoạt động của các cơ quan tiến hành tố tụng."
+    ],
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Các quy định về thời hạn trong BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q24",
+    "question_text": "Tại sao phải phân biệt người tiến hành tố tụng và người tham gia tố tụng?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Người tiến hành tố tụng là chủ thể thực hiện quyền lực nhà nước để giải quyết vụ án, còn người tham gia tố tụng thực hiện quyền và nghĩa vụ nhằm bảo vệ quyền, lợi ích của mình hoặc hỗ trợ giải quyết vụ án. Việc phân biệt giúp xác định đúng quyền, nghĩa vụ và trách nhiệm của từng chủ thể.",
+    "essay_key_points": [
+      "Người tiến hành tố tụng là chủ thể thực hiện quyền lực nhà nước để giải quyết vụ án.",
+      "Người tham gia tố tụng là những chủ thể tham gia vào quá trình giải quyết vụ án.",
+      "Việc phân biệt giúp xác định đúng quyền và nghĩa vụ của từng chủ thể trong tố tụng.",
+      "Việc phân biệt giúp xác định rõ trách nhiệm pháp lý của từng chủ thể trong quá trình giải quyết vụ án."
+    ],
+    "dieu_number": null,
+    "topic_category": null,
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Chương IV, Chương V BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q25",
+    "question_text": "Tại sao BLTTHS quy định quyền không buộc phải đưa ra lời khai chống lại chính mình hoặc buộc phải nhận mình có tội?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Quy định này nhằm bảo vệ quyền con người, ngăn ngừa bức cung, nhục hình và bảo đảm lời khai được đưa ra một cách tự nguyện. Đồng thời, cơ quan tiến hành tố tụng phải chứng minh tội phạm bằng chứng cứ hợp pháp, không được chỉ dựa vào lời nhận tội.",
+    "essay_key_points": [
+      "Quy định này nhằm bảo đảm quyền không buộc phải tự đưa ra lời khai chống lại chính mình hoặc buộc phải nhận mình có tội.",
+      "Quy định này góp phần ngăn ngừa hành vi bức cung, nhục hình trong quá trình điều tra, truy tố, xét xử.",
+      "Quy định này bảo đảm các lời khai của người bị buộc tội được đưa ra một cách hoàn toàn tự nguyện.",
+      "Cơ quan tiến hành tố tụng có nghĩa vụ chứng minh tội phạm bằng các chứng cứ hợp pháp thay vì chỉ dựa vào lời nhận tội."
+    ],
+    "dieu_number": "60",
+    "topic_category": "Bị can",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điểm d khoản 1 Điều 60; điểm h khoản 2 Điều 61; khoản 2 Điều 98 BLTTHS năm 2015."
+  }
+]

@@ -1,6 +1,7 @@
-"""Gemini REST client for the RAG query path: embeds the user's question and generates the
-grounded answer. Uses the REST API directly (same pattern as ingestion/embedding_client.py and
-ingestion/ocr_fallback.py) rather than the SDK, and reuses the same retry-on-5xx/429 approach.
+"""Minimal Gemini generateContent REST client for text-only prompts, used by
+parse_question_bank.py to normalize essay key-point bullets. Same REST-not-SDK pattern and
+retry logic as ocr_fallback.py / embedding_client.py, kept as its own module since it's a plain
+text prompt (no image payload) unlike ocr_fallback.py's vision call.
 """
 from __future__ import annotations
 
@@ -8,16 +9,12 @@ import time
 
 import httpx
 
-from app.core.config import Settings
-from app.core.logging import get_logger
+from ingestion.config import get_ingestion_settings
+from ingestion.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-EMBED_CONTENT_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
 GENERATE_CONTENT_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-
-QUERY_EMBEDDING_TASK_TYPE = "RETRIEVAL_QUERY"
-OUTPUT_DIMENSIONALITY = 768  # must match the collection vector size and ingestion's embedding output
 REQUEST_TIMEOUT_SECONDS = 60.0
 MAX_TRANSIENT_RETRIES = 3
 RETRY_BACKOFF_SECONDS = 5.0
@@ -37,7 +34,8 @@ def _post_with_retry(url: str, api_key: str, body: dict) -> httpx.Response:
             return response
         except (httpx.TransportError, httpx.HTTPStatusError) as error:
             last_error = error
-            logger.warning("Gemini request failed (attempt %d/%d): %s", attempt, MAX_TRANSIENT_RETRIES, error)
+            logger.warning("Gemini generateContent request failed (attempt %d/%d): %s",
+                            attempt, MAX_TRANSIENT_RETRIES, error)
             if attempt < MAX_TRANSIENT_RETRIES:
                 time.sleep(RETRY_BACKOFF_SECONDS * attempt)
 
@@ -45,31 +43,13 @@ def _post_with_retry(url: str, api_key: str, body: dict) -> httpx.Response:
     raise last_error
 
 
-def embed_query(text: str, settings: Settings) -> list[float]:
-    url = EMBED_CONTENT_URL_TEMPLATE.format(model=settings.gemini_embedding_model)
-    body = {
-        "model": f"models/{settings.gemini_embedding_model}",
-        "content": {"parts": [{"text": text}]},
-        "taskType": QUERY_EMBEDDING_TASK_TYPE,
-        "outputDimensionality": OUTPUT_DIMENSIONALITY
-    }
-    response = _post_with_retry(url, settings.google_api_key, body)
-    return response.json()["embedding"]["values"]
-
-
-def generate_answer(system_prompt: str, user_prompt: str, settings: Settings, response_json: bool = False) -> str:
+def generate_text(system_prompt: str, user_prompt: str) -> str:
+    settings = get_ingestion_settings()
     url = GENERATE_CONTENT_URL_TEMPLATE.format(model=settings.gemini_chat_model)
-    generation_config: dict[str, object] = {"temperature": 0.1}
-    if response_json:
-        # Used by essay_service.py's grading call - structured output means we can classify
-        # each rubric point by array position instead of fuzzy-matching LLM-reproduced text
-        # against the rubric strings.
-        generation_config["responseMimeType"] = "application/json"
-
     body = {
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-        "generationConfig": generation_config
+        "generationConfig": {"temperature": 0.0}
     }
     response = _post_with_retry(url, settings.google_api_key, body)
     data = response.json()
