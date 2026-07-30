@@ -2043,5 +2043,96 @@
     "topic_category": "Bị can",
     "quiz_set": null,
     "explanation": "Cơ sở pháp lý: Điểm d khoản 1 Điều 60; điểm h khoản 2 Điều 61; khoản 2 Điều 98 BLTTHS năm 2015."
+  },
+  {
+    "question_id": "essay-q26",
+    "question_text": "Luật tố tụng hình sự là gì?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Luật tố tụng hình sự là ngành luật điều chỉnh các quan hệ xã hội phát sinh trong quá trình khởi tố, điều tra, truy tố, xét xử và thi hành án hình sự, nhằm phát hiện, xử lý tội phạm, bảo vệ quyền con người, quyền và lợi ích hợp pháp của cá nhân, cơ quan, tổ chức.",
+    "essay_key_points": [
+      "Luật tố tụng hình sự là một ngành luật trong hệ thống pháp luật.",
+      "Luật tố tụng hình sự điều chỉnh các quan hệ xã hội phát sinh trong quá trình điều tra vụ án hình sự.",
+      "Luật tố tụng hình sự điều chỉnh các quan hệ xã hội phát sinh trong quá trình khởi tố vụ án hình sự.",
+      "Luật tố tụng hình sự điều chỉnh các quan hệ xã hội phát sinh trong quá trình truy tố vụ án hình sự.",
+      "Luật tố tụng hình sự điều chỉnh các quan hệ xã hội phát sinh trong quá trình xét xử vụ án hình sự.",
+      "Luật tố tụng hình sự điều chỉnh các quan hệ xã hội phát sinh trong quá trình thi hành án hình sự."
+    ],
+    "dieu_number": "1",
+    "topic_category": "Phạm vi điều chỉnh",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 1 và Điều 2 BLTTHS 2015."
+  },
+  {
+    "question_id": "essay-q27",
+    "question_text": "Nhiệm vụ của Bộ luật tố tụng hình sự là gì?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Bộ luật Tố tụng hình sự có nhiệm vụ bảo đảm mọi hành vi phạm tội được phát hiện kịp thời, xử lý nhanh chóng, công minh, đúng pháp luật; không để lọt tội phạm, không làm oan người vô tội; góp phần bảo vệ công lý, quyền con người, quyền công dân, lợi ích của Nhà nước và quyền, lợi ích hợp pháp của cá nhân, cơ quan, tổ chức.",
+    "essay_key_points": [
+      "Bộ luật Tố tụng hình sự có nhiệm vụ bảo đảm mọi hành vi phạm tội được phát hiện kịp thời.",
+      "Bộ luật Tố tụng hình sự có nhiệm vụ bảo đảm mọi hành vi phạm tội được xử lý nhanh chóng.",
+      "Bộ luật Tố tụng hình sự có nhiệm vụ bảo đảm mọi hành vi phạm tội được xử lý công minh.",
+      "Bộ luật Tố tụng hình sự có nhiệm vụ bảo đảm mọi hành vi phạm tội được xử lý đúng pháp luật."
+    ],
+    "dieu_number": "2",
+    "topic_category": "Nhiệm vụ của Bộ luật Tố tụng hình sự",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 2 BLTTHS 2015"
+  },
+  {
+    "question_id": "essay-q28",
+    "question_text": "Chứng cứ trong tố tụng hình sự là gì?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Chứng cứ là những gì có thật, được thu thập theo trình tự, thủ tục do Bộ luật Tố tụng hình sự quy định, được dùng làm căn cứ để xác định: Có hay không có hành vi phạm tội; Người thực hiện hành vi phạm tội; Các tình tiết khác có ý nghĩa đối với việc giải quyết vụ án. Chứng cứ phải được thu thập từ nguồn hợp pháp và theo đúng trình tự, thủ tục tố tụng.",
+    "essay_key_points": [
+      "Chứng cứ là những gì có thật.",
+      "Chứng cứ phải được thu thập theo trình tự do Bộ luật Tố tụng hình sự quy định.",
+      "Chứng cứ phải được thu thập theo thủ tục do Bộ luật Tố tụng hình sự quy định."
+    ],
+    "dieu_number": "86",
+    "topic_category": "Chứng cứ",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 86 và Khoản 1 Điều 87 BLTTHS 2015."
+  },
+  {
+    "question_id": "essay-q29",
+    "question_text": "Nguyên tắc xác định sự thật của vụ án được hiểu như thế nào?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Trách nhiệm chứng minh tội phạm thuộc về cơ quan có thẩm quyền tiến hành tố tụng. Trong phạm vi nhiệm vụ, quyền hạn của mình, các cơ quan này phải áp dụng biện pháp hợp pháp để xác định sự thật vụ án một cách khách quan, toàn diện và đầy đủ; làm rõ chứng cứ xác định có tội, chứng cứ xác định vô tội, tình tiết tăng nặng và tình tiết giảm nhẹ trách nhiệm hình sự.",
+    "essay_key_points": [
+      "Cơ quan có thẩm quyền tiến hành tố tụng phải xác định sự thật của vụ án một cách đầy đủ.",
+      "Cơ quan có thẩm quyền tiến hành tố tụng phải xác định sự thật của vụ án một cách khách quan.",
+      "Cơ quan có thẩm quyền tiến hành tố tụng phải xác định sự thật của vụ án một cách toàn diện.",
+      "Cơ quan có thẩm quyền tiến hành tố tụng phải làm rõ các chứng cứ xác định có tội, chứng cứ xác định vô tội, tình tiết tăng nặng và tình tiết giảm nhẹ trách nhiệm hình sự."
+    ],
+    "dieu_number": "15",
+    "topic_category": "Xác định sự thật của vụ án",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 15 BLTTHS 2015"
+  },
+  {
+    "question_id": "essay-q30",
+    "question_text": "Nguyên tắc tranh tụng trong xét xử được đảm bảo như thế nào?",
+    "question_type": "essay",
+    "mcq_options": null,
+    "mcq_correct": null,
+    "essay_sample_answer": "Tranh tụng trong xét xử được bảo đảm. Người bị buộc tội, người bào chữa và các chủ thể tham gia tố tụng có quyền đưa ra chứng cứ, tài liệu, đồ vật, yêu cầu và tranh luận tại phiên tòa. Việc buộc tội, gỡ tội và xét xử được thực hiện trên cơ sở bình đẳng trong việc đưa ra, kiểm tra và đánh giá chứng cứ. Bản án của Tòa án phải căn cứ vào kết quả kiểm tra, đánh giá chứng cứ và kết quả tranh tụng tại phiên tòa.",
+    "essay_key_points": [
+      "Việc buộc tội, gỡ tội và xét xử được thực hiện trên cơ sở bình đẳng giữa các bên tham gia tố tụng.",
+      "Người bị buộc tội, người bào chữa và những người tham gia tố tụng khác có quyền đưa ra chứng cứ, tài liệu, đồ vật và yêu cầu tại phiên tòa.",
+      "Các bên tham gia tố tụng có quyền thực hiện việc tranh luận tại phiên tòa.",
+      "Bản án của Tòa án phải căn cứ vào kết quả kiểm tra, đánh giá chứng cứ và kết quả tranh tụng tại phiên tòa."
+    ],
+    "dieu_number": "26",
+    "topic_category": "Tranh tụng trong xét xử được bảo đảm",
+    "quiz_set": null,
+    "explanation": "Cơ sở pháp lý: Điều 26 BLTTHS 2015"
   }
 ]
