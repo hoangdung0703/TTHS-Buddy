@@ -37,10 +37,37 @@ html {
 }
 
 body {
-  @apply min-h-screen bg-background text-foreground antialiased;
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  @apply relative min-h-screen bg-background text-foreground antialiased font-sans;
+}
+
+/* Dossier-paper grain — a fixed, pointer-events-none wash over every page so the flat
+   digital background reads a little closer to stock paper. Kept faint on purpose. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
 }
 
 a {
   @apply transition-colors;
+}
+
+/* Single reduced-motion switch for the whole app: every animation/transition still
+   "runs", it just resolves to its end state effectively instantly. Simpler and more
+   reliable than gating each animated element individually. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
