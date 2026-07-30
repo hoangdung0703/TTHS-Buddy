@@ -194,6 +194,104 @@ def _merge_wrapped_title(dieu_title: str, body_after_title_line: str) -> tuple[s
     return dieu_title, 0
 
 
+# Explicit, hand-verified fixes for the non-Khoan Dieu whose title wraps in a way no general
+# regex rule safely catches. Background (see requirements.md Phase 3 bug history): after the
+# Khoan-aware rule shipped, ~35-40 non-Khoan Dieu were still known to have a truncated title.
+# Two general-rule extensions were tried and REJECTED after concrete testing surfaced real
+# regressions against already-correct titles:
+#   1. "Merge everything up to the first terminal punctuation" (mirroring the Khoan-aware rule)
+#      - fails on Dieu 15 ("Xac dinh su that cua vu an"): its very next sentence
+#        ("Trach nhiem chung minh toi pham thuoc ve co quan...") is short enough to fit under any
+#        reasonable length cap, so it gets wrongly absorbed into the title.
+#   2. "Merge the next line unless it contains an independent-clause verb marker (la/co/duoc/
+#      thuoc/...)" - catches Dieu 15, but still wrongly merges e.g. Dieu 1 ("Pham vi dieu
+#      chinh"), 24, 26, 96, 212, 216, 220, 306, 327, 366, 408, 455, 458, 468 - their real next
+#      sentence just doesn't happen to contain any of the tried verb markers within the length
+#      cap either.
+# Every non-Khoan Dieu across all 5 legal_text documents (152 candidates) was read by hand
+# instead, and classified true/false positive. The confirmed true positives (37, close to but
+# not exactly the earlier ~35 estimate - see requirements.md) are listed here explicitly rather
+# than covered by a generalized rule, since the corpus is finite and fully enumerated - safer
+# than risking new corruption across the ~115 already-correct titles in the same "no Khoan"
+# bucket. Keyed by (source_document, dieu_number) -> the literal raw text that continues the
+# title, exactly as it appears right after the title's captured first line (including any
+# interspersed page-number/footnote-only line, e.g. Dieu 356's "177"). Matched by exact
+# substring at position 0 so ingestion fails loudly (assert) if a re-typeset source document
+# ever stops matching, instead of silently mis-applying a stale fix.
+KNOWN_NON_KHOAN_TITLE_CONTINUATIONS: dict[tuple[str, str], str] = {
+    ("Bộ luật TTHS.pdf", "8"): "pháp của cá nhân",
+    ("Bộ luật TTHS.pdf", "11"): "nhân; danh dự, uy tín, tài sản của pháp nhân",
+    ("Bộ luật TTHS.pdf", "12"):
+        "tư, bí mật cá nhân, bí mật gia đình, an toàn và bí mật thư tín, điện thoại, điện\n"
+        "tín của cá nhân",
+    ("Bộ luật TTHS.pdf", "16"): "và lợi ích hợp pháp của bị hại, đương sự",
+    ("Bộ luật TTHS.pdf", "20"): "theo pháp luật trong tố tụng hình sự11",
+    ("Bộ luật TTHS.pdf", "21"): "tham gia tố tụng",
+    ("Bộ luật TTHS.pdf", "95"):
+        "bị tố giác, người bị kiến nghị khởi tố, người phạm tội tự thú, đầu thú, người\n"
+        "bị bắt, bị tạm giữ",
+    ("Bộ luật TTHS.pdf", "102"): "56\nphạm, khởi tố, điều tra, truy tố, xét xử",
+    ("Bộ luật TTHS.pdf", "116"): "người",
+    ("Bộ luật TTHS.pdf", "151"): "quyền tiến hành tố tụng trực tiếp phát hiện",
+    ("Bộ luật TTHS.pdf", "168"):
+        "hiện quyết định, yêu cầu của Cơ quan điều tra, cơ quan được giao nhiệm vụ\n"
+        "tiến hành một số hoạt động điều tra, Viện kiểm sát",
+    ("Bộ luật TTHS.pdf", "200"): "xét, thu giữ, tạm giữ",
+    ("Bộ luật TTHS.pdf", "241"): "chế",
+    ("Bộ luật TTHS.pdf", "265"): "pháp luật",
+    ("Bộ luật TTHS.pdf", "270"):
+        "của nước Cộng hòa xã hội chủ nghĩa Việt Nam đang hoạt động ngoài không\n"
+        "phận hoặc ngoài lãnh hải của Việt Nam",
+    ("Bộ luật TTHS.pdf", "302"):
+        "sát viên, Thư ký Tòa án, người giám định, người định giá tài sản, người phiên\n"
+        "dịch, người dịch thuật",
+    ("Bộ luật TTHS.pdf", "303"): "giám định, người định giá tài sản",
+    ("Bộ luật TTHS.pdf", "305"): "khi có người vắng mặt",
+    ("Bộ luật TTHS.pdf", "317"): "hành tố tụng, người tham gia tố tụng trình bày ý kiến",
+    ("Bộ luật TTHS.pdf", "319"): "hơn tại phiên tòa",
+    ("Bộ luật TTHS.pdf", "343"): "có kháng cáo, kháng nghị",
+    ("Bộ luật TTHS.pdf", "356"): "án sơ thẩm\n177",
+    ("Bộ luật TTHS.pdf", "377"): "đốc thẩm",
+    ("Bộ luật TTHS.pdf", "389"): "định đã có hiệu lực pháp luật bị kháng nghị",
+    ("Bộ luật TTHS.pdf", "390"):
+        "bản án, quyết định đúng pháp luật của Tòa án cấp sơ thẩm hoặc Tòa án cấp\n"
+        "193\n"
+        "phúc thẩm bị hủy, sửa không đúng pháp luật",
+    ("Bộ luật TTHS.pdf", "391"): "lại hoặc xét xử lại",
+    ("Bộ luật TTHS.pdf", "392"): "án",
+    ("Bộ luật TTHS.pdf", "412"):
+        "cao về việc xem xét lại quyết định của Hội đồng Thẩm phán Tòa án nhân dân\n"
+        "tối cao",
+    ("Bộ luật TTHS.pdf", "494"): "quốc tế trong tố tụng hình sự",
+    ("Bộ luật TTHS.pdf", "495"): "Nam ở nước ngoài và người có thẩm quyền của nước ngoài ở Việt Nam",
+    ("Bộ luật TTHS.pdf", "506a"): "dẫn độ237",
+    ("Văn bản hợp nhất BLHS 2015.pdf", "25"): "thuật và công nghệ",
+    ("Văn bản hợp nhất BLHS 2015.pdf", "41"): "định",
+    ("Văn bản hợp nhất BLHS 2015.pdf", "74"): "phạm tội",
+    ("Văn bản hợp nhất BLHS 2015.pdf", "181"): "bộ, cản trở ly hôn tự nguyện",
+    ("Văn bản hợp nhất BLHS 2015.pdf", "347"): "trái phép",
+    ("Thông tư liên tịch 01_2026 VKSND - BCA - BQP.pdf", "30"):
+        "trưởng, Kiểm sát viên trong trường hợp ủy thác điều tra",
+}
+
+
+def _apply_known_title_continuation(source_document: str, dieu_number: str, dieu_title: str,
+                                     body_after_title_line: str) -> tuple[str, int]:
+    continuation = KNOWN_NON_KHOAN_TITLE_CONTINUATIONS.get((source_document, dieu_number))
+    if continuation is None:
+        return dieu_title, 0
+
+    idx = body_after_title_line.find(continuation)
+    assert idx == 0, (
+        f"Known title-continuation fix for {source_document} Dieu {dieu_number} no longer "
+        f"matches the source text at the expected position - source PDF may have been "
+        f"re-extracted differently; update KNOWN_NON_KHOAN_TITLE_CONTINUATIONS."
+    )
+    skip = len(continuation)
+    merged = f"{dieu_title} {_strip_page_number_noise(continuation)}".strip()
+    return merged, skip
+
+
 def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_version: str) -> list[dict[str, Any]]:
     full_text, offsets = _build_document_text(pages)
 
@@ -215,7 +313,11 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
 
         title_line_end = body.find("\n")
         if title_line_end != -1:
-            dieu_title, skip = _merge_wrapped_title(dieu_title, body[title_line_end + 1:])
+            dieu_title, skip = _apply_known_title_continuation(
+                source_document, dieu_number, dieu_title, body[title_line_end + 1:]
+            )
+            if skip == 0:
+                dieu_title, skip = _merge_wrapped_title(dieu_title, body[title_line_end + 1:])
             rest = body[title_line_end + 1 + skip:]
             body = f"Điều {dieu_number}. {dieu_title}\n{rest}"
         else:
