@@ -4,6 +4,7 @@ __pycache__/
 *.md
 !README.md
 !**/README.md
+!frontend.md
 /.next/
 frontend/.next/
 frontend/node_modules/
