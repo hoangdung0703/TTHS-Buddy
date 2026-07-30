@@ -35,6 +35,22 @@ logger = get_logger(__name__)
 # so a plain case-insensitive match on the correctly-accented word is sufficient here.
 DIEU_NUMBER_PATTERN = re.compile(r"điều\s+(\d+[a-z]?)", re.IGNORECASE)
 
+# Several ingested legal_text documents number their own Dieu starting from 1 (BLTTHS, BLHS,
+# Nghi dinh 250, 2 Thong tu lien tich all have a "Dieu 13" or similar), so an exact dieu_number
+# match without a document filter would return every one of them as if they were all equally
+# relevant to a question naming a single law - a real bug found via end-to-end browser testing
+# (asking about "Dieu 13 Bo luat To tung hinh su" also surfaced Nghi dinh 250's and Thong tu lien
+# tich 05's unrelated Dieu 13). Ordered most-specific-first so "Thong tu lien tich 01" is checked
+# before a hypothetical looser prefix match, though the two TTLT numbers ("01"/"05") don't
+# actually collide with each other here.
+LAW_NAME_TO_SOURCE_DOCUMENT: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"bộ luật tố tụng hình sự|blths", re.IGNORECASE), "Bộ luật TTHS.pdf"),
+    (re.compile(r"bộ luật hình sự|blhs", re.IGNORECASE), "Văn bản hợp nhất BLHS 2015.pdf"),
+    (re.compile(r"nghị định\s*250", re.IGNORECASE), "Nghị định 250_NĐ-CP.pdf"),
+    (re.compile(r"thông tư liên tịch\s*05", re.IGNORECASE), "Thông tư liên tịch 05.pdf"),
+    (re.compile(r"thông tư liên tịch\s*01", re.IGNORECASE), "Thông tư liên tịch 01_2026 VKSND - BCA - BQP.pdf"),
+]
+
 ANALYTICAL_INTENT_KEYWORDS = (
     "tại sao", "vì sao", "ý nghĩa", "phân tích", "giải thích", "bản chất",
     "so sánh", "đánh giá", "quan điểm", "vai trò"
@@ -83,18 +99,33 @@ def detect_dieu_number(question: str) -> str | None:
     return match.group(1) if match else None
 
 
+def detect_source_document(question: str) -> str | None:
+    """Returns the source_document the question names explicitly (e.g. "Bo luat To tung hinh
+    su", "Nghi dinh 250"), or None if it doesn't name one - callers should fall back to
+    unscoped retrieval in that case rather than guessing."""
+    for pattern, source_document in LAW_NAME_TO_SOURCE_DOCUMENT:
+        if pattern.search(question):
+            return source_document
+    return None
+
+
 def is_analytical_question(question: str) -> bool:
     lowered = question.lower()
     return any(keyword in lowered for keyword in ANALYTICAL_INTENT_KEYWORDS)
 
 
-def _retrieve_legal_exact(client: QdrantClient, collection: str, dieu_number: str) -> list[RetrievedChunk]:
+def _retrieve_legal_exact(client: QdrantClient, collection: str, dieu_number: str,
+                           source_document: str | None) -> list[RetrievedChunk]:
+    must_conditions = [
+        FieldCondition(key="source_type", match=MatchValue(value="legal_text")),
+        FieldCondition(key="dieu_number", match=MatchValue(value=dieu_number)),
+    ]
+    if source_document:
+        must_conditions.append(FieldCondition(key="source_document", match=MatchValue(value=source_document)))
+
     points, _ = client.scroll(
         collection_name=collection,
-        scroll_filter=Filter(must=[
-            FieldCondition(key="source_type", match=MatchValue(value="legal_text")),
-            FieldCondition(key="dieu_number", match=MatchValue(value=dieu_number)),
-        ]),
+        scroll_filter=Filter(must=must_conditions),
         limit=10,
         with_payload=True,
     )
@@ -215,7 +246,8 @@ def _retrieve_legal(client: QdrantClient, collection: str, question: str,
     """Returns (primary_chunks, related_chunks). Exact Dieu-number matches (if the question names
     one) always take priority over semantic search results for the primary slots."""
     dieu_number = detect_dieu_number(question)
-    exact_chunks = _retrieve_legal_exact(client, collection, dieu_number) if dieu_number else []
+    source_document = detect_source_document(question) if dieu_number else None
+    exact_chunks = _retrieve_legal_exact(client, collection, dieu_number, source_document) if dieu_number else []
     semantic_chunks = _retrieve_semantic(client, collection, vector, "legal_text", LEGAL_SEMANTIC_TOP_K)
 
     merged = _dedup_by_point_id(exact_chunks + semantic_chunks)

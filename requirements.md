@@ -152,6 +152,9 @@ Retrieval phân tầng thật đã áp dụng (bổ sung so với thiết kế g
 - Khi model trả lời fallback (không tìm thấy), citations/related_articles bị ép về rỗng — tránh trường hợp gắn "nguồn" cho câu trả lời tự nhận là không có căn cứ (bug đã phát hiện và sửa lúc test).
 - Payload index source_type và dieu_number đã tạo trên Qdrant collection (bắt buộc để filter hoạt động, thiếu sẽ lỗi 400).
 
+Bug phát hiện lúc test end-to-end thật trên trình duyệt ở Phase 9 (trích dẫn chéo văn bản khi trùng số Điều): hỏi "Điều 13 Bộ luật Tố tụng hình sự quy định như thế nào về nguyên tắc suy đoán vô tội?" trả về citations gồm CẢ Điều 13 BLTTHS (đúng) LẪN Điều 13 Nghị định 250/NĐ-CP và Điều 13 Thông tư liên tịch 05 (hoàn toàn không liên quan - một cái về Hội đồng định giá tài sản, một cái về xử lý người bị tạm giam chết) - vì 5 văn bản legal_text đã ingest đều tự đánh số Điều từ 1, và `_retrieve_legal_exact()` chỉ filter theo `dieu_number` + `source_type=legal_text`, không giới hạn theo văn bản nào, nên mọi văn bản có cùng số Điều đều bị coi là "exact match" ngang nhau. Root cause fix: thêm `detect_source_document()` trong rag_service.py - nhận diện tên văn bản được nêu rõ trong câu hỏi (BLTTHS/BLHS/Nghị định 250/Thông tư liên tịch 05/01, qua `LAW_NAME_TO_SOURCE_DOCUMENT`) và truyền vào `_retrieve_legal_exact()` để lọc thêm theo đúng `source_document` đó. Trường hợp câu hỏi không nêu rõ văn bản nào thì giữ nguyên hành vi cũ (có thể trả về nhiều văn bản) - chưa xử lý, chấp nhận là giới hạn còn lại (xem thêm Mục 9). Verify: cùng câu hỏi test sau khi sửa chỉ còn trích Điều 13/15/26 của BLTTHS, không còn lẫn văn bản khác; đã chạy lại toàn bộ 29 câu ở backend/evaluation/test_set.json để xác nhận không có câu nào bị ảnh hưởng ngược (xem số liệu cập nhật ở Phase 9).
+Giới hạn còn lại (chưa xử lý, ghi nhận as known issue): related_articles (gợi ý phụ, không phải trường trích dẫn chính) đôi khi vẫn lẫn Điều từ văn bản khác qua đường semantic search (không phải exact-match) khi các chunk có vector gần nhau một cách không mong muốn - ít nghiêm trọng hơn vì đây là field "gợi ý", không phải "căn cứ" như citations.
+
 Việc cần làm thủ công khi setup lại từ đầu (dự án không dùng ORM/migration runner): chạy 1 lần file backend/migrations/0001_chat_query_logs.sql trong Supabase SQL Editor để tạo bảng chat_query_logs trước khi logging hoạt động — lỗi log bị catch nên không crash API nếu bảng chưa tồn tại, nhưng log sẽ không được ghi.
 
 Phase 5a — Module trắc nghiệm (MCQ) — ĐÃ HOÀN THÀNH
@@ -232,17 +235,24 @@ Phase 8 — Frontend — ĐÃ HOÀN THÀNH (build sớm hơn thứ tự gốc, x
 [x] Sidebar: thêm nav item "Trắc nghiệm" và "Tự luận" (2 trang riêng), cạnh "Tổng quan" và "Trợ lý AI" hiện có
 [x] Trang đăng nhập / đăng ký
 [x] Giao diện chat: ô nhập, lịch sử hội thoại, hiển thị câu trả lời kèm danh sách trích dẫn có thể thu gọn
-[x] Trang trắc nghiệm (MCQ): làm bài, xem điểm + giải thích
+[x] Trang trắc nghiệm (MCQ): làm bài, xem điểm + giải thích. Bug phát hiện lúc test end-to-end thật ở Phase 9: trang Quiz gọi POST /api/quiz/generate với body rỗng {} (thiếu quiz_set bắt buộc) → luôn lỗi 422 "Không tải được bộ câu hỏi" - bước "chọn bộ đề" mô tả ở frontend.md (mục 2, Bước 1) chưa từng được cài. Đã sửa: thêm màn hình chọn 1 trong 5 "BỘ ĐỀ SỐ" (gọi GET /api/quiz/sets qua getQuizSets() mới trong lib/api.ts) trước khi vào làm bài, sau khi chọn mới gọi getQuiz(quizSet) → POST /api/quiz/generate với đúng quiz_set; submitQuiz cũng bổ sung quiz_set vào QuizSubmitRequest cho khớp backend. Verify lại qua E2E thật: luồng chọn bộ đề → làm 10 câu → nộp bài → xem điểm chạy trọn vẹn, không lỗi console.
 [x] Trang tự luận: hiển thị câu hỏi, ô nhập câu trả lời tự do, sau khi submit hiển thị matched_points/missing_points/feedback/suggested_dieu rõ ràng, dễ đọc
 [x] Trang dashboard: từ khóa hôm qua, gợi ý chủ đề cần ôn (bản rút gọn theo Phase 7) — không còn card "Gợi ý học tập hôm nay" (đã bỏ hẳn, xem note ở Mục 5 và Mục 9)
 [x] Loading state và thông báo lỗi cho mọi tác vụ async
 
-Phase 9 — Đánh giá & Hoàn thiện (phục vụ bài báo)
-[ ] Xây bộ test cố định (20-30 cặp câu hỏi - đáp án kèm Điều luật chuẩn, do nhóm sinh viên luật cung cấp)
-[ ] Script đánh giá: đo độ chính xác trích dẫn (Điều trích dẫn có khớp ground truth không), groundedness (câu trả lời có tránh khẳng định không có căn cứ không), tỷ lệ từ chối đúng lúc (bot có nói "không tìm thấy" đúng khi cần không)
-[ ] .env.example với đầy đủ key và mô tả
-[ ] README.md: tổng quan dự án, hướng dẫn setup, cách chạy ingestion, cách chạy app, API reference
-[ ] Test end-to-end đầy đủ: đăng ký → đăng nhập → hỏi câu hỏi → nhận câu trả lời có căn cứ → làm trắc nghiệm → xem dashboard
+Phase 9 — Đánh giá & Hoàn thiện (phục vụ bài báo) — ĐÃ HOÀN THÀNH
+[x] Xây bộ test cố định (20-30 cặp câu hỏi - đáp án kèm Điều luật chuẩn): 29 câu tự soạn nội bộ (không chờ nhóm luật, UAT làm sau), backend/evaluation/test_set.json - 12 direct_citation + 10 analytical + 7 out_of_scope, ground truth đối chiếu trực tiếp với ingestion/chunks.json trước khi dùng (không tự bịa), trải đều cả 5 nguồn legal_text đã ingest (BLTTHS, BLHS, Nghị định 250, Thông tư liên tịch 05, Thông tư liên tịch 01/2026)
+[x] Script đánh giá backend/evaluation/run_evaluation.py: gọi thật POST /api/chat/query cho từng câu (JWT thật, không mock), đo citation accuracy (exact_match_rate/recall/precision), groundedness (citations HOẶC đúng fallback - không bao giờ thiếu cả hai), correct-refusal rate (câu out_of_scope có bị từ chối đúng không), và academic-reference-usage cho 2 câu phân tích liên ngành. Đọc is_fallback/used_academic_reference từ chat_query_logs (service-role) vì 2 field này không lộ ra response API công khai.
+[x] .env.example: bổ sung phần biến môi trường cho run_evaluation.py (EVAL_API_BASE_URL/EVAL_USER_EMAIL/EVAL_USER_PASSWORD, không lưu credential thật)
+[x] README.md: viết lại hoàn chỉnh - tổng quan, cấu trúc thư mục, setup, cách chạy migrations/ingestion/app/evaluation, bảng API reference đầy đủ 11 route
+[x] Test end-to-end đầy đủ trên trình duyệt thật (Playwright, không mock): đăng ký tài khoản mới hoàn toàn (không bị chặn bởi xác nhận email) → đăng nhập → hỏi chat → làm trắc nghiệm (chọn bộ đề → làm bài → nộp) → làm tự luận → xem dashboard - chạy trọn vẹn, 0 lỗi console. Lần chạy đầu tiên phát hiện 2 bug thật (xem chi tiết ở Phase 8 và Phase 4), đã sửa cả 2 và chạy lại E2E lần 2 để xác nhận.
+
+Kết quả evaluation cuối cùng (backend/evaluation/results.json, sau khi đã sửa bug trích dẫn chéo văn bản ở Phase 4):
+- Citation accuracy (n=20): exact_match_rate 95% (19/20), mean_recall 95%, mean_precision 38%. 1 câu fail: Nghị định 250 Điều 7 "Thành lập Hội đồng định giá tài sản" - hệ thống trả lời đúng nội dung nhưng trích Điều 1/8/9 (các Điều con) thay vì Điều 7 gốc - lỗi retrieval, không phải lỗi nội dung, chưa xử lý (known issue).
+- Groundedness (n=29): 100% - không câu nào thiếu cả citations lẫn fallback.
+- Correct-refusal rate (n=7, out_of_scope): 100%.
+- Academic-reference usage (n=2, câu phân tích liên ngành): 100%.
+- mean_precision thấp không phải dấu hiệu xấu: nhiều câu Nhóm B (analytical) được thiết kế để hệ thống trích thêm Điều liên quan ngoài Điều kỳ vọng tối giản trong ground truth (đúng ý đồ test độ sâu phân tích) - recall mới là chỉ số phản ánh đúng "có bỏ sót Điều quan trọng không".
 
 
 6. Tiêu chuẩn code
@@ -309,6 +319,7 @@ Giao diện admin quản lý văn bản (ingestion chỉ chạy qua CLI cho dead
 Multi-tenancy / quản lý tổ chức
 Model reasoning liên luật phức tạp ngoài việc co-retrieval đơn giản (liên kết LTTHS ↔ LHS chỉ là "hiển thị thêm Điều liên quan từ cùng lượt tìm kiếm", không phải hệ thống reasoning riêng)
 Card "Gợi ý học tập hôm nay" trên dashboard (tách biệt khỏi weak-topics) — không có route hỗ trợ, weak-topics đã đủ đóng vai trò tương tự, để dành v2 nếu cần tách riêng.
+Disambiguation văn bản cho related_articles khi câu hỏi không nêu rõ tên luật: đã sửa exact-match citations (field citations, xem Phase 4) để lọc đúng source_document khi câu hỏi nêu rõ tên văn bản, nhưng related_articles (gợi ý phụ qua semantic search) đôi khi vẫn lẫn Điều từ văn bản khác trùng số - chấp nhận cho bản 05/09 vì đây là field gợi ý phụ, không phải căn cứ trích dẫn chính; nếu cần độ chính xác cao hơn ở v2, cân nhắc áp dụng cùng cơ chế lọc source_document cho related_articles hoặc bỏ hẳn việc gộp kết quả semantic đa văn bản.
 Giao diện quản lý phiên bản văn bản (document versioning)
 Streak ngày học liên tiếp, breakdown tiến độ trắc nghiệm chi tiết theo nhiều nhóm chủ đề với circular progress riêng, gợi ý học tập có lý do cá nhân hóa theo ngữ cảnh hội thoại (xem frontend.md để biết bản đầy đủ dự kiến cho v2)
 Chấm tự luận hoàn toàn tự do không dựa trên rubric (essay_key_points) — module tự luận ở Phase 5b luôn phải grounding vào rubric có sẵn trong ngân hàng đề, không để LLM tự quyết định đúng/sai theo cảm tính

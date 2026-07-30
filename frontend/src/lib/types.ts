@@ -33,12 +33,19 @@ export interface QuizGenerateResponse {
   questions: QuizQuestion[];
 }
 
+export interface QuizSetSummary {
+  quiz_set: number;
+  total_questions: number;
+  main_topics: string[];
+}
+
 export interface QuizAnswer {
   question_id: string;
   selected_option: string;
 }
 
 export interface QuizSubmitRequest {
+  quiz_set: number;
   answers: QuizAnswer[];
 }
 

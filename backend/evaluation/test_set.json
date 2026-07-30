@@ -1,0 +1,217 @@
+[
+  {
+    "question": "Điều 13 Bộ luật Tố tụng hình sự quy định như thế nào về nguyên tắc suy đoán vô tội?",
+    "expected_dieu_numbers": [
+      "13"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Theo Bộ luật Tố tụng hình sự, tạm giam có thể áp dụng đối với bị can, bị cáo về những loại tội phạm nào?",
+    "expected_dieu_numbers": [
+      "119"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Thời hạn tạm giam để điều tra đối với tội phạm rất nghiêm trọng theo Bộ luật Tố tụng hình sự là bao lâu?",
+    "expected_dieu_numbers": [
+      "173"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Theo Bộ luật Tố tụng hình sự, lời nhận tội của bị can, bị cáo có được coi là chứng cứ duy nhất để kết tội không?",
+    "expected_dieu_numbers": [
+      "98"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Bộ luật Tố tụng hình sự quy định khởi tố vụ án hình sự theo yêu cầu của bị hại áp dụng cho những tội phạm nào?",
+    "expected_dieu_numbers": [
+      "155"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Theo Bộ luật Tố tụng hình sự, chứng cứ được định nghĩa như thế nào?",
+    "expected_dieu_numbers": [
+      "86"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Theo Bộ luật Hình sự, người từ đủ 14 tuổi đến dưới 16 tuổi phải chịu trách nhiệm hình sự về những loại tội phạm nào?",
+    "expected_dieu_numbers": [
+      "12"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Bộ luật Hình sự quy định như thế nào về phòng vệ chính đáng?",
+    "expected_dieu_numbers": [
+      "22"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Theo Nghị định 250/NĐ-CP về định giá tài sản trong tố tụng hình sự, Hội đồng định giá tài sản được thành lập ở những cấp nào?",
+    "expected_dieu_numbers": [
+      "7"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Theo Nghị định 250/NĐ-CP, việc định giá tài sản không phải là hàng cấm phải dựa trên những căn cứ nào?",
+    "expected_dieu_numbers": [
+      "20"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Theo Thông tư liên tịch 05 về phối hợp giữa cơ sở giam giữ và cơ quan có thẩm quyền tiến hành tố tụng, việc thăm gặp người bị tạm giữ, tạm giam được phối hợp giải quyết như thế nào?",
+    "expected_dieu_numbers": [
+      "11"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Theo Thông tư liên tịch 01/2026 (VKSND - BCA - BQP), thủ tục áp dụng biện pháp bảo lĩnh đối với bị can được thực hiện như thế nào?",
+    "expected_dieu_numbers": [
+      "21"
+    ],
+    "should_refuse": false,
+    "category": "direct_citation"
+  },
+  {
+    "question": "Phân tích ý nghĩa của nguyên tắc suy đoán vô tội đối với hoạt động thực hành quyền công tố của Viện kiểm sát.",
+    "expected_dieu_numbers": [
+      "13"
+    ],
+    "should_refuse": false,
+    "category": "analytical"
+  },
+  {
+    "question": "Tại sao pháp luật hình sự Việt Nam quy định phòng vệ chính đáng không phải là tội phạm? Phân tích ý nghĩa của quy định này.",
+    "expected_dieu_numbers": [
+      "22"
+    ],
+    "should_refuse": false,
+    "category": "analytical"
+  },
+  {
+    "question": "Phân tích mối quan hệ giữa trách nhiệm chứng minh tội phạm của cơ quan tiến hành tố tụng và quyền không buộc phải chứng minh vô tội của người bị buộc tội.",
+    "expected_dieu_numbers": [
+      "15"
+    ],
+    "should_refuse": false,
+    "category": "analytical"
+  },
+  {
+    "question": "Tại sao Bộ luật Tố tụng hình sự quy định không được dùng lời nhận tội của bị can, bị cáo làm chứng cứ duy nhất để kết tội? Ý nghĩa của quy định này là gì?",
+    "expected_dieu_numbers": [
+      "98"
+    ],
+    "should_refuse": false,
+    "category": "analytical"
+  },
+  {
+    "question": "Phân tích ý nghĩa của nguyên tắc tranh tụng trong xét xử đối với việc bảo đảm quyền của người bị buộc tội.",
+    "expected_dieu_numbers": [
+      "26"
+    ],
+    "should_refuse": false,
+    "category": "analytical"
+  },
+  {
+    "question": "Phân tích mối quan hệ và tính thống nhất giữa Luật Hình sự và Luật Tố tụng hình sự trong việc xử lý tội phạm.",
+    "expected_dieu_numbers": [],
+    "should_refuse": false,
+    "category": "analytical"
+  },
+  {
+    "question": "Tại sao pháp luật hình sự giới hạn tuổi chịu trách nhiệm hình sự ở mức từ đủ 14 tuổi trở lên? Phân tích ý nghĩa của quy định này đối với chính sách hình sự nhân đạo.",
+    "expected_dieu_numbers": [
+      "12"
+    ],
+    "should_refuse": false,
+    "category": "analytical"
+  },
+  {
+    "question": "Phân tích ý nghĩa của việc bảo đảm quyền bào chữa cho người bị buộc tội trong tố tụng hình sự đối với việc bảo vệ quyền con người.",
+    "expected_dieu_numbers": [
+      "16"
+    ],
+    "should_refuse": false,
+    "category": "analytical"
+  },
+  {
+    "question": "Phân tích vai trò của chứng cứ và nguồn chứng cứ trong việc xác định sự thật khách quan của vụ án hình sự.",
+    "expected_dieu_numbers": [
+      "86",
+      "87"
+    ],
+    "should_refuse": false,
+    "category": "analytical"
+  },
+  {
+    "question": "Phân tích mối quan hệ phối hợp giữa Cơ quan điều tra và Viện kiểm sát trong việc áp dụng, thay đổi, hủy bỏ biện pháp ngăn chặn ở giai đoạn khởi tố vụ án hình sự.",
+    "expected_dieu_numbers": [],
+    "should_refuse": false,
+    "category": "analytical"
+  },
+  {
+    "question": "Thời hiệu khởi kiện tranh chấp hợp đồng dân sự theo Bộ luật Dân sự là bao lâu?",
+    "expected_dieu_numbers": [],
+    "should_refuse": true,
+    "category": "out_of_scope"
+  },
+  {
+    "question": "Điều kiện đăng ký kết hôn theo Luật Hôn nhân và Gia đình là gì?",
+    "expected_dieu_numbers": [],
+    "should_refuse": true,
+    "category": "out_of_scope"
+  },
+  {
+    "question": "Người lao động được nghỉ phép năm bao nhiêu ngày theo Bộ luật Lao động?",
+    "expected_dieu_numbers": [],
+    "should_refuse": true,
+    "category": "out_of_scope"
+  },
+  {
+    "question": "Thủ tục ly hôn đơn phương được quy định như thế nào theo pháp luật hôn nhân và gia đình?",
+    "expected_dieu_numbers": [],
+    "should_refuse": true,
+    "category": "out_of_scope"
+  },
+  {
+    "question": "Điều kiện thành lập doanh nghiệp tư nhân theo Luật Doanh nghiệp là gì?",
+    "expected_dieu_numbers": [],
+    "should_refuse": true,
+    "category": "out_of_scope"
+  },
+  {
+    "question": "Thuế thu nhập cá nhân đối với tiền lương, tiền công được tính như thế nào theo Luật Thuế thu nhập cá nhân?",
+    "expected_dieu_numbers": [],
+    "should_refuse": true,
+    "category": "out_of_scope"
+  },
+  {
+    "question": "Quyền thừa kế theo pháp luật được chia như thế nào giữa những người thuộc hàng thừa kế thứ nhất theo Bộ luật Dân sự?",
+    "expected_dieu_numbers": [],
+    "should_refuse": true,
+    "category": "out_of_scope"
+  }
+]

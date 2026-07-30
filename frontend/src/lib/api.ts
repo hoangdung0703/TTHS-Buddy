@@ -6,6 +6,7 @@ import {
   MOCK_ESSAY_QUESTIONS,
   MOCK_KEYWORDS_YESTERDAY,
   MOCK_QUIZ_QUESTIONS,
+  MOCK_QUIZ_SETS,
   MOCK_WEAK_TOPICS,
   resolveMockChatAnswer,
   withMockDelay
@@ -19,6 +20,7 @@ import type {
   EssaySubmitResponse,
   KeywordYesterday,
   QuizGenerateResponse,
+  QuizSetSummary,
   QuizSubmitRequest,
   QuizSubmitResponse,
   WeakTopic
@@ -93,12 +95,24 @@ export async function sendChatQuery(question: string): Promise<ChatQueryResponse
   });
 }
 
-export async function getQuiz(): Promise<QuizGenerateResponse> {
+export async function getQuizSets(): Promise<QuizSetSummary[]> {
+  if (isMockDataEnabled()) {
+    return withMockDelay(MOCK_QUIZ_SETS);
+  }
+
+  const { quiz_sets: quizSets } = await apiFetch<{ quiz_sets: QuizSetSummary[] }>("/api/quiz/sets");
+  return quizSets;
+}
+
+export async function getQuiz(quizSet: number): Promise<QuizGenerateResponse> {
   if (isMockDataEnabled()) {
     return withMockDelay({ questions: MOCK_QUIZ_QUESTIONS });
   }
 
-  return apiFetch<QuizGenerateResponse>("/api/quiz/generate", { method: "POST", body: JSON.stringify({}) });
+  return apiFetch<QuizGenerateResponse>("/api/quiz/generate", {
+    method: "POST",
+    body: JSON.stringify({ quiz_set: quizSet })
+  });
 }
 
 export async function submitQuiz(request: QuizSubmitRequest): Promise<QuizSubmitResponse> {

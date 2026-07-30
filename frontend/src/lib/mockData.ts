@@ -10,6 +10,7 @@ import type {
   KeywordYesterday,
   QuizAnswer,
   QuizQuestion,
+  QuizSetSummary,
   QuizSubmitResponse,
   WeakTopic
 } from "@/lib/types";
@@ -86,6 +87,14 @@ export function resolveMockChatAnswer(question: string): ChatQueryResponse {
 
   return MOCK_ANSWER_PRESUMPTION_OF_INNOCENCE;
 }
+
+export const MOCK_QUIZ_SETS: QuizSetSummary[] = [
+  { quiz_set: 1, total_questions: 18, main_topics: ["Biện pháp ngăn chặn", "Khởi tố bị can"] },
+  { quiz_set: 2, total_questions: 18, main_topics: ["Chứng cứ", "Thời hạn kháng cáo"] },
+  { quiz_set: 3, total_questions: 18, main_topics: ["Người làm chứng", "Suy đoán vô tội"] },
+  { quiz_set: 4, total_questions: 18, main_topics: ["Tranh tụng", "Xác định sự thật của vụ án"] },
+  { quiz_set: 5, total_questions: 18, main_topics: ["Xét xử công khai", "Pháp chế xã hội chủ nghĩa"] }
+];
 
 export const MOCK_QUIZ_QUESTIONS: QuizQuestion[] = [
   {
