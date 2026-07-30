@@ -18,13 +18,14 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.core.config import Settings
 from app.core.logging import get_logger
-from app.models.chat import Citation, RelatedArticle
+from app.models.chat import Citation, RelatedArticle, SuggestedFollowup
 from app.prompts.rag_prompts import (
     RAG_SYSTEM_PROMPT,
     build_user_prompt,
     format_academic_context_block,
     format_legal_context_block,
 )
+from app.services.chat_suggestions_service import build_suggested_question
 from app.services.gemini_client import embed_query, generate_answer
 
 logger = get_logger(__name__)
@@ -46,6 +47,12 @@ ACADEMIC_TOP_K = 3
 LEGAL_SCORE_THRESHOLD = 0.5
 ACADEMIC_SCORE_THRESHOLD = 0.5
 
+# Phase 6: how many "next question" chips to surface after an answer, and how many neighbor
+# candidates to fetch before filtering out self/already-cited Dieu (fetch a buffer since some
+# of the nearest neighbors are typically other Khoan of Dieu already in citations/related).
+SUGGESTED_FOLLOWUP_COUNT = 3
+SUGGESTED_FOLLOWUP_FETCH_LIMIT = 8
+
 FALLBACK_ANSWER = (
     "Xin lỗi, tôi không tìm thấy nội dung liên quan trong dữ liệu pháp luật hiện có để trả lời "
     "câu hỏi này."
@@ -65,6 +72,7 @@ class RagAnswer:
     answer: str
     citations: list[Citation]
     related_articles: list[RelatedArticle]
+    suggested_followups: list[SuggestedFollowup]
     is_fallback: bool
     retrieved_chunks: list[RetrievedChunk]
     used_academic_reference: bool
@@ -159,6 +167,49 @@ def _build_related_articles(chunks: list[RetrievedChunk]) -> list[RelatedArticle
     return related
 
 
+def _build_suggested_followups(client: QdrantClient, collection: str, top_chunk: RetrievedChunk,
+                                cited_dieu_numbers: set[tuple[str, str | None]]) -> list[SuggestedFollowup]:
+    """Reuses the just-cited chunk's own stored vector (no re-embedding) to find nearby Dieu in
+    the same source document - per requirements.md Phase 6, legal drafting style tends to repeat
+    phrasing for Dieu in the same functional group (e.g. a run of consecutive "Nhiem vu, quyen
+    han..." Dieu for each procedural role), so vector similarity captures that relationship well
+    without needing Chuong/Muc metadata this corpus doesn't have."""
+    records = client.retrieve(collection_name=collection, ids=[top_chunk.point_id], with_vectors=True)
+    if not records or records[0].vector is None:
+        return []
+
+    result = client.query_points(
+        collection_name=collection,
+        query=records[0].vector,
+        query_filter=Filter(must=[
+            FieldCondition(key="source_type", match=MatchValue(value="legal_text")),
+            FieldCondition(key="source_document", match=MatchValue(value=top_chunk.payload["source_document"])),
+        ]),
+        limit=SUGGESTED_FOLLOWUP_FETCH_LIMIT,
+        with_payload=True,
+    )
+
+    seen_keys = set(cited_dieu_numbers)
+    seen_keys.add((top_chunk.payload["dieu_number"], top_chunk.payload["law_version"]))
+
+    followups: list[SuggestedFollowup] = []
+    for point in result.points:
+        if str(point.id) == top_chunk.point_id:
+            continue
+        key = (point.payload["dieu_number"], point.payload["law_version"])
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        followups.append(SuggestedFollowup(
+            dieu_number=point.payload["dieu_number"],
+            suggested_question=build_suggested_question(point.payload["dieu_title"] or ""),
+        ))
+        if len(followups) == SUGGESTED_FOLLOWUP_COUNT:
+            break
+
+    return followups
+
+
 def _retrieve_legal(client: QdrantClient, collection: str, question: str,
                      vector: list[float]) -> tuple[list[RetrievedChunk], list[RetrievedChunk]]:
     """Returns (primary_chunks, related_chunks). Exact Dieu-number matches (if the question names
@@ -230,7 +281,7 @@ def answer_question(question: str, settings: Settings, qdrant_client: QdrantClie
     if not context_blocks:
         logger.info("No context passed threshold for question, returning fallback answer")
         return RagAnswer(
-            answer=FALLBACK_ANSWER, citations=[], related_articles=[], is_fallback=True,
+            answer=FALLBACK_ANSWER, citations=[], related_articles=[], suggested_followups=[], is_fallback=True,
             retrieved_chunks=all_retrieved, used_academic_reference=False
         )
 
@@ -247,7 +298,15 @@ def answer_question(question: str, settings: Settings, qdrant_client: QdrantClie
     citations = [] if is_fallback else _build_citations(legal_primary)
     related_articles = [] if is_fallback else _build_related_articles(legal_related)
 
+    suggested_followups: list[SuggestedFollowup] = []
+    if not is_fallback and legal_primary:
+        cited_keys = {(c.dieu_number, c.law_version) for c in citations}
+        suggested_followups = _build_suggested_followups(
+            qdrant_client, settings.qdrant_collection, legal_primary[0], cited_keys
+        )
+
     return RagAnswer(
-        answer=answer_text, citations=citations, related_articles=related_articles, is_fallback=is_fallback,
+        answer=answer_text, citations=citations, related_articles=related_articles,
+        suggested_followups=suggested_followups, is_fallback=is_fallback,
         retrieved_chunks=all_retrieved, used_academic_reference=(not is_fallback) and bool(academic_chunks)
     )

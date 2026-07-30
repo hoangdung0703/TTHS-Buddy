@@ -1,0 +1,8 @@
+[
+  {"id": "seed-1", "text": "Nguyên tắc suy đoán vô tội là gì?"},
+  {"id": "seed-2", "text": "Các biện pháp ngăn chặn trong tố tụng hình sự gồm những gì?"},
+  {"id": "seed-3", "text": "Người bị buộc tội có những quyền gì trong tố tụng hình sự?"},
+  {"id": "seed-4", "text": "Thủ tục khởi tố vụ án hình sự được quy định như thế nào?"},
+  {"id": "seed-5", "text": "Thời hạn tạm giam để điều tra tối đa là bao lâu?"},
+  {"id": "seed-6", "text": "Chứng cứ trong tố tụng hình sự được quy định như thế nào?"}
+]

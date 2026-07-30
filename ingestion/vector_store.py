@@ -12,7 +12,7 @@ import uuid
 from typing import Any
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import Distance, PayloadSchemaType, PointStruct, VectorParams
 
 from ingestion.config import get_ingestion_settings
 from ingestion.logging_utils import get_logger
@@ -23,22 +23,33 @@ VECTOR_SIZE = 768  # must match embedding_client.OUTPUT_DIMENSIONALITY and backe
 POINT_ID_NAMESPACE = uuid.UUID("c9f1c1c0-2b8a-4a3e-9b1e-1f6f6a2c5d40")
 UPSERT_BATCH_SIZE = 100
 
+# Every payload field the backend filters on (rag_service.py) needs a keyword index, or Qdrant
+# rejects the filtered query with a 400 - discovered incrementally as each new filter was added
+# (source_type/dieu_number in Phase 4, source_document in Phase 6), so collected here and
+# (re)created on every ensure_collection call rather than left as one-off manual commands.
+FILTERABLE_PAYLOAD_FIELDS = ("source_type", "dieu_number", "source_document")
+
 
 def create_qdrant_client() -> QdrantClient:
     settings = get_ingestion_settings()
     return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key, check_compatibility=False)
 
 
+def _ensure_payload_indexes(client: QdrantClient, collection: str) -> None:
+    for field_name in FILTERABLE_PAYLOAD_FIELDS:
+        client.create_payload_index(collection, field_name=field_name, field_schema=PayloadSchemaType.KEYWORD)
+
+
 def ensure_collection(client: QdrantClient) -> None:
     settings = get_ingestion_settings()
-    if client.collection_exists(settings.qdrant_collection):
-        return
+    if not client.collection_exists(settings.qdrant_collection):
+        client.create_collection(
+            collection_name=settings.qdrant_collection,
+            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+        )
+        logger.info("Created Qdrant collection %s", settings.qdrant_collection)
 
-    client.create_collection(
-        collection_name=settings.qdrant_collection,
-        vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
-    )
-    logger.info("Created Qdrant collection %s", settings.qdrant_collection)
+    _ensure_payload_indexes(client, settings.qdrant_collection)
 
 
 def build_point_id(chunk: dict[str, Any]) -> str:

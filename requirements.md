@@ -181,29 +181,35 @@ Kết quả thực tế: 90 câu ngân hàng đề (75 mcq_4choice + 15 mcq_true
 
 Việc cần làm thủ công khi setup lại từ đầu (giống Phase 4): chạy 1 lần file backend/migrations/0002_quiz_attempts.sql trong Supabase SQL Editor để tạo bảng quiz_attempts trước khi rotation logic và lịch sử làm bài hoạt động đầy đủ — đọc/ghi tự động degrade an toàn (không crash API) nếu bảng chưa tồn tại, nhưng rotation sẽ luôn coi như "chưa có lịch sử" cho đến khi bảng được tạo.
 
-Bug Phase 3 phát hiện thêm trong lúc làm Phase 5a: 6 Điều trong Bộ luật TTHS.pdf (Điều 7, 135, 233, 243, 268, 382 — 10 chunk kể cả 5 Khoản của Điều 382) bị dính số trang vào cuối dieu_title/chunk_text do lỗi extract PDF ở Phase 3. Đã sửa cơ học (cắt số trang thừa), re-embed + re-upsert đúng 10 chunk, verify qua Phase 4 RAG xác nhận citation sạch. Script ingestion/fix_dieu_title_page_bleed.py giữ lại để tái sử dụng nếu phát hiện thêm case tương tự.
+Bug Phase 3 — lịch sử phát hiện và fix cuối cùng (title bị cắt cụt do wrap sang dòng 2/số trang dính vào title, dùng cho phần Methodology bài báo):
+- Phát hiện lần 1 (lúc làm Phase 5a): 6 Điều trong Bộ luật TTHS.pdf (Điều 7, 135, 233, 243, 268, 382 — 10 chunk kể cả 5 Khoản của Điều 382) bị dính số trang vào cuối dieu_title/chunk_text. Sửa cơ học tạm thời bằng ingestion/fix_dieu_title_page_bleed.py (đã bị thay thế bởi root-cause fix bên dưới, không còn cần dùng script này nữa nhưng vẫn giữ lại trong repo để tham khảo lịch sử).
+- Phát hiện lần 2 (lúc làm Phase 6, test suggested_followups với câu hỏi về Thẩm phán): phát hiện thêm Điều 41, 44 bị cắt cụt title GIỮA TỪ (không phải dính số trang ở cuối) — quét mở rộng phát hiện tổng cộng tới ~46 Điều trên 4 văn bản (Bộ luật TTHS, BLHS, Nghị định 250, Thông tư liên tịch 01/2026) bị cùng loại lỗi, phạm vi lớn hơn nhiều so với ước tính ban đầu.
+- Root-cause fix cuối cùng (thay thế toàn bộ các lần vá tay ở trên): sửa `_merge_wrapped_title()` trong `ingestion/chunking.py` — thay vì đoán theo trigger-word (danh sách ~20 từ nối câu cố định, bỏ sót phần lớn case thực tế), dùng ranh giới thật của title:
+  - Với Điều có cấu trúc Khoản: mọi văn bản giữa title (dòng 1) và marker Khoản đầu tiên ("1. ...") LUÔN LUÔN là phần title bị wrap, merge vô điều kiện (đã xác minh: không có Điều nào có cấu trúc Khoản mà lại có câu mở đầu trước Khoản 1 trong toàn bộ corpus) — trừ khi đoạn đó chứa dấu kết câu (. ! ? :), khi đó coi là câu dẫn nhập thật (ví dụ trước danh sách liệt kê Khoản) và KHÔNG merge.
+  - Với Điều không có cấu trúc Khoản (đoạn văn ngắn, không tách Khoản): giữ nguyên logic trigger-word cũ (đã kiểm chứng an toàn) làm fallback, vì tín hiệu "dấu chấm câu đầu tiên" không phân biệt được continuation ngắn thật với câu nội dung ngắn thật (đã test và phát hiện false-positive cụ thể, xem test suite).
+  - Số trang dính vào cuối dòng 1 của title (kiểu Điều 7) cũng được strip tự động ngay khi capture, không cần patch tay riêng từng Điều nữa.
+  - 16 test case cụ thể (bao gồm case đã biết lỗi VÀ case dễ gây false-positive) được viết và pass 100% trước khi chạy lại batch thật.
+- Kết quả sau khi chạy lại toàn bộ legal_text (chỉ re-parse text đã extract sẵn, KHÔNG chạy lại OCR/Gemini Vision — chỉ có 3 trang OCR fallback ngẫu nhiên không liên quan, ~4K token, không đáng kể):
+  - Trước: 1395 chunk legal_text (bao gồm 23 chunk "intro" rác chỉ chứa mảnh title bị cắt, không mang nội dung pháp lý thật).
+  - Sau: 1372 chunk legal_text (23 chunk rác trên biến mất vì phần continuation đã được merge đúng vào title, không còn "intro" thừa trước Khoản 1).
+  - Số Điều có title bị cắt cụt thật sự (đã fix): giảm từ ~46 Điều xuống còn 35 Điều (100% là các Điều KHÔNG có cấu trúc Khoản — giới hạn đã biết, chấp nhận được cho bản 05/09, để dành v2 nếu cần độ chính xác cao hơn cho toàn bộ corpus).
+  - Đã re-embed + re-upsert toàn bộ 1372 chunk legal_text vào Qdrant, xóa 23 point mồ côi. Verify qua Phase 4 RAG với câu hỏi về Thẩm phán: citation Điều 44 và suggested_followups Điều 41 hiển thị title đầy đủ, chính xác.
 
-Phase 5b — Module tự luận (câu hỏi mở) — ĐÃ HOÀN THÀNH
-[x] essay_service.py — nhận câu trả lời tự do (free-text) của user cho 1 câu hỏi trong ngân hàng đề, chấm điểm bằng LLM-as-judge dựa trên essay_key_points (rubric) đã có sẵn trong ngân hàng đề — KHÔNG để LLM tự đánh giá đúng/sai theo cảm tính, phải grounding vào rubric cụ thể
-[x] Prompt chấm điểm bắt buộc trả về theo cấu trúc: (1) các ý đã trả lời đúng, (2) các ý còn thiếu/sai so với essay_key_points, (3) gợi ý Điều/Khoản nên ôn lại
-[x] POST /api/essay/question — lấy 1 câu hỏi tự luận (qua question_bank_service, cùng logic luân phiên với 5a)
-[x] POST /api/essay/submit — nhận { question_id, user_answer: string }, trả về { matched_points: [], missing_points: [], feedback: string, suggested_dieu: [] }
-[x] Lưu lịch sử bài làm tự luận theo từng user (dùng cho Phase 7 weak-topics và Phase 9 evaluation)
+Phase 5b — Module tự luận (câu hỏi mở)
+[ ] essay_service.py — nhận câu trả lời tự do (free-text) của user cho 1 câu hỏi trong ngân hàng đề, chấm điểm bằng LLM-as-judge dựa trên essay_key_points (rubric) đã có sẵn trong ngân hàng đề — KHÔNG để LLM tự đánh giá đúng/sai theo cảm tính, phải grounding vào rubric cụ thể
+[ ] Prompt chấm điểm bắt buộc trả về theo cấu trúc: (1) các ý đã trả lời đúng, (2) các ý còn thiếu/sai so với essay_key_points, (3) gợi ý Điều/Khoản nên ôn lại
+[ ] POST /api/essay/question — lấy 1 câu hỏi tự luận (qua question_bank_service, cùng logic luân phiên với 5a)
+[ ] POST /api/essay/submit — nhận { question_id, user_answer: string }, trả về { matched_points: [], missing_points: [], feedback: string, suggested_dieu: [] }
+[ ] Lưu lịch sử bài làm tự luận theo từng user (dùng cho Phase 7 weak-topics và Phase 9 evaluation)
 
-Thiết kế chấm điểm thực tế (bổ sung so với thiết kế gốc):
-- Rubric (essay_key_points) được đánh số thứ tự và đưa vào prompt; LLM chỉ trả về mảng "results" (matched/missing) theo ĐÚNG vị trí, KHÔNG yêu cầu LLM tái tạo lại nguyên văn rubric — tránh rủi ro fuzzy-match sai lệch giữa text LLM trả về và rubric gốc. matched_points/missing_points được dựng lại từ chính rubric gốc theo vị trí, đảm bảo luôn khớp chính xác 100% và không bao giờ trùng lặp giữa 2 danh sách.
-- Gemini generateContent gọi với responseMimeType: "application/json" để đảm bảo output có cấu trúc, có fallback an toàn (toàn bộ rubric → missing_points) nếu JSON parse lỗi hoặc sai số lượng phần tử.
-- suggested_dieu KHÔNG do LLM tự sinh — trích trực tiếp bằng regex từ field "explanation" (Cơ sở pháp lý) đã có sẵn trong ngân hàng đề, đảm bảo không bao giờ gợi ý Điều không có căn cứ thật (đúng nguyên tắc RAG grounding ở Mục 4).
-- Luân phiên câu hỏi tự luận: scope toàn bộ 25 câu (không có quiz_set), loại trừ 5 câu gần nhất user đã được giao.
+Phase 6 — Gợi ý câu hỏi & chủ đề liên quan (cập nhật theo yêu cầu thực tế từ nhóm luật — gợi ý động theo câu hỏi vừa hỏi, không chỉ list tĩnh) — ĐÃ HOÀN THÀNH
+[x] Trạng thái cold-start (chưa hỏi gì, mới vào trang chat): dùng danh sách câu hỏi/tình huống thường gặp do nhóm sinh viên luật cung cấp (dạng file JSON seed) — giữ nguyên thiết kế gốc cho trường hợp này. LƯU Ý: ingestion/chat_suggestions_seed.json hiện là PLACEHOLDER (6 câu mẫu tự soạn), chưa phải bản chính thức từ nhóm luật — TODO thay bằng file thật khi có, cùng path/schema {id, text}, không cần sửa code.
+[x] GET /api/chat/suggestions — trả về danh sách soạn sẵn để hiển thị dạng chip bấm nhanh khi chưa có hội thoại nào
+[x] Gợi ý động sau khi có câu trả lời: sau khi RAG trả lời và trích dẫn dieu_number chính, lấy vector đã lưu sẵn của chunk đó trong Qdrant (không embed lại), tìm top-3 chunk legal_text khác gần nhất (cùng source_document, loại trừ chính chunk đang xét và các dieu_number đã có trong citations), sinh câu hỏi gợi ý bằng template hóa từ dieu_title (không gọi LLM thêm — tiết kiệm chi phí/độ trễ mỗi lượt chat). Trả trong POST /api/chat/query: suggested_followups: [{dieu_number, suggested_question}]
+[x] Giới hạn đã biết (accepted limitation, không phải bug): suggested_followups dùng vector similarity nên gợi ý liên quan về nội dung/chức năng (ví dụ cùng là "chức danh tố tụng") nhưng KHÔNG đảm bảo cùng Chương/Mục trong luật — test thực tế với câu hỏi về Thẩm phán (Điều 45) cho gợi ý Kiểm sát viên/Viện trưởng VKS (khác Chương) thay vì ưu tiên Thư ký Tòa án (cùng Chương) do văn phong "Nhiệm vụ, quyền hạn..." lặp khuôn mẫu gần giống nhau giữa các Chương khác nhau. Chấp nhận cho bản 05/09 vì gợi ý vẫn liên quan hợp lý về nội dung; có thể nâng cấp lên group theo Chương/Mục ở v2 nếu cần độ chính xác cấu trúc cao hơn (cần bổ sung metadata Chương/Mục, re-parse + re-embed).
+[x] Liên kết chủ đề liên quan trong related_articles (Phase 4): giữ nguyên như đã có — 1-2 Điều liên quan retrieve cùng lượt tìm kiếm, không trộn lẫn với cơ chế suggested_followups mới (2 field khác mục đích: related_articles là nguồn phụ hỗ trợ câu trả lời hiện tại, suggested_followups là gợi ý cho câu hỏi TIẾP THEO)
 
-Việc cần làm thủ công khi setup lại từ đầu (giống Phase 4/5a): chạy 1 lần file backend/migrations/0003_essay_attempts.sql trong Supabase SQL Editor.
-
-Test thủ công qua API (3 case bắt buộc, đều pass): (1) trả lời đầy đủ đúng ý → 5/5 matched_points, missing_points rỗng; (2) trả lời thiếu ý → chỉ đúng phần đã trả lời vào matched_points, phần thiếu vào missing_points, không báo sai ý đã đúng; (3) trả lời lạc đề hoàn toàn → toàn bộ rubric vào missing_points, feedback nêu rõ lạc đề, không cố "vớt" điểm.
-
-Phase 6 — Gợi ý câu hỏi & chủ đề liên quan (đã rút gọn để bù effort cho Phase 5b, xem frontend.md mục "ĐỐI CHIẾU SCOPE")
-[ ] Danh sách câu hỏi/tình huống thường gặp được soạn sẵn (do nhóm sinh viên luật cung cấp, dạng file JSON seed — không tự sinh động)
-[ ] GET /api/chat/suggestions — trả về danh sách soạn sẵn để hiển thị dạng chip bấm nhanh trên UI chat
-[ ] Liên kết chủ đề liên quan đơn giản: khi trả lời, hiển thị thêm 1-2 Điều liên quan được retrieve cùng lượt tìm kiếm (không cần model reasoning liên luật riêng, không cần lý do cá nhân hóa kiểu "vì bạn vừa hỏi X")
+Bug phát hiện lúc test Phase 6 (payload index thiếu + title truncation) — xem chi tiết ở ghi chú "Bug Phase 3" phía trên (Phase 5a). Tóm tắt riêng phần Phase 6: thiếu payload index cho source_document trên Qdrant gây lỗi 400 khi filter theo cùng source_document — đã sửa bằng cách tự động đảm bảo đủ 3 index (source_type, dieu_number, source_document) mỗi lần ensure_collection chạy (cả ingestion/vector_store.py và backend/app/core/config.py), không cần tạo tay nữa.
 
 Phase 7 — Dashboard cá nhân (bản rút gọn cho 05/09, xem frontend.md để biết bản đầy đủ dành cho v2)
 [ ] GET /api/dashboard/keywords-yesterday — query các câu hỏi user đã log trong ngày hôm trước, group theo dieu_number, trả về dạng danh sách (hiển thị tĩnh trên dashboard, không push notification)

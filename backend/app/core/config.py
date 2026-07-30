@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import AnyHttpUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
+from qdrant_client.models import Distance, PayloadSchemaType, VectorParams
 from supabase import Client, create_client
 
 from app.core.logging import get_logger
@@ -17,6 +17,7 @@ logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_VECTOR_SIZE = 768
 QUESTION_BANK_PATH = PROJECT_ROOT / "ingestion" / "question_bank.json"
+CHAT_SUGGESTIONS_SEED_PATH = PROJECT_ROOT / "ingestion" / "chat_suggestions_seed.json"
 
 
 class Settings(BaseSettings):
@@ -69,14 +70,23 @@ async def verify_supabase_connection(client: Client) -> None:
     await asyncio.to_thread(_check_connection)
 
 
+# Every payload field rag_service.py filters on needs a keyword index, or Qdrant rejects the
+# filtered query with a 400 - discovered incrementally as each new filter was added
+# (source_type/dieu_number in Phase 4, source_document in Phase 6). Kept in sync with
+# ingestion/vector_store.py's FILTERABLE_PAYLOAD_FIELDS.
+FILTERABLE_PAYLOAD_FIELDS = ("source_type", "dieu_number", "source_document")
+
+
 async def ensure_qdrant_collection(client: QdrantClient, collection_name: str) -> None:
     def _ensure_collection() -> None:
-        if client.collection_exists(collection_name):
-            return
+        if not client.collection_exists(collection_name):
+            client.create_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(size=DEFAULT_VECTOR_SIZE, distance=Distance.COSINE)
+            )
 
-        client.create_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(size=DEFAULT_VECTOR_SIZE, distance=Distance.COSINE)
-        )
+        for field_name in FILTERABLE_PAYLOAD_FIELDS:
+            client.create_payload_index(collection_name, field_name=field_name,
+                                         field_schema=PayloadSchemaType.KEYWORD)
 
     await asyncio.to_thread(_ensure_collection)

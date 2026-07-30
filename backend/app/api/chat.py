@@ -3,11 +3,17 @@ from fastapi import APIRouter, Depends, Request
 from app.core.config import Settings, get_settings
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
-from app.models.chat import ChatQueryRequest, ChatQueryResponse
+from app.models.chat import ChatQueryRequest, ChatQueryResponse, ChatSuggestion, ChatSuggestionsResponse
 from app.services.chat_log_service import log_chat_query
+from app.services.chat_suggestions_service import load_static_suggestions
 from app.services.rag_service import answer_question
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+@router.get("/suggestions", response_model=ChatSuggestionsResponse)
+async def get_chat_suggestions(current_user: AuthUser = Depends(require_supabase_user)) -> ChatSuggestionsResponse:
+    return ChatSuggestionsResponse(suggestions=[ChatSuggestion(**s) for s in load_static_suggestions()])
 
 
 @router.post("/query", response_model=ChatQueryResponse)
@@ -27,4 +33,5 @@ async def query_chat(
         answer=result.answer,
         citations=result.citations,
         related_articles=result.related_articles,
+        suggested_followups=result.suggested_followups,
     )
