@@ -27,9 +27,27 @@ không tìm thấy nội dung liên quan trong dữ liệu pháp luật hiện c
 5. Văn phong ngắn gọn, rõ ràng, đúng thuật ngữ pháp lý, phù hợp với sinh viên đang ôn tập."""
 
 
-def build_user_prompt(question: str, context_blocks: list[str]) -> str:
+def _format_recent_turns(recent_turns: list[dict[str, str]]) -> str:
+    return "\n\n".join(
+        f"Sinh viên hỏi: {turn['question']}\nTrợ lý đã trả lời: {turn['answer']}" for turn in recent_turns
+    )
+
+
+def build_user_prompt(question: str, context_blocks: list[str], recent_turns: list[dict[str, str]] | None = None) -> str:
+    # History is for conversational continuity ONLY (e.g. not repeating the previous answer
+    # verbatim) - it is explicitly NOT a legal source, so it's kept separate from NGU CANH and
+    # the system prompt's grounding rules still apply only to that section.
+    history_part = ""
+    if recent_turns:
+        history_part = (
+            "LỊCH SỬ HỘI THOẠI GẦN ĐÂY (chỉ để tham khảo mạch hội thoại, KHÔNG dùng làm nguồn nội "
+            "dung pháp lý - mọi nội dung pháp lý vẫn phải lấy từ NGỮ CẢNH bên dưới):\n"
+            f"{_format_recent_turns(recent_turns)}\n\n---\n\n"
+        )
+
     if not context_blocks:
         return (
+            f"{history_part}"
             f"Câu hỏi của sinh viên: {question}\n\n"
             "NGỮ CẢNH: (không tìm thấy nội dung liên quan)\n\n"
             "Hãy trả lời đúng theo quy tắc số 4 ở trên (thông báo không tìm thấy)."
@@ -37,6 +55,7 @@ def build_user_prompt(question: str, context_blocks: list[str]) -> str:
 
     joined_context = "\n\n---\n\n".join(context_blocks)
     return (
+        f"{history_part}"
         f"NGỮ CẢNH:\n\n{joined_context}\n\n"
         "---\n\n"
         f"Câu hỏi của sinh viên: {question}"

@@ -5,6 +5,7 @@ final answer text.
 """
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from supabase import Client
@@ -15,6 +16,39 @@ from app.services.rag_service import RagAnswer, RetrievedChunk
 logger = get_logger(__name__)
 
 CHAT_QUERY_LOGS_TABLE = "chat_query_logs"
+# How many prior turns of the SAME conversation feed into query rewriting + the final answer
+# prompt - deliberately small per requirements.md Phase 4 Extension ("khong phai toan bo lich
+# su") to avoid token bloat on long conversations.
+RECENT_TURNS_LIMIT = 3
+
+
+def get_recent_turns(supabase_client: Client, user_id: str, conversation_id: uuid.UUID) -> list[dict[str, str]]:
+    """Returns up to RECENT_TURNS_LIMIT prior turns of this conversation, oldest first, as
+    {"question", "answer"} pairs - the rewritten_question (self-contained) is preferred over the
+    raw question when available, since that's what the history should read like for the next
+    rewrite/generation step."""
+    try:
+        response = (
+            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+            .select("question, rewritten_question, answer")
+            .eq("user_id", user_id)
+            .eq("conversation_id", str(conversation_id))
+            .order("created_at", desc=True)
+            .limit(RECENT_TURNS_LIMIT)
+            .execute()
+        )
+    except Exception:
+        # Missing/unreachable history must degrade to "first turn of the conversation", not
+        # break the chat request - e.g. before migrations/0004_chat_multiturn.sql has been
+        # applied.
+        logger.exception(
+            "Failed to read conversation history (user_id=%s, conversation_id=%s) - "
+            "proceeding as if this is the first turn", user_id, conversation_id
+        )
+        return []
+
+    rows = list(reversed(response.data or []))
+    return [{"question": row.get("rewritten_question") or row["question"], "answer": row["answer"]} for row in rows]
 
 
 def _serialize_retrieved_chunk(chunk: RetrievedChunk) -> dict[str, Any]:
@@ -30,10 +64,13 @@ def _serialize_retrieved_chunk(chunk: RetrievedChunk) -> dict[str, Any]:
     }
 
 
-def log_chat_query(supabase_client: Client, user_id: str, question: str, result: RagAnswer) -> None:
+def log_chat_query(supabase_client: Client, user_id: str, conversation_id: uuid.UUID, question: str,
+                    rewritten_question: str, result: RagAnswer) -> None:
     row = {
         "user_id": user_id,
+        "conversation_id": str(conversation_id),
         "question": question,
+        "rewritten_question": rewritten_question,
         "answer": result.answer,
         "is_fallback": result.is_fallback,
         "used_academic_reference": result.used_academic_reference,

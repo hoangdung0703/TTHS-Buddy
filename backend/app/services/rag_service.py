@@ -281,7 +281,8 @@ def _is_fallback_answer(answer_text: str) -> bool:
     return "không tìm thấy nội dung liên quan" in answer_text.lower()
 
 
-def answer_question(question: str, settings: Settings, qdrant_client: QdrantClient) -> RagAnswer:
+def answer_question(question: str, settings: Settings, qdrant_client: QdrantClient,
+                     recent_turns: list[dict[str, str]] | None = None) -> RagAnswer:
     vector = embed_query(question, settings)
 
     legal_primary, legal_related = _retrieve_legal(qdrant_client, settings.qdrant_collection, question, vector)
@@ -317,7 +318,7 @@ def answer_question(question: str, settings: Settings, qdrant_client: QdrantClie
             retrieved_chunks=all_retrieved, used_academic_reference=False
         )
 
-    user_prompt = build_user_prompt(question, context_blocks)
+    user_prompt = build_user_prompt(question, context_blocks, recent_turns)
     answer_text = generate_answer(RAG_SYSTEM_PROMPT, user_prompt, settings)
 
     # The retrieval threshold is intentionally lenient (see LEGAL_SCORE_THRESHOLD), so
