@@ -21,6 +21,35 @@ Bảng màu editorial (be ấm + indigo-navy) — DUY NHẤT xuyên suốt toàn
 - Toàn bộ định nghĩa nằm ở `frontend/src/app/globals.css` (`:root`), KHÔNG có namespace Tailwind riêng cho landing nữa — mọi nơi dùng class ngữ nghĩa chuẩn (`bg-background`, `text-foreground`, `bg-primary`, `text-accent`...) tự động ăn đúng bảng màu này.
 - QUAN TRỌNG — màu mang Ý NGHĨA CHỨC NĂNG (đỏ/vàng/xanh theo ngưỡng điểm quiz, trạng thái đúng/sai) KHÔNG dùng token ngữ nghĩa ở trên — luôn hardcode trực tiếp Tailwind red-400/amber-400/emerald-600... (xem `progress-bar.tsx`, `quiz/page.tsx`) để không bao giờ đổi màu theo re-theme thương hiệu. Chỉ dùng màu cảnh báo (amber/đỏ nhạt) cho trạng thái cần chú ý (điểm thấp, cần ôn tập), không dùng cho mục đích trang trí.
 
+1.5. Mở rộng âm hưởng editorial sang UI chức năng (bổ sung 31/07/2026)
+
+Bối cảnh: bản đồng bộ token màu (mục 1 ở trên) chỉ thống nhất MÀU SẮC giữa Welcome/Sign-in/Sign-up và toàn app. Các thành phần thị giác khác của ngôn ngữ editorial (typeface pairing, hình khối nút/card, texture nền) ban đầu chỉ áp dụng ở 3 trang landing/auth, dùng component `card.tsx`/`button.tsx` mặc định kiểu shadcn thuần (rounded-md/rounded-lg, border rõ). Bản mở rộng này lan tỏa các yếu tố còn lại sang Sidebar/TopBar/Dashboard/Chat/Quiz/Essay, có cân nhắc mật độ thông tin — không áp y hệt Welcome vào mọi nơi.
+
+Quy tắc Card (component dùng chung, `components/ui/card.tsx`):
+- Default đã đổi thành `rounded-xl`, border cực mảnh `border-primary/[0.08]` (thay vì `border-border` rõ), kèm shadow mềm `shadow-[0_2px_20px_rgba(30,36,96,0.05)]` thay vì không có shadow.
+- Đây là default MỚI của chính component — mọi nơi dùng `<Card>` (Dashboard, Quiz, Essay) tự động ăn theo, không cần sửa từng trang. Khi thêm trang/feature mới dùng `<Card>`, không cần override thêm gì trừ khi có lý do đặc biệt.
+- Đã kiểm chứng bằng ảnh chụp: card xếp chồng nhiều lần liên tiếp (Quiz nhiều câu hỏi/màn hình) vẫn tách bạch rõ nhờ shadow + khoảng cách `space-y`/`gap`, không bị "loãng" dù border mờ hơn trước.
+
+Quy tắc hình dạng nút (Button, `components/ui/button.tsx`) — KHÔNG đổi default toàn cục:
+- Default của `<Button>` GIỮ NGUYÊN `rounded-md` — không đổi sang pill toàn cục, vì phần lớn nút trong Quiz/Essay/Dashboard là nút nhỏ lặp lại nhiều lần (đáp án, "Thử lại", "Ôn tập", "Câu hỏi tiếp theo") — pill hoá hàng loạt sẽ rối mắt hơn là editorial.
+- Pill (`rounded-full`) chỉ áp qua `className` cho các CTA chính, xuất hiện đúng 1 lần trên màn hình đó: nút "Hội thoại mới" (Sidebar), "Hỏi trợ lý AI" (Dashboard), "Nộp bài" (Quiz + Essay). Ô nhập chat và nút gửi trong Chat vốn đã là pill từ trước, không cần đổi.
+- Khi thêm CTA chính mới (1 nút nổi bật/màn hình, hành động trọng tâm): thêm `className="rounded-full"`. Khi thêm nút phụ/lặp lại nhiều lần: để nguyên default `rounded-md`, không tự ý pill hoá.
+
+Quy tắc serif — MẬT ĐỘ-AWARE (density-aware), đây là quy tắc dễ áp sai nhất, đọc kỹ trước khi thêm heading mới:
+- ĐƯỢC dùng `font-serif`: brand mark (logo Sidebar — `font-light`, dùng làm mốc "nhẹ nhất"), tiêu đề trang trong TopBar (`font-normal` — cố ý đậm hơn logo Sidebar 1 nấc để 2 chữ serif nằm sát nhau ở cùng vùng đầu trang không bị đọc thành cặp song sinh trùng lặp), heading chào mừng + `CardTitle` ở Dashboard (`font-light`, vì đây là heading xuất hiện ĐÚNG 1 LẦN/màn hình), heading phụ in đậm bên trong câu trả lời Chat dài (`FormattedAnswer.tsx`, `font-medium` — đậm hơn heading điều hướng vì đây là heading NỘI DUNG cần nổi bật giữa văn bản sans dài, không phải chrome UI).
+- TUYỆT ĐỐI KHÔNG dùng serif trong: nội dung câu hỏi/đáp án Quiz (kể cả nhãn "Câu 1", "Câu 2"... dù về mặt kỹ thuật đó cũng là `CardTitle`), nội dung câu hỏi/rubric/textarea Essay, `CardTitle` của các card kết quả Essay ("Ý đã trả lời đúng", "Ý còn thiếu / sai", "Nhận xét"), nội dung bong bóng chat (cả user và AI, trừ heading phụ nói trên). Lý do: đây đều là nhãn/nội dung LẶP LẠI NHIỀU LẦN trên cùng 1 màn hình hoặc cần quét nhanh khi làm bài có giới hạn — serif (đặc biệt font-light) làm chậm tốc độ đọc hơn sans, chỉ chấp nhận được cho heading xuất hiện 1 lần.
+- Quy tắc rút gọn khi thêm UI mới: heading/nhãn xuất hiện ĐÚNG 1 LẦN trên màn hình → cân nhắc serif. Heading/nhãn LẶP LẠI (item trong danh sách, câu hỏi trong bộ đề, mỗi tin nhắn chat) → luôn sans.
+
+Quy tắc gradient wash nền (background texture):
+- Bản gốc trên Welcome/Sign-in/Sign-up (`components/brand/BackgroundOrbs.tsx`) dùng `position: fixed`, không bị ancestor nào clip — dùng được nguyên bản cho các trang không có sidebar/topbar.
+- Trang có Sidebar/TopBar (Dashboard) KHÔNG dùng `fixed` + component đó — phải tự khai báo 2 div `absolute` trong 1 wrapper `relative isolate` (bắt buộc có `isolate`, xem lưu ý kỹ thuật bên dưới), định vị bằng `top-0`/`right-0`/`bottom-0`/`left-0` (KHÔNG dùng offset âm lớn kiểu `-top-40 -right-32` nếu wrapper có `overflow-hidden` — sẽ bị clip mất hoàn toàn, xem lưu ý kỹ thuật).
+- Cường độ chuẩn đã đo bằng pixel thật (không chỉ ước lượng opacity trong code): tại tâm hình tròn của orb gốc trên Welcome, delta so với nền là **~25 điểm RGB** (đo bằng `page.screenshot()` + đọc pixel qua `pngjs`, không phải nhìn mắt trên ảnh nén). Giá trị rgba dùng ở Dashboard (`rgba(30,36,96,0.17)` cho navy, `rgba(184,154,82,0.14)` cho gold, blur 64px/56px, kích thước 420px/360px) cho delta thực đo **~28 điểm RGB** — coi đây là mức chuẩn tham chiếu khi thêm gradient wash ở trang chức năng khác, KHÔNG suy luận độ đậm chỉ bằng cách đọc số opacity trong code (blur + gradient "transparent 70%" làm giảm alpha hiệu dụng rất nhiều so với con số danh nghĩa, xem lưu ý kỹ thuật).
+- Trang có mật độ đọc/thao tác cao (Quiz, Essay) và Chat (cuộn nội dung dài liên tục) — KHÔNG dùng gradient wash, giữ nền phẳng theo token màu. Chỉ Dashboard (nội dung ngắn, không cần tập trung cao) mới có wash.
+- **Lưu ý kỹ thuật quan trọng (đã tốn nhiều vòng debug để phát hiện, đọc kỹ trước khi tái tạo hiệu ứng này ở trang khác):**
+  1. Wrapper chứa orb phải có class `isolate` (tạo stacking context cục bộ). Thiếu `isolate`, `-z-10` của orb sẽ bubble lên tận root stacking context, và `<body>`'s `bg-background` (solid) sẽ vẽ đè lên trên orb ở MỌI nơi trên trang — orb render đúng, đúng màu, đúng vị trí trong DOM, nhưng hoàn toàn vô hình, kể cả ở opacity rất cao. Đây không phải lỗi "mờ quá", mà là lỗi paint-order — dễ nhầm là "chỉnh opacity chưa đủ" và chỉnh sai hướng.
+  2. Wrapper KHÔNG được set `overflow-hidden` nếu orb định vị bằng offset âm lớn (kiểu `-top-40`) — phần orb nằm ngoài biên wrapper sẽ bị cắt mất hoàn toàn trước khi tính tới opacity. Định vị bằng `top-0`/`right-0` (nằm trong biên) là cách an toàn hơn nếu vẫn muốn giữ `overflow-hidden`.
+  3. Tâm hình tròn thật sự nằm ở GIỮA bounding box (`top`/`right` + width/2, không phải ở góc `top-0 right-0` như đọc code tưởng) — khi đo/kiểm tra bằng mắt hoặc bằng pixel, phải tính đúng toạ độ tâm mới đánh giá đúng độ đậm, nếu không sẽ đo nhầm vào vùng rìa gần-trong-suốt của gradient và kết luận sai là "vô hình".
+
 Bố cục chung toàn app:
 - Sidebar trái cố định: logo "TTHS Buddy" + subtitle "Học tập · BLTTHS 2015", điều hướng chính (Tổng quan, Trợ lý AI), nút "Hội thoại mới", ô tìm kiếm hội thoại, danh sách lịch sử hội thoại (mỗi item có tiêu đề, tag chủ đề nhỏ, thời gian)
 - Top bar: breadcrumb/tiêu đề trang hiện tại bên trái, thông tin ngày giờ + avatar user bên phải
@@ -87,9 +116,9 @@ Streak "X ngày học liên tiếp":
 
 4. Component dùng chung
 - Pill/badge: bo tròn đầy đủ (rounded-full), padding ngang rộng hơn dọc, dùng cho citation tag, suggested question chip, category label
-- Card: nền be ấm nhạt (`bg-card`, không phải trắng tinh), border mỏng, bo góc rounded-lg, padding đồng nhất, không dùng shadow nặng
+- Card: nền be ấm nhạt (`bg-card`, không phải trắng tinh), border cực mảnh (`border-primary/[0.08]`), bo góc `rounded-xl`, shadow mềm, padding đồng nhất — đây là default hiện tại của `components/ui/card.tsx` (đã đổi từ `rounded-lg`/border rõ/không shadow, xem mục 1.5 để biết lý do và cách kiểm chứng)
 - Progress bar: bo tròn, màu theo ngưỡng — navy/primary khi tốt (≥75%), amber-400 khi trung bình (50-74%), red-400 khi cần chú ý (dưới 50%) — 2 mốc dưới luôn hardcode Tailwind, không đổi theo re-theme
-- Nút hành động phụ (VD "Ôn tập ngay"): outline hoặc nền nhạt, không cạnh tranh thị giác với nút hành động chính (VD "Hỏi trợ lý AI")
+- Nút hành động phụ (VD "Ôn tập ngay"): outline hoặc nền nhạt, `rounded-md` (default), không cạnh tranh thị giác với nút hành động chính (VD "Hỏi trợ lý AI", luôn `rounded-full` qua `className` — xem quy tắc pill chọn lọc ở mục 1.5)
 
 
 5. Nguyên tắc khi build (cho Claude Code)
