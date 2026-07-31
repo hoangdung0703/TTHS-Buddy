@@ -4,7 +4,9 @@ ingestion/ocr_fallback.py) rather than the SDK, and reuses the same retry-on-5xx
 """
 from __future__ import annotations
 
+import json
 import time
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -15,6 +17,9 @@ logger = get_logger(__name__)
 
 EMBED_CONTENT_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
 GENERATE_CONTENT_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+STREAM_GENERATE_CONTENT_URL_TEMPLATE = (
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
+)
 
 QUERY_EMBEDDING_TASK_TYPE = "RETRIEVAL_QUERY"
 OUTPUT_DIMENSIONALITY = 768  # must match the collection vector size and ingestion's embedding output
@@ -84,3 +89,46 @@ def generate_answer(system_prompt: str, user_prompt: str, settings: Settings, re
         raise RuntimeError(f"Gemini generateContent returned no content (finishReason={finish_reason})")
 
     return parts[0].get("text", "").strip()
+
+
+async def stream_generate_answer(system_prompt: str, user_prompt: str, settings: Settings) -> AsyncIterator[str]:
+    """Async generator yielding answer text deltas as they arrive from Gemini's SSE streaming
+    endpoint (?alt=sse) - used only for the final answer generation in the chat SSE path
+    (Phase 4 Extension), where the caller needs to forward partial text to the client as it's
+    generated. Every other Gemini call in this service stays on the plain (non-streaming)
+    generate_answer above, matching the rest of the codebase's sync httpx usage - only this one
+    call genuinely needs to hold a connection open and yield incrementally.
+    """
+    url = STREAM_GENERATE_CONTENT_URL_TEMPLATE.format(model=settings.gemini_chat_model)
+    body = {
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+        "generationConfig": {"temperature": 0.1}
+    }
+
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        async with client.stream(
+            "POST", url, params={"key": settings.google_api_key, "alt": "sse"}, json=body
+        ) as response:
+            if response.status_code >= 400:
+                error_body = await response.aread()
+                raise httpx.HTTPStatusError(
+                    f"Gemini streamGenerateContent failed with HTTP {response.status_code}: {error_body[:500]!r}",
+                    request=response.request, response=response
+                )
+
+            async for line in response.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                payload = line[len("data:"):].strip()
+                if not payload or payload == "[DONE]":
+                    continue
+
+                chunk = json.loads(payload)
+                candidates = chunk.get("candidates", [])
+                if not candidates:
+                    continue
+                for part in candidates[0].get("content", {}).get("parts", []):
+                    text = part.get("text")
+                    if text:
+                        yield text

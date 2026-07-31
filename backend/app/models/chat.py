@@ -28,17 +28,6 @@ class SuggestedFollowup(BaseModel):
     suggested_question: str
 
 
-class ChatQueryResponse(BaseModel):
-    answer: str
-    citations: list[Citation]
-    related_articles: list[RelatedArticle]
-    suggested_followups: list[SuggestedFollowup]
-    conversation_id: uuid.UUID
-    # Surfaced (not just logged) so a bad answer can be diagnosed as "rewrite went wrong" vs
-    # "retrieval went wrong" without needing direct Postgres access.
-    rewritten_question: str
-
-
 class ChatSuggestion(BaseModel):
     id: str
     text: str
@@ -46,3 +35,27 @@ class ChatSuggestion(BaseModel):
 
 class ChatSuggestionsResponse(BaseModel):
     suggestions: list[ChatSuggestion]
+
+
+# POST /api/chat/query is SSE (Phase 4 Extension) - one of these is the "data" payload of each
+# event, in this fixed order: citations -> answer_delta (one or more) -> suggested_followups ->
+# done. See rag_service.stream_answer_question for the event order guarantee.
+class ChatStreamCitationsEvent(BaseModel):
+    citations: list[Citation]
+    related_articles: list[RelatedArticle]
+    conversation_id: uuid.UUID
+    # Surfaced (not just logged) so a bad answer can be diagnosed as "rewrite went wrong" vs
+    # "retrieval went wrong" without needing direct Postgres access.
+    rewritten_question: str
+
+
+class ChatStreamAnswerDeltaEvent(BaseModel):
+    delta: str
+
+
+class ChatStreamSuggestedFollowupsEvent(BaseModel):
+    suggested_followups: list[SuggestedFollowup]
+
+
+class ChatStreamDoneEvent(BaseModel):
+    pass

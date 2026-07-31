@@ -16,6 +16,34 @@ export interface ChatQueryResponse {
   citations: Citation[];
 }
 
+export interface RelatedArticle {
+  dieu_number: string;
+  dieu_title: string | null;
+}
+
+export interface SuggestedFollowup {
+  dieu_number: string;
+  suggested_question: string;
+}
+
+// POST /api/chat/query is SSE (Phase 4 Extension) - one of these per event, in this fixed
+// order: citations -> answer_delta (one or more) -> suggested_followups -> done. Matches
+// backend/app/models/chat.py's ChatStream*Event models.
+export interface ChatStreamCitationsEvent {
+  citations: Citation[];
+  related_articles: RelatedArticle[];
+  conversation_id: string;
+  rewritten_question: string;
+}
+
+export interface ChatStreamAnswerDeltaEvent {
+  delta: string;
+}
+
+export interface ChatStreamSuggestedFollowupsEvent {
+  suggested_followups: SuggestedFollowup[];
+}
+
 export interface ChatSuggestion {
   id: string;
   text: string;

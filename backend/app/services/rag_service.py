@@ -10,6 +10,8 @@ academic content never appears in the `citations` field (which is legal-citation
 from __future__ import annotations
 
 import re
+import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,7 +20,15 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.core.config import Settings
 from app.core.logging import get_logger
-from app.models.chat import Citation, RelatedArticle, SuggestedFollowup
+from app.models.chat import (
+    ChatStreamAnswerDeltaEvent,
+    ChatStreamCitationsEvent,
+    ChatStreamDoneEvent,
+    ChatStreamSuggestedFollowupsEvent,
+    Citation,
+    RelatedArticle,
+    SuggestedFollowup,
+)
 from app.prompts.rag_prompts import (
     RAG_SYSTEM_PROMPT,
     build_user_prompt,
@@ -26,7 +36,7 @@ from app.prompts.rag_prompts import (
     format_legal_context_block,
 )
 from app.services.chat_suggestions_service import build_suggested_question
-from app.services.gemini_client import embed_query, generate_answer
+from app.services.gemini_client import embed_query, stream_generate_answer
 
 logger = get_logger(__name__)
 
@@ -91,6 +101,19 @@ class RagAnswer:
     suggested_followups: list[SuggestedFollowup]
     is_fallback: bool
     retrieved_chunks: list[RetrievedChunk]
+    used_academic_reference: bool
+
+
+@dataclass
+class RetrievalResult:
+    """Output of the retrieval phase, ahead of - and independent from - generation. Split out
+    from the old single-shot answer_question (Phase 4) so the SSE path (Phase 4 Extension) can
+    emit the "citations" event as soon as this is ready, without waiting for the model to start
+    generating."""
+    context_blocks: list[str]
+    legal_primary: list[RetrievedChunk]
+    legal_related: list[RetrievedChunk]
+    all_retrieved: list[RetrievedChunk]
     used_academic_reference: bool
 
 
@@ -281,8 +304,7 @@ def _is_fallback_answer(answer_text: str) -> bool:
     return "không tìm thấy nội dung liên quan" in answer_text.lower()
 
 
-def answer_question(question: str, settings: Settings, qdrant_client: QdrantClient,
-                     recent_turns: list[dict[str, str]] | None = None) -> RagAnswer:
+def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient) -> RetrievalResult:
     vector = embed_query(question, settings)
 
     legal_primary, legal_related = _retrieve_legal(qdrant_client, settings.qdrant_collection, question, vector)
@@ -309,37 +331,111 @@ def answer_question(question: str, settings: Settings, qdrant_client: QdrantClie
             chunk_text=payload["chunk_text"]
         ))
 
-    all_retrieved = legal_primary + legal_related + academic_chunks
+    return RetrievalResult(
+        context_blocks=context_blocks, legal_primary=legal_primary, legal_related=legal_related,
+        all_retrieved=legal_primary + legal_related + academic_chunks, used_academic_reference=bool(academic_chunks)
+    )
 
-    if not context_blocks:
+
+async def stream_answer_question(
+    question: str, conversation_id: uuid.UUID, settings: Settings, qdrant_client: QdrantClient, result: RagAnswer,
+    recent_turns: list[dict[str, str]] | None = None
+) -> AsyncIterator[tuple[str, ChatStreamCitationsEvent | ChatStreamAnswerDeltaEvent |
+                          ChatStreamSuggestedFollowupsEvent | ChatStreamDoneEvent]]:
+    """Streaming counterpart of the old answer_question (Phase 4 Extension - see
+    requirements.md). Yields (event_name, payload) tuples in the exact order the SSE contract
+    requires: citations -> answer_delta (one or more) -> suggested_followups -> done.
+
+    `result` is mutated in place with the final answer/citations/is_fallback/etc as a side
+    effect, for the caller to log to chat_query_logs after the stream ends - kept OUT of the
+    yielded events on purpose, since is_fallback/used_academic_reference/retrieved_chunks are
+    intentionally not part of the public API response (see requirements.md Phase 9: those two
+    fields are read only from chat_query_logs via the service role, never exposed to the client).
+
+    Citations are only trustworthy once we know the answer isn't actually a refusal disguised as
+    "context was found" (see the is_fallback comment on the old answer_question this replaces) -
+    generation can still refuse even when retrieval passed threshold. Since the system prompt
+    requires the fallback sentence to be used verbatim and first, buffering just the first
+    len(FALLBACK_ANSWER) characters of the stream is enough to decide correctly without waiting
+    for the full answer, so "citations" still goes out essentially immediately.
+    """
+    retrieval = retrieve_context(question, settings, qdrant_client)
+    result.retrieved_chunks = retrieval.all_retrieved
+
+    if not retrieval.context_blocks:
         logger.info("No context passed threshold for question, returning fallback answer")
-        return RagAnswer(
-            answer=FALLBACK_ANSWER, citations=[], related_articles=[], suggested_followups=[], is_fallback=True,
-            retrieved_chunks=all_retrieved, used_academic_reference=False
-        )
+        result.answer = FALLBACK_ANSWER
+        result.is_fallback = True
+        result.used_academic_reference = False
+        yield ("citations", ChatStreamCitationsEvent(
+            citations=[], related_articles=[], conversation_id=conversation_id, rewritten_question=question
+        ))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=FALLBACK_ANSWER))
+        yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
+        yield ("done", ChatStreamDoneEvent())
+        return
 
-    user_prompt = build_user_prompt(question, context_blocks, recent_turns)
-    answer_text = generate_answer(RAG_SYSTEM_PROMPT, user_prompt, settings)
+    user_prompt = build_user_prompt(question, retrieval.context_blocks, recent_turns)
 
-    # The retrieval threshold is intentionally lenient (see LEGAL_SCORE_THRESHOLD), so
-    # weakly-related chunks sometimes get passed as context even though none of them actually
-    # answer the question (e.g. shared keywords like "hon nhan" without being on-topic). The
-    # system prompt instructs the model to fall back explicitly in that case (rule 4) - when it
-    # does, trust that signal and clear citations/related_articles too, so the response never
-    # shows "sources" for an answer that admits it found nothing relevant.
+    buffer = ""
+    citations_sent = False
+    answer_parts: list[str] = []
+
+    async for text_chunk in stream_generate_answer(RAG_SYSTEM_PROMPT, user_prompt, settings):
+        answer_parts.append(text_chunk)
+
+        if citations_sent:
+            yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=text_chunk))
+            continue
+
+        buffer += text_chunk
+        if len(buffer) < len(FALLBACK_ANSWER):
+            continue  # not enough buffered yet to tell fallback apart from a real answer
+
+        is_fallback = _is_fallback_answer(buffer)
+        citations = [] if is_fallback else _build_citations(retrieval.legal_primary)
+        related_articles = [] if is_fallback else _build_related_articles(retrieval.legal_related)
+        yield ("citations", ChatStreamCitationsEvent(
+            citations=citations, related_articles=related_articles,
+            conversation_id=conversation_id, rewritten_question=question
+        ))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=buffer))
+        citations_sent = True
+
+    if not citations_sent:
+        # Whole answer was shorter than FALLBACK_ANSWER - decide now instead, on stream end.
+        is_fallback = _is_fallback_answer(buffer)
+        citations = [] if is_fallback else _build_citations(retrieval.legal_primary)
+        related_articles = [] if is_fallback else _build_related_articles(retrieval.legal_related)
+        yield ("citations", ChatStreamCitationsEvent(
+            citations=citations, related_articles=related_articles,
+            conversation_id=conversation_id, rewritten_question=question
+        ))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=buffer))
+
+    answer_text = "".join(answer_parts)
+    # Same trust-the-model's-own-refusal reasoning as the old answer_question: the retrieval
+    # threshold is intentionally lenient (see LEGAL_SCORE_THRESHOLD), so weakly-related chunks
+    # sometimes get passed as context even though none of them actually answer the question -
+    # when the model refuses anyway, clear citations/related_articles so the final logged/served
+    # answer never shows "sources" for a response that admits it found nothing relevant.
     is_fallback = _is_fallback_answer(answer_text)
-    citations = [] if is_fallback else _build_citations(legal_primary)
-    related_articles = [] if is_fallback else _build_related_articles(legal_related)
+    citations = [] if is_fallback else _build_citations(retrieval.legal_primary)
+    related_articles = [] if is_fallback else _build_related_articles(retrieval.legal_related)
 
     suggested_followups: list[SuggestedFollowup] = []
-    if not is_fallback and legal_primary:
+    if not is_fallback and retrieval.legal_primary:
         cited_keys = {(c.dieu_number, c.law_version) for c in citations}
         suggested_followups = _build_suggested_followups(
-            qdrant_client, settings.qdrant_collection, legal_primary[0], cited_keys
+            qdrant_client, settings.qdrant_collection, retrieval.legal_primary[0], cited_keys
         )
 
-    return RagAnswer(
-        answer=answer_text, citations=citations, related_articles=related_articles,
-        suggested_followups=suggested_followups, is_fallback=is_fallback,
-        retrieved_chunks=all_retrieved, used_academic_reference=(not is_fallback) and bool(academic_chunks)
-    )
+    result.answer = answer_text
+    result.citations = citations
+    result.related_articles = related_articles
+    result.suggested_followups = suggested_followups
+    result.is_fallback = is_fallback
+    result.used_academic_reference = (not is_fallback) and retrieval.used_academic_reference
+
+    yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=suggested_followups))
+    yield ("done", ChatStreamDoneEvent())

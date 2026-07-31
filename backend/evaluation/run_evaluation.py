@@ -72,14 +72,38 @@ def _sign_in_eval_user(supabase_url: str, anon_key: str, email: str, password: s
 
 
 def _call_chat_query(api_base_url: str, token: str, question: str) -> dict[str, Any]:
-    response = httpx.post(
-        f"{api_base_url}/api/chat/query",
+    """POST /api/chat/query is SSE (Phase 4 Extension - see requirements.md): reads the whole
+    stream and reassembles it into the same {"answer", "citations"} shape run_one() expects,
+    so the rest of this script's metric logic didn't need to change when the endpoint switched
+    from a plain JSON response to streaming."""
+    citations: list[dict[str, Any]] = []
+    answer_parts: list[str] = []
+    event_name: str | None = None
+
+    with httpx.stream(
+        "POST", f"{api_base_url}/api/chat/query",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         json={"question": question},
         timeout=60.0,
-    )
-    response.raise_for_status()
-    return response.json()
+    ) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if line == "":
+                event_name = None  # blank line ends one SSE event block
+                continue
+            if line.startswith("event:"):
+                event_name = line[len("event:"):].strip()
+            elif line.startswith("data:"):
+                data_raw = line[len("data:"):].strip()
+                if not data_raw:
+                    continue
+                data = json.loads(data_raw)
+                if event_name == "citations":
+                    citations = data.get("citations", [])
+                elif event_name == "answer_delta":
+                    answer_parts.append(data.get("delta", ""))
+
+    return {"answer": "".join(answer_parts), "citations": citations}
 
 
 def _read_log_fields(service_client: Any, user_id: str, question: str) -> dict[str, Any]:

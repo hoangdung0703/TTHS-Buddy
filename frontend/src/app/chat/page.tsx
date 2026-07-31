@@ -26,6 +26,15 @@ export default function ChatPage() {
   const [input, setInput] = useState<string>("");
   const [isSending, setIsSending] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  // Client-held for the lifetime of this chat session (Phase 4 Extension) - captured from the
+  // first "citations" SSE event and reused on every follow-up question so the backend can look
+  // up recent turns for query understanding/multi-turn context. Resets naturally whenever this
+  // component remounts, same lifecycle as `messages`.
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  // Distinguishes "waiting for the first byte" (show the typing-dots indicator) from "actively
+  // streaming into a message bubble" (show the bubble instead) - null before the first SSE event
+  // of the current request arrives, then the id of the assistant message being streamed into.
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -47,18 +56,52 @@ export default function ChatPage() {
     setMessages((current) => [...current, { id: createMessageId(), role: "user", content: trimmed }]);
     setIsSending(true);
 
-    try {
-      const response = await sendChatQuery(trimmed);
+    const assistantMessageId = createMessageId();
+    let assistantMessageStarted = false;
+
+    function ensureAssistantMessage(): void {
+      if (assistantMessageStarted) {
+        return;
+      }
+      assistantMessageStarted = true;
+      setStreamingMessageId(assistantMessageId);
       setMessages((current) => [
         ...current,
-        { id: createMessageId(), role: "assistant", content: response.answer, citations: response.citations }
+        { id: assistantMessageId, role: "assistant", content: "", citations: [] }
       ]);
+    }
+
+    try {
+      await sendChatQuery(trimmed, conversationId, {
+        onCitations: (event) => {
+          setConversationId(event.conversation_id);
+          ensureAssistantMessage();
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === assistantMessageId ? { ...message, citations: event.citations } : message
+            )
+          );
+        },
+        onDelta: (event) => {
+          ensureAssistantMessage();
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === assistantMessageId ? { ...message, content: message.content + event.delta } : message
+            )
+          );
+        },
+        onSuggestedFollowups: () => {
+          // Not surfaced in this UI yet (no per-answer follow-up chip slot exists) - the top
+          // static suggestion chips (GET /api/chat/suggestions) are unrelated and unaffected.
+        }
+      });
     } catch (submitError) {
       const message =
         submitError instanceof ApiError ? submitError.message : "Không thể lấy câu trả lời, vui lòng thử lại.";
       setError(message);
     } finally {
       setIsSending(false);
+      setStreamingMessageId(null);
     }
   }
 
@@ -91,7 +134,7 @@ export default function ChatPage() {
             )
           )}
 
-          {isSending ? (
+          {isSending && streamingMessageId === null ? (
             <div className="flex justify-start">
               <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
                 <span className="flex gap-1">

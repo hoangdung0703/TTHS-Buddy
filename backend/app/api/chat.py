@@ -1,15 +1,17 @@
 import uuid
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
-from app.models.chat import ChatQueryRequest, ChatQueryResponse, ChatSuggestion, ChatSuggestionsResponse
+from app.models.chat import ChatQueryRequest, ChatSuggestion, ChatSuggestionsResponse
 from app.services.chat_log_service import get_recent_turns, log_chat_query
 from app.services.chat_suggestions_service import load_static_suggestions
 from app.services.query_understanding_service import rewrite_question
-from app.services.rag_service import answer_question
+from app.services.rag_service import RagAnswer, stream_answer_question
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -19,13 +21,23 @@ async def get_chat_suggestions(current_user: AuthUser = Depends(require_supabase
     return ChatSuggestionsResponse(suggestions=[ChatSuggestion(**s) for s in load_static_suggestions()])
 
 
-@router.post("/query", response_model=ChatQueryResponse)
+def _sse_format(event: str, payload) -> str:  # noqa: ANN001 - payload is one of the ChatStream*Event models
+    return f"event: {event}\ndata: {payload.model_dump_json()}\n\n"
+
+
+@router.post("/query")
 async def query_chat(
     body: ChatQueryRequest,
     request: Request,
     current_user: AuthUser = Depends(require_supabase_user),
     settings: Settings = Depends(get_settings),
-) -> ChatQueryResponse:
+) -> StreamingResponse:
+    """SSE endpoint (Phase 4 Extension - see requirements.md). Event order: citations ->
+    answer_delta (one or more) -> suggested_followups -> done. The route stays thin per
+    requirements.md mục 4 ("khong viet logic don het vao route") - all retrieval/generation/
+    fallback logic lives in rag_service.stream_answer_question; this handler only does auth,
+    query understanding, SSE transport, and logging the final result once the stream ends.
+    """
     qdrant_client = request.app.state.qdrant_client
     supabase_client = request.app.state.supabase_client
 
@@ -33,14 +45,20 @@ async def query_chat(
     recent_turns = get_recent_turns(supabase_client, current_user.user_id, conversation_id)
     rewritten_question = rewrite_question(body.question, recent_turns, settings)
 
-    result = answer_question(rewritten_question, settings, qdrant_client, recent_turns=recent_turns)
-    log_chat_query(supabase_client, current_user.user_id, conversation_id, body.question, rewritten_question, result)
-
-    return ChatQueryResponse(
-        answer=result.answer,
-        citations=result.citations,
-        related_articles=result.related_articles,
-        suggested_followups=result.suggested_followups,
-        conversation_id=conversation_id,
-        rewritten_question=rewritten_question,
+    # Mutated in place by stream_answer_question as the stream progresses - holds the fields
+    # (is_fallback, used_academic_reference, retrieved_chunks) that are intentionally never sent
+    # over SSE, only logged (see requirements.md Phase 9).
+    result = RagAnswer(
+        answer="", citations=[], related_articles=[], suggested_followups=[],
+        is_fallback=False, retrieved_chunks=[], used_academic_reference=False
     )
+
+    async def event_stream() -> AsyncIterator[str]:
+        async for event_name, event_payload in stream_answer_question(
+            rewritten_question, conversation_id, settings, qdrant_client, result, recent_turns
+        ):
+            yield _sse_format(event_name, event_payload)
+
+        log_chat_query(supabase_client, current_user.user_id, conversation_id, body.question, rewritten_question, result)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

@@ -152,7 +152,7 @@ Retrieval phân tầng thật đã áp dụng (bổ sung so với thiết kế g
 
 Việc cần làm thủ công khi setup lại từ đầu (dự án không dùng ORM/migration runner): chạy 1 lần file backend/migrations/0001_chat_query_logs.sql trong Supabase SQL Editor để tạo bảng chat_query_logs trước khi logging hoạt động — lỗi log bị catch nên không crash API nếu bảng chưa tồn tại, nhưng log sẽ không được ghi.
 
-Phase 4 Extension — Streaming + Multi-turn Context + Query Understanding (sau deadline 05/09, cải thiện trải nghiệm, không còn giới hạn ngân sách API)
+Phase 4 Extension — Streaming + Multi-turn Context + Query Understanding — ĐÃ HOÀN THÀNH (sau deadline 05/09, cải thiện trải nghiệm, không còn giới hạn ngân sách API)
 Bối cảnh: Phase 4 gốc chỉ xử lý 1 câu hỏi độc lập, không có ngữ cảnh hội thoại, không viết tắt được, không streaming. Mở rộng theo 3 yêu cầu đã chốt.
 
 [x] Query Understanding — 1 lượt Gemini nhẹ chạy TRƯỚC retrieval, làm 2 việc trong cùng 1 lần gọi:
@@ -165,16 +165,23 @@ Bối cảnh: Phase 4 gốc chỉ xử lý 1 câu hỏi độc lập, không có
 
 [x] Multi-turn context: thêm conversation_id (client tạo/giữ theo phiên chat), migration mới thêm cột conversation_id vào chat_query_logs. Khi sinh câu trả lời cuối, đưa 2-3 lượt hỏi-đáp gần nhất (không phải toàn bộ lịch sử) vào prompt — tránh phình token khi hội thoại dài
 
-[ ] Streaming response: POST /api/chat/query chuyển sang SSE (Server-Sent Events). Thứ tự event:
+[x] Streaming response: POST /api/chat/query chuyển sang SSE (Server-Sent Events). Thứ tự event:
     1. event "citations" — gửi ngay khi retrieval xong (citations + related_articles đã có sẵn trước khi generation bắt đầu, không cần đợi)
     2. event "answer_delta" — token chảy dần trong lúc generation
     3. event "suggested_followups" — gửi khi generation xong
     4. event "done" — đóng stream
     Fallback (không tìm thấy): vẫn qua đúng luồng SSE, citations rỗng, answer_delta chứa câu fallback
+    LƯU Ý KIẾN TRÚC — TẠI SAO "citations" KHÔNG gửi ngay tức khắc như mô tả kỹ thuật SSE thông thường (phát hiện lúc implement, không có trong bản kế hoạch gốc, đọc kỹ trước khi sửa lại logic này):
+      - Nhắc lại bug gốc đã fix ở Phase 4 (xem dòng 150): threshold retrieval CỐ TÌNH lỏng (LEGAL_SCORE_THRESHOLD), nên context vẫn có thể "pass threshold" dù không thực sự đủ để trả lời — khi đó model được system prompt yêu cầu tự nhận ra và từ chối (dùng đúng câu FALLBACK_ANSWER) NGAY TRONG LÚC GENERATION, chứ retrieval không biết trước điều này. Bug gốc là: nếu cứ hiện citations mỗi khi retrieval "pass threshold" mà không kiểm tra model có từ chối hay không, sẽ hiện citation giả cho 1 câu trả lời tự nhận "không tìm thấy".
+      - Với luồng non-streaming cũ, việc này dễ giải quyết: đợi model sinh xong toàn bộ câu trả lời, kiểm tra `_is_fallback_answer(answer_text)` trên TOÀN VĂN, rồi mới quyết định trả citations thật hay rỗng.
+      - Với SSE, nếu làm đúng y hệt mô tả kỹ thuật chuẩn ("citations gửi ngay khi retrieval xong, không cần đợi generation"), sẽ TÁI PHÁT đúng bug đó qua 1 đường code mới — vì lúc đó chưa biết model có từ chối hay không.
+      - Giải pháp đã áp dụng (`rag_service.stream_answer_question`): buffer đúng `len(FALLBACK_ANSWER)` ký tự đầu tiên của answer_delta — hiện tại là 102 ký tự — trước khi chốt gửi event "citations". Dựa vào việc system prompt bắt buộc model dùng NGUYÊN VĂN câu FALLBACK_ANSWER làm mở đầu khi từ chối (không phải diễn giải lại), nên chỉ cần so khớp đúng 102 ký tự đầu là đủ để biết chắc model có từ chối hay không, không cần đợi hết câu trả lời.
+      - Đánh đổi: "citations" không còn gửi ở mili-giây đầu tiên tuyệt đối, mà trễ thêm khoảng thời gian sinh ra ~102 ký tự đầu (thực tế không đáng kể, thường nằm gọn trong chunk streaming đầu tiên của Gemini). Đổi lại, giữ nguyên bất biến quan trọng nhất của dự án (không bao giờ hiện "nguồn" cho câu trả lời tự nhận không có căn cứ) xuyên suốt cả 2 kiến trúc (non-streaming cũ và SSE mới).
+      - Đã verify bằng test thật (xem log verify bên dưới): cả nhánh trả lời có citations thật VÀ nhánh fallback đều gửi đúng citations tương ứng, không có trường hợp nào citations thật bị gửi rồi câu trả lời lại là fallback.
 
-[ ] Frontend: chuyển sang đọc SSE (EventSource hoặc fetch + ReadableStream), FormattedAnswer.tsx render tăng dần theo answer_delta. LƯU Ý RỦI RO: react-markdown parse markdown chưa hoàn chỉnh giữa chừng (ví dụ list chưa đóng) có thể render lệch tạm thời trong lúc stream — cần test kỹ, chấp nhận nhấp nháy nhẹ hoặc xử lý buffer hợp lý (ví dụ chỉ re-render markdown mỗi N ký tự/khi gặp ranh giới dòng, không re-render mỗi token)
+[x] Frontend: chuyển sang đọc SSE (fetch + ReadableStream, không dùng EventSource vì cần gửi Authorization header — EventSource không hỗ trợ custom header), FormattedAnswer.tsx render tăng dần theo answer_delta qua react-markdown re-render mỗi lần state cập nhật. Đã test qua browser thật: chụp màn hình giữa chừng lúc đang stream xác nhận nội dung bị cắt giữa câu (bằng chứng render tăng dần thật, không phải 1 lần paint), markdown không bị vỡ giữa chừng ở các điểm đã test (rủi ro nêu trong kế hoạch gốc không xảy ra trong các lần test, nhưng chưa test exhaustive mọi kiểu ngắt token).
 
-[ ] QUAN TRỌNG — cập nhật backend/evaluation/run_evaluation.py: script hiện gọi thẳng POST /api/chat/query dạng request/response thường, giờ endpoint là SSE — cần sửa để đọc hết stream, ghép lại thành answer + citations đầy đủ trước khi tính metric, không được để Phase 9 evaluation bị hỏng bởi thay đổi kiến trúc này. Chạy lại toàn bộ 29 câu test sau khi sửa, xác nhận số liệu không đổi so với trước (vì bản chất câu trả lời không đổi, chỉ đổi cách truyền tải).
+[x] QUAN TRỌNG — cập nhật backend/evaluation/run_evaluation.py: đã sửa `_call_chat_query()` đọc hết SSE stream, ghép answer_delta + lấy citations từ event "citations", trả về đúng shape `{"answer", "citations"}` như cũ để phần tính metric không cần đổi gì. Đã chạy lại toàn bộ 29 câu test thật (không mock) sau khi sửa — số liệu so với bản trước khi có streaming (dòng 264-268): exact_match_rate 95%→95% (giống hệt, cùng 1 câu fail cũ Nghị định 250 Điều 7 chưa xử lý), mean_recall 95%→95%, groundedness 100%→100%, correct-refusal 100%→100% (đủ cả 7/7 câu out_of_scope), academic-reference usage 100%→100%. mean_precision xê dịch nhẹ 38%→40.8% (biến thiên bình thường của LLM ở temperature 0.1, không phải regression — recall/exact_match mới là chỉ số quan trọng theo đúng ghi chú đã có ở dòng 268). Kết luận: streaming không làm đổi hành vi model, chỉ đổi cách truyền tải.
 
 Phase 5a — Module trắc nghiệm (MCQ) — ĐÃ HOÀN THÀNH
 Nguồn dữ liệu thật đã nhận từ nhóm luật: 2 file PDF —

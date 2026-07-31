@@ -12,7 +12,9 @@ import {
   withMockDelay
 } from "@/lib/mockData";
 import type {
-  ChatQueryResponse,
+  ChatStreamAnswerDeltaEvent,
+  ChatStreamCitationsEvent,
+  ChatStreamSuggestedFollowupsEvent,
   ChatSuggestion,
   DashboardStats,
   EssayQuestion,
@@ -84,15 +86,91 @@ export async function getChatSuggestions(): Promise<ChatSuggestion[]> {
   return apiFetch<ChatSuggestion[]>("/api/chat/suggestions");
 }
 
-export async function sendChatQuery(question: string): Promise<ChatQueryResponse> {
-  if (isMockDataEnabled()) {
-    return withMockDelay(resolveMockChatAnswer(question));
+export interface ChatStreamHandlers {
+  onCitations: (event: ChatStreamCitationsEvent) => void;
+  onDelta: (event: ChatStreamAnswerDeltaEvent) => void;
+  onSuggestedFollowups: (event: ChatStreamSuggestedFollowupsEvent) => void;
+}
+
+// Parses one complete "event: <name>\ndata: <json>" block (already split on the blank-line
+// separator by the caller) and dispatches it to the matching handler. Unknown/malformed blocks
+// (e.g. a stray "done" event, which carries no data the UI needs) are ignored rather than
+// thrown - a single unrecognized event must never abort an otherwise-successful stream.
+function dispatchSseBlock(block: string, handlers: ChatStreamHandlers): void {
+  let eventName: string | null = null;
+  let dataLine: string | null = null;
+
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) {
+      eventName = line.slice("event:".length).trim();
+    } else if (line.startsWith("data:")) {
+      dataLine = line.slice("data:".length).trim();
+    }
   }
 
-  return apiFetch<ChatQueryResponse>("/api/chat/query", {
+  if (eventName === null || dataLine === null || dataLine.length === 0) {
+    return;
+  }
+
+  const data = JSON.parse(dataLine) as unknown;
+  if (eventName === "citations") {
+    handlers.onCitations(data as ChatStreamCitationsEvent);
+  } else if (eventName === "answer_delta") {
+    handlers.onDelta(data as ChatStreamAnswerDeltaEvent);
+  } else if (eventName === "suggested_followups") {
+    handlers.onSuggestedFollowups(data as ChatStreamSuggestedFollowupsEvent);
+  }
+}
+
+export async function sendChatQuery(
+  question: string,
+  conversationId: string | null,
+  handlers: ChatStreamHandlers
+): Promise<void> {
+  if (isMockDataEnabled()) {
+    const mock = await withMockDelay(resolveMockChatAnswer(question));
+    handlers.onCitations({
+      citations: mock.citations,
+      related_articles: [],
+      conversation_id: conversationId ?? "mock-conversation",
+      rewritten_question: question
+    });
+    handlers.onDelta({ delta: mock.answer });
+    handlers.onSuggestedFollowups({ suggested_followups: [] });
+    return;
+  }
+
+  const authHeader = await getAuthHeader();
+  const response = await fetch(`${getApiBaseUrl()}/api/chat/query`, {
     method: "POST",
-    body: JSON.stringify({ question })
+    headers: { "Content-Type": "application/json", ...authHeader },
+    body: JSON.stringify(conversationId ? { question, conversation_id: conversationId } : { question })
   });
+
+  if (!response.ok || response.body === null) {
+    const errorMessage = await response.text();
+    throw new ApiError(response.status, errorMessage || `Request failed with status ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+
+    let separatorIndex = buffer.indexOf("\n\n");
+    while (separatorIndex !== -1) {
+      dispatchSseBlock(buffer.slice(0, separatorIndex), handlers);
+      buffer = buffer.slice(separatorIndex + 2);
+      separatorIndex = buffer.indexOf("\n\n");
+    }
+  }
 }
 
 export async function getQuizSets(): Promise<QuizSetSummary[]> {
