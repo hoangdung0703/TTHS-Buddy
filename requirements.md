@@ -267,6 +267,13 @@ Kết quả evaluation cuối cùng (backend/evaluation/results.json, sau khi đ
 - Academic-reference usage (n=2, câu phân tích liên ngành): 100%.
 - mean_precision thấp không phải dấu hiệu xấu: nhiều câu Nhóm B (analytical) được thiết kế để hệ thống trích thêm Điều liên quan ngoài Điều kỳ vọng tối giản trong ground truth (đúng ý đồ test độ sâu phân tích) - recall mới là chỉ số phản ánh đúng "có bỏ sót Điều quan trọng không".
 
+Sự cố phát hiện sau Phase 9 (31/07/2026) — frontend chạy mock data suốt từ Phase 8, không ai phát hiện qua nhiều lần "đã verify":
+- Triệu chứng: trong lúc mở rộng UI editorial cho các trang chức năng, phát hiện Dashboard luôn hiển thị đúng 3 số cố định (8 bài đã làm/34 Điều đã học/71%) bất kể tài khoản nào, và Chat luôn có xu hướng trả lời về cùng 1 chủ đề (suy đoán vô tội) bất kể câu hỏi thật sự là gì.
+- Nguyên nhân gốc: `frontend/.env.local` (file không track bởi git, không có lịch sử commit) mang `NEXT_PUBLIC_USE_MOCK_DATA=true` kể từ khi dựng UI ở Phase 8, và KHÔNG BAO GIỜ bị đổi về `false` — kể cả sau khi Phase 3-7 (backend thật) đã hoàn thành, kể cả tại thời điểm Phase 9 tự nhận "ĐÃ HOÀN THÀNH" với kết quả evaluation ở trên. `.env.example` (bản mẫu, có track) cũng mang default `true` từ đầu, không có ai đổi.
+- Lý do các lần "verify" trước đó không phát hiện ra: (1) `backend/evaluation/run_evaluation.py` gọi thẳng `POST /api/chat/query` qua `httpx` tới backend, hoàn toàn không đi qua frontend Next.js hay biến `NEXT_PUBLIC_USE_MOCK_DATA` — số liệu evaluation ở Phase 9 (citation accuracy 95%, groundedness 100%...) là THẬT và ĐÚNG cho riêng pipeline RAG/backend, nhưng chưa từng chứng minh gì về frontend. (2) Lượt E2E Playwright ở Phase 8 (dòng "Test end-to-end đầy đủ trên trình duyệt thật... không mock" — xem mục Phase 8 ở trên) chỉ nói "không mock SESSION" (đăng ký tài khoản thật, không giả JWT) — nhưng không kiểm tra riêng biến `NEXT_PUBLIC_USE_MOCK_DATA`, nên vẫn chạy trên mock data của `lib/mockData.ts` mà không ai để ý, vì mock data được thiết kế đủ giống thật (có citation, có điểm số, có luồng đầy đủ) nên không tạo lỗi console hay crash gì để lộ ra.
+- Đã sửa: `frontend/.env.local` → `false`; `.env.example` đổi default → `false` kèm comment cảnh báo rõ (xem file, mục biến môi trường). Verify lại bằng E2E hoàn toàn sạch: backend `uvicorn` thật (xác nhận kết nối Supabase/Qdrant thật lúc khởi động) + tài khoản Supabase thật tạo mới qua `/register` + 3 câu hỏi chat khác nhau ra 3 câu trả lời/trích dẫn khác nhau (Điều 13; Điều 118/459/TT01; Điều 165/42/TT01) + Dashboard tài khoản mới hiển thị đúng `0/0/0%` (khác hẳn số cố định của mock). Tài khoản test đã xoá sau khi verify xong.
+- Bài học (áp dụng từ đây về sau): số liệu "đã verify bằng script/API riêng lẻ" (như evaluation Phase 9) KHÔNG thay thế được một lượt verify E2E "sạch" qua đúng giao diện người dùng thật — tài khoản Supabase thật (không mock session), VÀ `NEXT_PUBLIC_USE_MOCK_DATA=false` (không mock data) CÙNG LÚC. Thiếu 1 trong 2 điều kiện, vẫn có thể "verify" mà không phát hiện được lớp mock đang che phủ. Xem mục 8 (Tiêu chí nghiệm thu) — đã bổ sung yêu cầu này áp dụng cho mọi Phase từ nay.
+
 
 6. Tiêu chuẩn code
 
@@ -318,6 +325,8 @@ Phase 6 — Gợi ý: Chip gợi ý hiển thị đúng, bấm vào thì tự đ
 Phase 7 — Dashboard: Danh sách từ khóa phản ánh đúng câu hỏi đã log ngày hôm trước; danh sách chủ đề yếu cập nhật sau khi nộp bài trắc nghiệm hoặc bài tự luận.
 Phase 8 — Frontend: Chạy được đầy đủ luồng trên trình duyệt: đăng ký → đăng nhập → chat → trắc nghiệm → tự luận → dashboard, điều hướng qua sidebar đúng như frontend.md.
 Phase 9 — Đánh giá: Script đánh giá chạy được trên bộ test cố định, xuất ra số liệu độ chính xác trích dẫn / groundedness / tỷ lệ từ chối đúng, dùng được cho bài báo.
+
+Bổ sung sau sự cố 31/07/2026 (xem chi tiết ở cuối mục 5, sau kết quả evaluation Phase 9) — áp dụng cho MỌI Phase kể từ nay, không riêng Phase 9: mỗi Phase lớn (hoặc mỗi lần tuyên bố "đã verify bằng dữ liệu thật") bắt buộc có ít nhất 1 lượt verify E2E "sạch" qua giao diện người dùng thật trước khi coi là xong — nghĩa là ĐỒNG THỜI: (1) tài khoản Supabase thật, không mock session/JWT giả, VÀ (2) `NEXT_PUBLIC_USE_MOCK_DATA=false`, không phục vụ từ `lib/mockData.ts`. Verify qua script/API riêng lẻ (như `run_evaluation.py` gọi thẳng backend) là cần thiết nhưng KHÔNG đủ — nó không chứng minh được gì về đường đi qua frontend thật.
 
 
 9. Ngoài phạm vi (Không triển khai — để dành cho v2 / hướng phát triển)
