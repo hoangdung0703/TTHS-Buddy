@@ -35,6 +35,19 @@ APPENDIX_HEADING_PATTERN = re.compile(r"^PHỤ LỤC(\s+[IVXLCDM]+)?\s*$", re.MU
 DIEU_PATTERN = re.compile(r"^[ĐÐ]i[êề]u\s+(\d+[a-z]?)\.\s*(.+)$", re.MULTILINE)
 KHOAN_PATTERN = re.compile(r"^(\d{1,2})\.\s+", re.MULTILINE)
 
+# Chuong/Muc headings only ever appear as a bare heading line - the roman numeral alone for
+# Chuong ("Chuong I"), roman-or-arabic for Muc ("Muc I" in Bo luat TTHS, "Muc 1." in BLHS) -
+# never with trailing text on the same line for Chuong, and only the numbered-with-dot form
+# carries same-line title text for Muc. Anchoring to a bare/numbered-only line start is
+# required, not optional: real body text cross-references a chapter by number too (e.g.
+# "...quy dinh tai Chuong XIII cua Bo luat nay" in BLHS, "...theo quy dinh tai Chuong XXXIII
+# cua Bo luat nay" in Bo luat TTHS), and when such a reference happens to start a wrapped
+# line, a loose "^Chuong\s+[IVXLCDM]+" pattern matches it as if it were a second, bogus
+# heading for that chapter number - confirmed by direct inspection of extracted text from
+# both documents before this pattern was tightened.
+CHUONG_PATTERN = re.compile(r"^Chương\s+([IVXLCDM]+)\s*$", re.MULTILINE)
+MUC_PATTERN = re.compile(r"^Mục\s+([IVXLCDM]+|\d+)\.?[ \t]*", re.MULTILINE)
+
 # A Dieu longer than this is split into per-Khoan chunks instead of staying as one chunk.
 LONG_DIEU_CHAR_THRESHOLD = 2500
 
@@ -135,6 +148,71 @@ def _strip_page_number_noise(text: str) -> str:
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     cleaned = TRAILING_PAGE_NUMBER_PATTERN.sub("", cleaned).strip()
     return cleaned
+
+
+def _heading_title_span(text: str, match: re.Match, sorted_marker_positions: list[int]) -> str:
+    """A Chuong/Muc heading's title runs from the end of the heading match to wherever the
+    next marker (another Chuong, another Muc, or a Dieu) starts - real drafting never puts
+    ordinary body prose directly under a bare section heading, so this boundary is exact and
+    needs no wrap-continuation heuristics like the Dieu title does."""
+    next_pos = next((p for p in sorted_marker_positions if p > match.start()), len(text))
+    return _strip_page_number_noise(text[match.end():next_pos])
+
+
+def _find_chuong_muc_events(
+    text: str, dieu_starts: list[int]
+) -> tuple[list[tuple[int, str, str]], list[tuple[int, str, str]]]:
+    """Returns (chuong_events, muc_events), each a list of (start_offset, number, title) in
+    document order, restricted to `text` (the same appendix-truncated span Dieu detection
+    already uses - Chuong/Muc headings inside an appendix, if any, are not real document
+    structure either)."""
+    chuong_matches = list(CHUONG_PATTERN.finditer(text))
+    muc_matches = list(MUC_PATTERN.finditer(text))
+    marker_positions = sorted(
+        [m.start() for m in chuong_matches] + [m.start() for m in muc_matches] + dieu_starts
+    )
+    chuong_events = [
+        (m.start(), m.group(1), _heading_title_span(text, m, marker_positions)) for m in chuong_matches
+    ]
+    muc_events = [
+        (m.start(), m.group(1), _heading_title_span(text, m, marker_positions)) for m in muc_matches
+    ]
+    return chuong_events, muc_events
+
+
+def _assign_chuong_muc(
+    dieu_starts: list[int],
+    chuong_events: list[tuple[int, str, str]],
+    muc_events: list[tuple[int, str, str]]
+) -> list[tuple[str | None, str | None, str | None, str | None]]:
+    """For each Dieu start offset (in the same order as dieu_starts), returns the
+    (chuong_number, chuong_title, muc_number, muc_title) in force at that point - the nearest
+    preceding Chuong/Muc heading. Muc numbering restarts inside each Chuong (e.g. BLHS has a
+    "Muc 1" under several different Chuong), so muc is reset to None whenever a new Chuong
+    marker is crossed, even before any Muc marker follows it."""
+    assignments: list[tuple[str | None, str | None, str | None, str | None]] = []
+    ci = 0
+    mi = 0
+    current_chuong_start = -1
+    current_chuong: tuple[str | None, str | None] = (None, None)
+    current_muc: tuple[str | None, str | None] = (None, None)
+
+    for start in dieu_starts:
+        while ci < len(chuong_events) and chuong_events[ci][0] <= start:
+            current_chuong_start, cnum, ctitle = chuong_events[ci]
+            current_chuong = (cnum, ctitle)
+            current_muc = (None, None)
+            ci += 1
+
+        while mi < len(muc_events) and muc_events[mi][0] <= start:
+            muc_start, mnum, mtitle = muc_events[mi]
+            if muc_start > current_chuong_start:
+                current_muc = (mnum, mtitle)
+            mi += 1
+
+        assignments.append((current_chuong[0], current_chuong[1], current_muc[0], current_muc[1]))
+
+    return assignments
 
 
 def _merge_wrapped_title_khoan_aware(dieu_title: str, body_after_title_line: str) -> tuple[str, int]:
@@ -299,9 +377,13 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
     dieu_search_text = full_text[:appendix_match.start()] if appendix_match else full_text
 
     matches = list(DIEU_PATTERN.finditer(dieu_search_text))
+    dieu_starts = [m.start() for m in matches]
+    chuong_events, muc_events = _find_chuong_muc_events(dieu_search_text, dieu_starts)
+    chuong_muc_assignments = _assign_chuong_muc(dieu_starts, chuong_events, muc_events)
     chunks: list[dict[str, Any]] = []
 
     for i, match in enumerate(matches):
+        chuong_number, chuong_title, muc_number, muc_title = chuong_muc_assignments[i]
         dieu_number = match.group(1)
         # Strip a page number fused directly onto the captured line-1 title (e.g. "...hinh
         # su10") before any wrap-merge logic runs - same noise pattern as mid-title page
@@ -333,6 +415,10 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
                 "dieu_number": dieu_number,
                 "dieu_title": dieu_title,
                 "khoan_number": khoan_number,
+                "chuong_number": chuong_number,
+                "chuong_title": chuong_title,
+                "muc_number": muc_number,
+                "muc_title": muc_title,
                 "chunk_index": None,
                 "section_heading": None,
                 "chunk_text": chunk_text,

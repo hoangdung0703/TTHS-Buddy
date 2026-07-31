@@ -27,7 +27,7 @@ UPSERT_BATCH_SIZE = 100
 # rejects the filtered query with a 400 - discovered incrementally as each new filter was added
 # (source_type/dieu_number in Phase 4, source_document in Phase 6), so collected here and
 # (re)created on every ensure_collection call rather than left as one-off manual commands.
-FILTERABLE_PAYLOAD_FIELDS = ("source_type", "dieu_number", "source_document")
+FILTERABLE_PAYLOAD_FIELDS = ("source_type", "dieu_number", "source_document", "chuong_number")
 
 
 def create_qdrant_client() -> QdrantClient:
@@ -72,6 +72,10 @@ def chunk_to_point(chunk: dict[str, Any], vector: list[float]) -> PointStruct:
         "dieu_number": chunk["dieu_number"],
         "dieu_title": chunk["dieu_title"],
         "khoan_number": chunk["khoan_number"],
+        "chuong_number": chunk.get("chuong_number"),
+        "chuong_title": chunk.get("chuong_title"),
+        "muc_number": chunk.get("muc_number"),
+        "muc_title": chunk.get("muc_title"),
         "chunk_index": chunk["chunk_index"],
         "section_heading": chunk["section_heading"],
         "chunk_text": chunk["chunk_text"],
