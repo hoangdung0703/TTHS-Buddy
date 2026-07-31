@@ -51,7 +51,7 @@ export function Sidebar({ userLabel }: SidebarProps) {
           <Scale className="h-5 w-5" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-foreground">TTHS Buddy</p>
+          <p className="font-serif text-base font-light tracking-tight text-foreground">TTHS Buddy</p>
           <p className="text-xs text-muted-foreground">Học tập · BLTTHS 2015</p>
         </div>
       </div>
@@ -66,7 +66,7 @@ export function Sidebar({ userLabel }: SidebarProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -82,7 +82,7 @@ export function Sidebar({ userLabel }: SidebarProps) {
       <div className="px-3 pt-4">
         <Link
           href="/chat"
-          className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          className="flex w-full items-center justify-center gap-2 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
         >
           <Plus className="h-4 w-4" />
           Hội thoại mới

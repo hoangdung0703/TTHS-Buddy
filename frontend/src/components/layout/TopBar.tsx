@@ -37,7 +37,7 @@ export function TopBar({ title, userLabel }: TopBarProps) {
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-6">
-      <h1 className="text-lg font-semibold text-foreground">{title}</h1>
+      <h1 className="font-serif text-lg font-normal tracking-tight text-foreground">{title}</h1>
 
       <div className="flex items-center gap-4">
         <span className="text-sm text-muted-foreground">{formatVietnameseDateTime(new Date())}</span>

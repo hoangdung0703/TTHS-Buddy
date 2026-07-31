@@ -98,7 +98,7 @@ export default function EssayPage() {
 
               {result === null ? (
                 <Button
-                  className="w-full"
+                  className="w-full rounded-full"
                   disabled={answer.trim().length === 0 || isSubmitting}
                   onClick={() => void handleSubmit()}
                 >

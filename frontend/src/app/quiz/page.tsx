@@ -208,7 +208,11 @@ export default function QuizPage() {
             {error !== null ? (
               <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
             ) : null}
-            <Button className="w-full" disabled={!allAnswered || isSubmitting} onClick={() => void handleSubmit()}>
+            <Button
+              className="w-full rounded-full"
+              disabled={!allAnswered || isSubmitting}
+              onClick={() => void handleSubmit()}
+            >
               {isSubmitting ? "Đang chấm điểm..." : "Nộp bài"}
             </Button>
           </div>

@@ -37,7 +37,7 @@ export function FormattedAnswer({ text }: FormattedAnswerProps) {
 
         if (isHeading) {
           return (
-            <p key={blockIndex} className="font-semibold text-foreground">
+            <p key={blockIndex} className="font-serif text-base font-medium tracking-tight text-foreground">
               {block.trim().slice(2, -2)}
             </p>
           );

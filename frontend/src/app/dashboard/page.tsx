@@ -63,15 +63,26 @@ export default function DashboardPage() {
 
   return (
     <AuthenticatedLayout title="Tổng quan học tập">
-      <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
+      <div className="relative isolate mx-auto max-w-6xl space-y-6 px-6 py-8">
+        <div
+          className="pointer-events-none absolute right-0 top-0 -z-10 h-[420px] w-[420px] rounded-full"
+          style={{ background: "radial-gradient(circle, rgba(30,36,96,0.17) 0%, transparent 70%)", filter: "blur(64px)" }}
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none absolute bottom-0 left-0 -z-10 h-[360px] w-[360px] rounded-full"
+          style={{ background: "radial-gradient(circle, rgba(184,154,82,0.14) 0%, transparent 70%)", filter: "blur(56px)" }}
+          aria-hidden="true"
+        />
+
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-semibold text-foreground">
+            <h2 className="font-serif text-2xl font-light tracking-tight text-foreground">
               {getGreeting(new Date().getHours())}, {getStudentDisplayName(email)}
             </h2>
             <p className="text-sm text-muted-foreground">Đây là tổng quan học tập của bạn.</p>
           </div>
-          <Button asChild>
+          <Button asChild className="rounded-full">
             <Link href="/chat">
               <MessageSquare className="mr-2 h-4 w-4" />
               Hỏi trợ lý AI
@@ -141,7 +152,7 @@ export default function DashboardPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Từ khoá hôm qua</CardTitle>
+                  <CardTitle className="font-serif text-base font-light tracking-tight">Từ khoá hôm qua</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {data.keywords.length === 0 ? (
@@ -162,7 +173,7 @@ export default function DashboardPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Tiến độ trắc nghiệm</CardTitle>
+                  <CardTitle className="font-serif text-base font-light tracking-tight">Tiến độ trắc nghiệm</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-baseline gap-2">
@@ -178,7 +189,7 @@ export default function DashboardPage() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>Chủ đề cần ôn lại</CardTitle>
+                  <CardTitle className="font-serif text-base font-light tracking-tight">Chủ đề cần ôn lại</CardTitle>
                   <Badge variant="warning">{data.weakTopics.length} chủ đề</Badge>
                 </div>
               </CardHeader>
