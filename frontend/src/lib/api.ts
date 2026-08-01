@@ -1,4 +1,5 @@
 import {
+  deleteMockConversation,
   gradeMockEssay,
   gradeMockQuiz,
   MOCK_CHAT_SUGGESTIONS,
@@ -9,6 +10,7 @@ import {
   MOCK_QUIZ_QUESTIONS,
   MOCK_QUIZ_SETS,
   MOCK_WEAK_TOPICS,
+  renameMockConversation,
   resolveMockChatAnswer,
   resolveMockConversationDetail,
   withMockDelay
@@ -79,6 +81,12 @@ export async function apiFetch<TResponse>(path: string, init: RequestInit = {}):
   if (!response.ok) {
     const errorMessage = await response.text();
     throw new ApiError(response.status, errorMessage || `Request failed with status ${response.status}`);
+  }
+
+  // DELETE/PATCH conversation routes return 204 No Content - response.json() would throw on the
+  // empty body, so short-circuit instead of parsing.
+  if (response.status === 204) {
+    return undefined as TResponse;
   }
 
   return (await response.json()) as TResponse;
@@ -195,6 +203,36 @@ export async function getConversationDetail(conversationId: string): Promise<Con
   }
 
   return apiFetch<ConversationDetailResponse>(`/api/chat/conversations/${conversationId}`);
+}
+
+// Feature nhỏ - xóa hội thoại (see requirements.md "Xóa/đổi tên hội thoại + Sao chép câu trả
+// lời"). Backend returns 204 No Content on success, 404 if the id doesn't exist or belongs to
+// another user (same ownership-hides-behind-404 pattern as GET detail).
+export async function deleteConversation(conversationId: string): Promise<void> {
+  if (isMockDataEnabled()) {
+    deleteMockConversation(conversationId);
+    await withMockDelay(undefined);
+    return;
+  }
+
+  await apiFetch<void>(`/api/chat/conversations/${conversationId}`, { method: "DELETE" });
+}
+
+// Feature nhỏ - đổi tên hội thoại. An empty/whitespace-only title tells the backend to clear the
+// custom title (falls back to the auto-generated one from the first question) - the caller
+// should re-fetch getConversations() afterward to pick up whichever title the server resolved,
+// rather than guessing the fallback client-side.
+export async function renameConversation(conversationId: string, title: string): Promise<void> {
+  if (isMockDataEnabled()) {
+    renameMockConversation(conversationId, title);
+    await withMockDelay(undefined);
+    return;
+  }
+
+  await apiFetch<void>(`/api/chat/conversations/${conversationId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title })
+  });
 }
 
 // GET /api/legal/articles/{dieu_number} - the citation-pill "read full article" feature (see

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Scale, SendHorizontal } from "lucide-react";
+import { AlertCircle, Check, Copy, Scale, SendHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { CitationList } from "@/components/chat/CitationList";
@@ -14,6 +14,8 @@ interface ChatMessage {
   content: string;
   citations?: Citation[];
 }
+
+const COPY_FEEDBACK_DURATION_MS = 1800;
 
 function createMessageId(): string {
   return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -43,6 +45,9 @@ export function ChatView({ conversationId }: ChatViewProps) {
   // streaming into a message bubble" (show the bubble instead) - null before the first SSE event
   // of the current request arrives, then the id of the assistant message being streamed into.
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  // Feature nhỏ - "Sao chép" button transient feedback: which assistant message's copy just
+  // succeeded, reset after COPY_FEEDBACK_DURATION_MS so the icon/label reverts on its own.
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -160,6 +165,17 @@ export function ChatView({ conversationId }: ChatViewProps) {
     }
   }
 
+  // Copies message.content only - citations live in a separate field/UI block (CitationList),
+  // never interpolated into content, so this is already "answer text without citation pill" with
+  // no extra stripping needed.
+  async function handleCopy(messageId: string, content: string): Promise<void> {
+    await navigator.clipboard.writeText(content);
+    setCopiedMessageId(messageId);
+    setTimeout(() => {
+      setCopiedMessageId((current) => (current === messageId ? null : current));
+    }, COPY_FEEDBACK_DURATION_MS);
+  }
+
   return (
     <div className="mx-auto flex h-full max-w-4xl flex-col px-6 py-6">
       <div className="flex-1 space-y-6 overflow-y-auto pr-1">
@@ -215,7 +231,28 @@ export function ChatView({ conversationId }: ChatViewProps) {
           ) : (
             <div key={message.id} className="flex justify-start">
               <div className="w-full max-w-[85%] rounded-2xl border border-border bg-card px-4 py-4">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">TTHS Buddy · AI</p>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground">TTHS Buddy · AI</p>
+                  {message.content.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleCopy(message.id, message.content)}
+                      className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      {copiedMessageId === message.id ? (
+                        <>
+                          <Check className="h-3.5 w-3.5" />
+                          Đã sao chép
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          Sao chép
+                        </>
+                      )}
+                    </button>
+                  ) : null}
+                </div>
                 <FormattedAnswer text={message.content} />
                 <CitationList citations={message.citations ?? []} />
               </div>

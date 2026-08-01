@@ -107,6 +107,23 @@ export const MOCK_CONVERSATIONS: ConversationSummary[] = [
   }
 ];
 
+// Feature nhỏ - xóa/đổi tên hội thoại: mutate MOCK_CONVERSATIONS in place (not reassigned) so
+// mock mode exercises the same delete/rename UX as the real backend instead of silently no-oping.
+export function deleteMockConversation(conversationId: string): void {
+  const index = MOCK_CONVERSATIONS.findIndex((conversation) => conversation.conversation_id === conversationId);
+  if (index !== -1) {
+    MOCK_CONVERSATIONS.splice(index, 1);
+  }
+}
+
+export function renameMockConversation(conversationId: string, title: string): void {
+  const conversation = MOCK_CONVERSATIONS.find((item) => item.conversation_id === conversationId);
+  const trimmed = title.trim();
+  if (conversation && trimmed.length > 0) {
+    conversation.title = trimmed;
+  }
+}
+
 export function resolveMockConversationDetail(conversationId: string): ConversationDetailResponse {
   const summary = MOCK_CONVERSATIONS.find((conversation) => conversation.conversation_id === conversationId);
   const question = summary?.title ?? "Câu hỏi mẫu";

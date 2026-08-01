@@ -383,3 +383,13 @@ Chấm tự luận hoàn toàn tự do không dựa trên rubric (essay_key_poin
 Feature nhỏ — Sidebar mobile responsive + Chat empty state (sau deadline 05/09)
 [ ] Sidebar không tự thu gọn ở mobile viewport (< tablet) — hạn chế có sẵn của AuthenticatedLayout toàn app, phát hiện lần đầu lúc verify Phase 5a/5b v2 Bước 1, lần 2 lúc verify Phase 7 v2 dashboard mobile. Cần: hamburger menu hoặc drawer/overlay pattern chuẩn cho mobile, không hiển thị sidebar cố định chiếm màn hình nhỏ như hiện tại
 [ ] Chat empty state: khi vào /chat lần đầu (chưa có tin nhắn nào), hiện hướng dẫn ngắn gọn thay vì màn hình trống hoàn toàn — ví dụ: "Hỏi trực tiếp về 1 Điều luật, hoặc hỏi phân tích sâu — mọi câu trả lời đều có trích dẫn", kết hợp với suggestion chips tĩnh đã có sẵn (GET /api/chat/suggestions) làm điểm bắt đầu rõ ràng cho người dùng mới (đặc biệt quan trọng cho UAT với nhóm luật — họ cần hiểu ngay khả năng thật của bot)
+
+Feature nhỏ — Xóa/đổi tên hội thoại + Sao chép câu trả lời (sau deadline 05/09)
+Bối cảnh: Sidebar hiển thị lịch sử hội thoại thật (Phase 4 Extension 2) nhưng chưa có cách dọn dẹp — danh sách sẽ phình to vô hạn theo thời gian. Đây là thiếu sót chức năng, không phải cải tiến trải nghiệm thuần túy.
+
+[ ] DELETE /api/chat/conversations/{conversation_id} — xác nhận ownership theo đúng pattern đã dùng ở GET detail (404 nếu không tồn tại hoặc không thuộc user gọi, không phân biệt 2 trường hợp để tránh lộ thông tin qua response khác nhau — đã áp dụng nguyên tắc này ở Phase 4 Extension 2, giữ nhất quán). Xóa toàn bộ chat_query_logs rows thuộc đúng conversation_id đó.
+[ ] Frontend: nút xóa nhỏ hiện khi hover vào item lịch sử trong Sidebar (cả bản desktop lẫn mobile drawer vừa build), có xác nhận trước khi xóa thật (không xóa ngay khi bấm 1 lần, tránh xóa nhầm). Nếu đang xem đúng conversation vừa xóa (đang ở /chat/[id]), điều hướng về /chat sau khi xóa.
+[ ] PATCH /api/chat/conversations/{conversation_id} — nhận { title: string }, cập nhật tiêu đề tùy chỉnh. Cần thêm cột title (nullable) vào bảng — nếu null, tiếp tục fallback lấy từ câu hỏi đầu tiên như hiện tại; nếu có giá trị, ưu tiên hiển thị title tùy chỉnh.
+[ ] Frontend: cho phép sửa tên trực tiếp trong Sidebar (double-click hoặc icon edit nhỏ), input inline, lưu khi Enter/blur.
+[ ] Nút "Sao chép" trên mỗi câu trả lời AI trong Chat — copy toàn văn câu trả lời (không kèm citation pill) vào clipboard, có feedback ngắn (icon đổi tạm thời hoặc toast nhỏ) xác nhận đã copy thành công.
+[ ] Verify E2E sạch theo đúng quy tắc đã có (tài khoản thật, không mock): tạo vài hội thoại, đổi tên 1 cái, xóa 1 cái (xác nhận không còn trong danh sách, xác nhận API 404 khi cố gọi lại conversation đã xóa), test copy câu trả lời hoạt động đúng trên cả desktop và mobile.

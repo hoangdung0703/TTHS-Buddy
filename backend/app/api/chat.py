@@ -13,10 +13,18 @@ from app.models.chat import (
     ChatSuggestionsResponse,
     ConversationDetailResponse,
     ConversationListResponse,
+    ConversationRenameRequest,
     ConversationSummary,
     ConversationTurn,
 )
-from app.services.chat_log_service import get_conversation_detail, get_recent_turns, list_conversations, log_chat_query
+from app.services.chat_log_service import (
+    delete_conversation,
+    get_conversation_detail,
+    get_recent_turns,
+    list_conversations,
+    log_chat_query,
+    rename_conversation,
+)
 from app.services.chat_suggestions_service import load_static_suggestions
 from app.services.query_understanding_service import rewrite_question
 from app.services.rag_service import RagAnswer, stream_answer_question
@@ -54,6 +62,36 @@ async def get_conversation(
     if turns is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     return ConversationDetailResponse(conversation_id=conversation_id, turns=[ConversationTurn(**t) for t in turns])
+
+
+@router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_conversation_route(
+    conversation_id: uuid.UUID, request: Request, current_user: AuthUser = Depends(require_supabase_user)
+) -> None:
+    """Feature nho - xoa hoi thoai. SECURITY: same 404-not-403 ownership pattern as GET detail
+    above - see delete_conversation's docstring."""
+    supabase_client = request.app.state.supabase_client
+    deleted = delete_conversation(supabase_client, current_user.user_id, conversation_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+
+@router.patch("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def rename_conversation_route(
+    conversation_id: uuid.UUID,
+    body: ConversationRenameRequest,
+    request: Request,
+    current_user: AuthUser = Depends(require_supabase_user),
+) -> None:
+    """Feature nho - doi ten hoi thoai. An empty/whitespace-only title clears the custom title
+    (falls back to the auto-generated one from the first question - see list_conversations).
+    SECURITY: same 404-not-403 ownership pattern as GET detail/DELETE above - see
+    rename_conversation's docstring."""
+    supabase_client = request.app.state.supabase_client
+    resolved_title = body.title.strip() or None
+    renamed = rename_conversation(supabase_client, current_user.user_id, conversation_id, resolved_title)
+    if not renamed:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
 
 
 def _sse_format(event: str, payload) -> str:  # noqa: ANN001 - payload is one of the ChatStream*Event models

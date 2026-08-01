@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatQueryRequest(BaseModel):
@@ -86,3 +86,11 @@ class ConversationTurn(BaseModel):
 class ConversationDetailResponse(BaseModel):
     conversation_id: uuid.UUID
     turns: list[ConversationTurn]
+
+
+# PATCH /api/chat/conversations/{conversation_id} (Feature nho - xoa/doi ten hoi thoai). An
+# empty/whitespace-only title is treated as "clear the custom title" - see
+# chat_log_service.rename_conversation - so min_length is not enforced here; the service strips
+# and null-coalesces it instead.
+class ConversationRenameRequest(BaseModel):
+    title: str = Field(max_length=200)

@@ -77,7 +77,7 @@ def list_conversations(supabase_client: Client, user_id: str) -> list[dict[str, 
     try:
         response = (
             supabase_client.table(CHAT_QUERY_LOGS_TABLE)
-            .select("conversation_id, question, created_at")
+            .select("conversation_id, question, created_at, title")
             .eq("user_id", user_id)
             .not_.is_("conversation_id", "null")
             .order("created_at", desc=False)
@@ -88,19 +88,26 @@ def list_conversations(supabase_client: Client, user_id: str) -> list[dict[str, 
         return []
 
     # Rows arrive oldest-first (asc), so the first time a conversation_id is seen its question
-    # is the conversation's opening question (-> title), and each subsequent sighting keeps
-    # pushing updated_at forward to that conversation's latest turn.
+    # is the conversation's opening question (-> fallback title), and each subsequent sighting
+    # keeps pushing updated_at forward to that conversation's latest turn. A custom title (see
+    # migrations/0005_chat_conversation_title.sql) is denormalized onto every row of the
+    # conversation by rename_conversation, so it can surface from whichever row has it set,
+    # regardless of row order - but re-check on every sighting in case an older row predates the
+    # rename and still has title IS NULL.
     grouped: dict[str, dict[str, Any]] = {}
     for row in response.data or []:
         conversation_id = row["conversation_id"]
+        custom_title = row.get("title")
         if conversation_id not in grouped:
             grouped[conversation_id] = {
                 "conversation_id": conversation_id,
-                "title": _truncate_title(row["question"]),
+                "title": custom_title or _truncate_title(row["question"]),
                 "updated_at": row["created_at"],
             }
         else:
             grouped[conversation_id]["updated_at"] = row["created_at"]
+            if custom_title:
+                grouped[conversation_id]["title"] = custom_title
 
     conversations = list(grouped.values())
     conversations.sort(key=lambda c: c["updated_at"], reverse=True)
@@ -134,6 +141,52 @@ def get_conversation_detail(supabase_client: Client, user_id: str,
         return None
 
     return [{"question": row["question"], "answer": row["answer"], "created_at": row["created_at"]} for row in rows]
+
+
+def delete_conversation(supabase_client: Client, user_id: str, conversation_id: uuid.UUID) -> bool:
+    """Deletes every chat_query_logs row of this conversation and returns whether anything was
+    actually deleted. SECURITY: same ownership pattern as get_conversation_detail - user_id and
+    conversation_id are filtered in the SAME delete query, so a nonexistent conversation_id and
+    another user's real conversation_id both delete 0 rows and return False here, letting the
+    route 404 either way instead of ever confirming "that id belongs to someone else"."""
+    try:
+        response = (
+            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+            .delete()
+            .eq("user_id", user_id)
+            .eq("conversation_id", str(conversation_id))
+            .execute()
+        )
+    except Exception:
+        logger.exception(
+            "Failed to delete conversation (user_id=%s, conversation_id=%s)", user_id, conversation_id
+        )
+        return False
+
+    return len(response.data or []) > 0
+
+
+def rename_conversation(supabase_client: Client, user_id: str, conversation_id: uuid.UUID,
+                         title: str | None) -> bool:
+    """Sets (or clears, if title is None) the custom title on every row of this conversation and
+    returns whether anything matched. Same ownership pattern as delete_conversation/
+    get_conversation_detail - user_id + conversation_id filtered in the same update query, 0 rows
+    matched (wrong owner or nonexistent) -> False -> route 404s."""
+    try:
+        response = (
+            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+            .update({"title": title})
+            .eq("user_id", user_id)
+            .eq("conversation_id", str(conversation_id))
+            .execute()
+        )
+    except Exception:
+        logger.exception(
+            "Failed to rename conversation (user_id=%s, conversation_id=%s)", user_id, conversation_id
+        )
+        return False
+
+    return len(response.data or []) > 0
 
 
 def _serialize_retrieved_chunk(chunk: RetrievedChunk) -> dict[str, Any]:
