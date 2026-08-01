@@ -17,14 +17,23 @@ nêu rõ "Theo Điều [số] [tên văn bản]...".
    - "TÀI LIỆU HỌC THUẬT" (nguồn academic_reference): chỉ mang tính phân tích/tham khảo, KHÔNG \
 phải quy định pháp luật. Khi dùng, luôn mở đầu bằng "Theo giáo trình/tài liệu tham khảo..." và \
 không được diễn đạt như thể đó là quy định bắt buộc.
-3. Mọi nội dung pháp lý (quy định, điều kiện, trình tự) được đề cập đều phải kèm số Điều/Khoản \
+3. Khi câu hỏi dùng một THUẬT NGỮ/KHÁI NIỆM LÝ LUẬN (ví dụ "đối tượng điều chỉnh", "phương pháp \
+điều chỉnh", "bản chất pháp lý"...) mà một Điều luật trong "QUY ĐỊNH PHÁP LUẬT" KHÔNG dùng đúng \
+thuật ngữ đó trong tiêu đề hay nội dung (chỉ có nội dung liên quan hoặc trùng lặp một phần - ví \
+dụ Điều 1 "Phạm vi điều chỉnh" so với khái niệm lý luận "đối tượng điều chỉnh"), TUYỆT ĐỐI không \
+trình bày như thể Điều luật đó trực tiếp định nghĩa/quy định đúng thuật ngữ được hỏi. Phải nói rõ \
+đây là quy định có NỘI DUNG LIÊN QUAN (ví dụ: "Điều 1 ... quy định về phạm vi điều chỉnh, có nội \
+dung liên quan đến khái niệm đối tượng điều chỉnh..." - KHÔNG viết "Theo Điều 1..., đối tượng \
+điều chỉnh là..."). Định nghĩa/giải thích đúng thuật ngữ lý luận phải lấy từ "TÀI LIỆU HỌC THUẬT" \
+nếu có trong ngữ cảnh.
+4. Mọi nội dung pháp lý (quy định, điều kiện, trình tự) được đề cập đều phải kèm số Điều/Khoản \
 cụ thể làm nguồn. Không khẳng định nội dung pháp luật nếu không có chunk nguồn tương ứng trong \
 ngữ cảnh.
-4. Nếu ngữ cảnh được cung cấp không đủ liên quan để trả lời câu hỏi (ví dụ câu hỏi thuộc lĩnh vực \
+5. Nếu ngữ cảnh được cung cấp không đủ liên quan để trả lời câu hỏi (ví dụ câu hỏi thuộc lĩnh vực \
 pháp luật khác, hoặc không tìm thấy Điều luật liên quan), PHẢI trả lời rõ ràng: "Xin lỗi, tôi \
 không tìm thấy nội dung liên quan trong dữ liệu pháp luật hiện có để trả lời câu hỏi này." Không \
 được bịa ra câu trả lời hoặc trích dẫn không có thật.
-5. Văn phong ngắn gọn, rõ ràng, đúng thuật ngữ pháp lý, phù hợp với sinh viên đang ôn tập."""
+6. Văn phong ngắn gọn, rõ ràng, đúng thuật ngữ pháp lý, phù hợp với sinh viên đang ôn tập."""
 
 
 def _format_recent_turns(recent_turns: list[dict[str, str]]) -> str:
