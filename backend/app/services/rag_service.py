@@ -2,13 +2,16 @@
 
 Retrieval is tiered by source_type, per requirements.md mục 4 ("Phân biệt rõ nguồn pháp lý
 chính thức và nguồn tham khảo học thuật"): legal_text is the mandatory source for anything
-that states a legal rule, and academic_reference is only pulled in as a secondary source when
-legal_text alone is insufficient or the question is explicitly analytical. The two are never
-merged into one ranked list - they are retrieved, thresholded and labeled separately, and
-academic content never appears in the `citations` field (which is legal-citation-shaped only).
+that states a legal rule, and academic_reference is a secondary, analytical-only source. The
+two are queried unconditionally and independently every time (see requirements.md "BUG PHÁT
+HIỆN SAU" note - the old either/or short-circuit skipped academic_reference whenever legal_text
+happened to score above threshold, even when that score came from incidental keyword overlap
+rather than an answer to the question), each thresholded and labeled on its own, and academic
+content never appears in the `citations` field (which is legal-citation-shaped only).
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from collections.abc import AsyncIterator
@@ -457,17 +460,19 @@ def _is_fallback_answer(answer_text: str) -> bool:
     return "không tìm thấy nội dung liên quan" in answer_text.lower()
 
 
-def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient) -> RetrievalResult:
+async def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient) -> RetrievalResult:
     vector = embed_query(question, settings)
 
-    legal_primary, legal_related = _retrieve_legal(qdrant_client, settings.qdrant_collection, question, vector)
-
-    needs_academic = (
-        is_analytical_question(question)
-        or not legal_primary
-        or max((c.score or 1.0) for c in legal_primary) < LEGAL_SCORE_THRESHOLD + 0.1
+    # legal_text and academic_reference answer different kinds of questions (a legal rule vs a
+    # concept/theory explanation) - a high legal_text score is not evidence academic_reference is
+    # unneeded, since it can come from incidental keyword overlap with a Dieu that doesn't
+    # actually answer the question (e.g. "phuong phap dieu chinh cua LTTHS" matching "Dieu 1.
+    # Pham vi dieu chinh" on the word "dieu chinh" alone - see requirements.md). So both are
+    # always queried, concurrently via asyncio.to_thread since qdrant_client is a sync client.
+    (legal_primary, legal_related), academic_chunks = await asyncio.gather(
+        asyncio.to_thread(_retrieve_legal, qdrant_client, settings.qdrant_collection, question, vector),
+        asyncio.to_thread(_retrieve_academic, qdrant_client, settings.qdrant_collection, vector),
     )
-    academic_chunks = _retrieve_academic(qdrant_client, settings.qdrant_collection, vector) if needs_academic else []
 
     context_blocks: list[str] = []
     for chunk in legal_primary:
@@ -538,7 +543,7 @@ async def stream_answer_question(
             # e.g. a stale/mistyped source_document match) - fall through to normal retrieval
             # rather than surfacing a hard "0 dieu" answer that's more likely a bug than a fact.
 
-    retrieval = retrieve_context(question, settings, qdrant_client)
+    retrieval = await retrieve_context(question, settings, qdrant_client)
     result.retrieved_chunks = retrieval.all_retrieved
 
     if not retrieval.context_blocks:
