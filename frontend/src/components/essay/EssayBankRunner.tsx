@@ -11,15 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { ESSAY_BANK_TITLES } from "@/lib/essayBankPresentation";
 import { getMockEssayBankQuestionsV2, gradeMockEssayBankV2, withMockDelayV2 } from "@/lib/mockDataV2";
 import type { EssayBankCategory, EssaySubmitResponse } from "@/lib/types";
-
-const BANK_TITLES: Record<EssayBankCategory, string> = {
-  ly_thuyet: "Lý thuyết",
-  van_dung: "Vận dụng",
-  ban_trac_nghiem: "Bán trắc nghiệm",
-  tinh_huong: "Tình huống"
-};
 
 interface EssayBankRunnerProps {
   category: EssayBankCategory;
@@ -54,7 +48,7 @@ export function EssayBankRunner({ category }: EssayBankRunnerProps) {
         <Link href="/essay" className="text-sm text-muted-foreground hover:text-foreground">
           ← Chọn ngân hàng khác
         </Link>
-        <Badge variant="outline">{BANK_TITLES[category]}</Badge>
+        <Badge variant="outline">{ESSAY_BANK_TITLES[category]}</Badge>
       </div>
 
       <Card>

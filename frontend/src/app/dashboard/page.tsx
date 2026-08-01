@@ -1,22 +1,27 @@
 "use client";
 
-import { AlertCircle, BookOpenCheck, MessageSquare, MessagesSquare, RefreshCw } from "lucide-react";
+import { AlertCircle, MessageSquare, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
+import { EssayBankMiniTracker } from "@/components/essay/EssayBankMiniTracker";
+import { ProgressRing } from "@/components/quiz/ProgressRing";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { useAuthSession } from "@/hooks/useAuthSession";
-import { getDashboardStats, getKeywordsYesterday, getWeakTopics } from "@/lib/api";
-import type { DashboardStats, KeywordYesterday, WeakTopic } from "@/lib/types";
+import { getKeywordsYesterday, getWeakTopics } from "@/lib/api";
+// TODO: Phase 7 v2 - chờ Quiz v2/Essay v2 backend (Bước 2). Khối 1 và Khối 2 đọc mock ở đây
+// (xem requirements.md "Phase 7 v2"), Khối 3/Khối 4/Hero's weak-topic detection dùng data thật
+// bên dưới (getKeywordsYesterday/getWeakTopics, không đổi).
+import { getMockQuizOverallStatsV2, mapWeakTopicToEssayBankCategoryMock, MOCK_ESSAY_BANKS_V2 } from "@/lib/mockDataV2";
+import type { KeywordYesterday, WeakTopic } from "@/lib/types";
 
 type LoadState = "loading" | "ready" | "error";
 
 interface DashboardData {
-  stats: DashboardStats;
   keywords: KeywordYesterday[];
   weakTopics: WeakTopic[];
 }
@@ -41,6 +46,62 @@ function getStudentDisplayName(email: string | null): string {
   return email.split("@")[0];
 }
 
+// Hero - "Gợi ý hành động" (requirements.md "Phase 7 v2"): weak-topics thật quyết định có
+// gợi ý cụ thể hay CTA chung, mapping topic -> essay bank là mock cho tới Bước 2.
+function DashboardHero({ weakTopics }: { weakTopics: WeakTopic[] }) {
+  const lowestTopic = weakTopics.reduce<WeakTopic | null>((lowest, topic) => {
+    if (lowest === null || topic.score_percentage < lowest.score_percentage) {
+      return topic;
+    }
+    return lowest;
+  }, null);
+
+  if (lowestTopic === null) {
+    return (
+      <Card className="border-primary/15 bg-primary/[0.04]">
+        <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">Bắt đầu học tập</p>
+            <p className="font-serif text-lg font-light text-foreground">
+              Chưa có dữ liệu để gợi ý chủ đề cần ôn - hãy làm quen với hệ thống trước.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-3">
+            <Button asChild className="rounded-full">
+              <Link href="/quiz">Bắt đầu với 1 bộ trắc nghiệm</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-full">
+              <Link href="/chat">
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Hỏi trợ lý AI
+              </Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const suggestedCategory = mapWeakTopicToEssayBankCategoryMock(lowestTopic.topic_category);
+
+  return (
+    <Card className="border-accent/25 bg-accent/[0.06]">
+      <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-accent">Gợi ý hôm nay</p>
+          <p className="font-serif text-lg font-light text-foreground">
+            Chủ đề <span className="italic">{lowestTopic.topic_category}</span> đang ở{" "}
+            <span className="font-normal text-accent">{lowestTopic.score_percentage}%</span> - đây là chủ đề yếu nhất của bạn.
+          </p>
+        </div>
+        <Button asChild className="shrink-0 rounded-full">
+          <Link href={`/essay/${suggestedCategory}`}>Luyện tập ngay</Link>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
   const { email } = useAuthSession();
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -53,13 +114,15 @@ export default function DashboardPage() {
   function loadDashboard(): void {
     setLoadState("loading");
 
-    Promise.all([getDashboardStats(), getKeywordsYesterday(), getWeakTopics()])
-      .then(([stats, keywords, weakTopics]) => {
-        setData({ stats, keywords, weakTopics });
+    Promise.all([getKeywordsYesterday(), getWeakTopics()])
+      .then(([keywords, weakTopics]) => {
+        setData({ keywords, weakTopics });
         setLoadState("ready");
       })
       .catch(() => setLoadState("error"));
   }
+
+  const quizStats = getMockQuizOverallStatsV2();
 
   return (
     <AuthenticatedLayout title="Tổng quan học tập">
@@ -82,19 +145,16 @@ export default function DashboardPage() {
             </h2>
             <p className="text-sm text-muted-foreground">Đây là tổng quan học tập của bạn.</p>
           </div>
-          <Button asChild className="rounded-full">
-            <Link href="/chat">
-              <MessageSquare className="mr-2 h-4 w-4" />
-              Hỏi trợ lý AI
-            </Link>
-          </Button>
         </div>
 
         {loadState === "loading" ? (
-          <div className="grid gap-4 md:grid-cols-3">
-            {[0, 1, 2].map((index) => (
-              <div key={index} className="h-24 animate-pulse rounded-lg border border-border bg-muted/60" />
-            ))}
+          <div className="space-y-6">
+            <div className="h-24 animate-pulse rounded-lg border border-border bg-muted/60" />
+            <div className="grid gap-4 md:grid-cols-2">
+              {[0, 1].map((index) => (
+                <div key={index} className="h-40 animate-pulse rounded-lg border border-border bg-muted/60" />
+              ))}
+            </div>
           </div>
         ) : null}
 
@@ -113,79 +173,67 @@ export default function DashboardPage() {
 
         {loadState === "ready" && data !== null ? (
           <>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card>
-                <CardContent className="flex items-center gap-4 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-accent text-accent-foreground">
-                    <BookOpenCheck className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-semibold text-foreground">{data.stats.total_quiz_attempts}</p>
-                    <p className="text-xs text-muted-foreground">Bài đã làm</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="flex items-center gap-4 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-accent text-accent-foreground">
-                    <BookOpenCheck className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-semibold text-foreground">{data.stats.dieu_studied_count}</p>
-                    <p className="text-xs text-muted-foreground">Điều đã học</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="flex items-center gap-4 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-accent text-accent-foreground">
-                    <MessagesSquare className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-semibold text-foreground">{data.stats.average_score}%</p>
-                    <p className="text-xs text-muted-foreground">Điểm trung bình</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <DashboardHero weakTopics={data.weakTopics} />
 
             <div className="grid gap-4 md:grid-cols-2">
+              {/* Khối 1 - MCQ tổng hợp (MOCK, xem requirements.md "Phase 7 v2") */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="font-serif text-base font-light tracking-tight">Từ khoá hôm qua</CardTitle>
+                  <CardTitle className="font-serif text-base font-light tracking-tight">Trắc nghiệm</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  {data.keywords.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Chưa có câu hỏi nào được ghi nhận hôm qua.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {data.keywords.map((keyword) => (
-                        <Link key={`${keyword.dieu_number}-${keyword.keyword}`} href="/chat">
-                          <Badge variant="outline" className="hover:bg-accent">
-                            {keyword.dieu_number} · {keyword.keyword}
-                          </Badge>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
+                <CardContent className="flex items-center gap-5">
+                  <ProgressRing correct={quizStats.correct_total} total={quizStats.questions_attempted} size={88} />
+                  <div className="space-y-1">
+                    <p className="font-serif text-2xl font-normal text-foreground">{quizStats.overall_correct_percentage}%</p>
+                    <p className="text-sm text-muted-foreground">tỉ lệ đúng tổng thể</p>
+                    <p className="text-xs text-muted-foreground">
+                      Đã làm {quizStats.sets_touched} / {quizStats.total_sets} bộ đề
+                    </p>
+                    <Button asChild variant="outline" size="sm" className="mt-1 rounded-full">
+                      <Link href="/quiz">Vào trắc nghiệm</Link>
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
 
+              {/* Khối 2 - 4 tracker tự luận song song (MOCK, xem requirements.md "Phase 7 v2") */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="font-serif text-base font-light tracking-tight">Tiến độ trắc nghiệm</CardTitle>
+                  <CardTitle className="font-serif text-base font-light tracking-tight">Tự luận theo ngân hàng</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-semibold text-foreground">{data.stats.average_score}%</p>
-                    <p className="text-sm text-muted-foreground">điểm trung bình</p>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-3">
+                    {MOCK_ESSAY_BANKS_V2.map((bank) => (
+                      <EssayBankMiniTracker key={bank.category} bank={bank} />
+                    ))}
                   </div>
-                  <ProgressBar percentage={data.stats.average_score} />
-                  <p className="text-sm text-muted-foreground">{data.stats.total_quiz_attempts} bài đã làm</p>
                 </CardContent>
               </Card>
             </div>
 
+            {/* Khối 3 - Từ khoá hôm qua (data thật, giữ nguyên) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-serif text-base font-light tracking-tight">Từ khoá hôm qua</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.keywords.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Chưa có câu hỏi nào được ghi nhận hôm qua.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {data.keywords.map((keyword) => (
+                      <Link key={`${keyword.dieu_number}-${keyword.keyword}`} href="/chat">
+                        <Badge variant="outline" className="hover:bg-accent">
+                          {keyword.dieu_number} · {keyword.keyword}
+                        </Badge>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Khối 4 - Chủ đề cần ôn lại (data thật, thêm CTA vào ngân hàng tự luận tương ứng - mapping mock) */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -197,22 +245,24 @@ export default function DashboardPage() {
                 {data.weakTopics.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Không có chủ đề nào cần ôn lại.</p>
                 ) : (
-                  data.weakTopics.map((topic) => (
-                    <div key={topic.topic_category} className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-foreground">{topic.topic_category}</p>
-                          <Badge variant={topic.score_percentage < 50 ? "danger" : "warning"}>
-                            {topic.score_percentage}%
-                          </Badge>
+                  data.weakTopics.map((topic) => {
+                    const category = mapWeakTopicToEssayBankCategoryMock(topic.topic_category);
+
+                    return (
+                      <div key={topic.topic_category} className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-foreground">{topic.topic_category}</p>
+                            <Badge variant={topic.score_percentage < 50 ? "danger" : "warning"}>{topic.score_percentage}%</Badge>
+                          </div>
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={`/essay/${category}`}>Ôn tập</Link>
+                          </Button>
                         </div>
-                        <Button asChild variant="outline" size="sm">
-                          <Link href="/quiz">Ôn tập</Link>
-                        </Button>
+                        <ProgressBar percentage={topic.score_percentage} />
                       </div>
-                      <ProgressBar percentage={topic.score_percentage} />
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </CardContent>
             </Card>

@@ -5,32 +5,18 @@
 // bằng UI mock mới (4 ngân hàng theo category) theo thiết kế Figma mới của nhóm luật. Việc route
 // khỏi backend thật là có chủ đích - PHẢI hoàn thành Bước 2 (backend thật) trước khi nhóm luật
 // UAT, không được để UAT trên bản mock này.
-import { BookOpen, Briefcase, Check, MessageSquareQuote, ToggleLeft, Wrench } from "lucide-react";
+import { Check, MessageSquareQuote } from "lucide-react";
 import Link from "next/link";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
+import { ESSAY_BANK_ACCENT, ESSAY_BANK_ICON } from "@/lib/essayBankPresentation";
 import { MOCK_ESSAY_BANKS_V2 } from "@/lib/mockDataV2";
 import type { EssayBankV2 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const BANK_ICON: Record<EssayBankV2["category"], typeof BookOpen> = {
-  ly_thuyet: BookOpen,
-  van_dung: Wrench,
-  ban_trac_nghiem: ToggleLeft,
-  tinh_huong: Briefcase
-};
-
-// Xen kẽ navy/gold cho các card, giống bố cục Figma gốc (mục đích trang trí, không mang ý nghĩa dữ liệu).
-const BANK_ACCENT: Record<EssayBankV2["category"], "navy" | "gold"> = {
-  ly_thuyet: "navy",
-  van_dung: "gold",
-  ban_trac_nghiem: "navy",
-  tinh_huong: "gold"
-};
-
 function EssayBankCard({ bank }: { bank: EssayBankV2 }) {
-  const Icon = BANK_ICON[bank.category];
-  const accent = BANK_ACCENT[bank.category];
+  const Icon = ESSAY_BANK_ICON[bank.category];
+  const accent = ESSAY_BANK_ACCENT[bank.category];
   const isComplete = bank.progress.kind === "complete";
   const isStarted = bank.progress.kind === "started";
   const pct = bank.progress.kind !== "untouched" ? bank.progress.attempted_count / bank.total_questions : 0;

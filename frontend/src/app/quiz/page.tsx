@@ -5,48 +5,13 @@
 // UI mock mới (15 bộ x 5 câu mcq_4choice thuần túy) theo thiết kế Figma mới của nhóm luật. Việc
 // route khỏi backend thật là có chủ đích - PHẢI hoàn thành Bước 2 (backend thật) trước khi nhóm
 // luật UAT, không được để UAT trên bản mock này.
-import { Check } from "lucide-react";
 import Link from "next/link";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
+import { ProgressRing } from "@/components/quiz/ProgressRing";
 import { MOCK_QUIZ_SETS_V2, QUIZ_SET_V2_TOTAL_QUESTIONS } from "@/lib/mockDataV2";
 import type { QuizSetSummaryV2 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-function ProgressRing({ correct, total }: { correct: number; total: number }) {
-  const size = 36;
-  const strokeWidth = 2.5;
-  const radius = (size - strokeWidth * 2) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const dash = (correct / total) * circumference;
-  const isComplete = correct === total;
-
-  return (
-    <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="hsl(var(--primary) / 0.1)" strokeWidth={strokeWidth} />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={isComplete ? "hsl(var(--accent))" : "hsl(var(--primary))"}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={`${dash} ${circumference}`}
-          className="transition-[stroke-dasharray] duration-300"
-        />
-      </svg>
-      {isComplete ? (
-        <Check className="absolute h-3.5 w-3.5 text-accent" strokeWidth={2.5} />
-      ) : (
-        <span className="absolute font-sans text-[9px] font-semibold text-primary">
-          {correct}/{total}
-        </span>
-      )}
-    </div>
-  );
-}
 
 function QuizSetCard({ set }: { set: QuizSetSummaryV2 }) {
   const { status } = set;

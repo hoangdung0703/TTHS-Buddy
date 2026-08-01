@@ -334,3 +334,56 @@ export function gradeMockPracticeAnswer(question: PracticeQuestionV2, userAnswer
 
   return { matched_points: matched, missing_points: missing, feedback: question.feedback, suggested_dieu: [] };
 }
+
+// ============================================================================
+// TODO: Phase 7 v2 - chờ Quiz v2/Essay v2 backend (Bước 2). Dashboard's Khối 1 (MCQ tổng hợp)
+// và Khối 2 (4 tracker tự luận) đọc trực tiếp từ mock ở trên (MOCK_QUIZ_SETS_V2/
+// MOCK_ESSAY_BANKS_V2) để nhất quán với những gì /quiz và /essay đang hiển thị - không tạo
+// thêm 1 bộ mock riêng cho dashboard. Khi Bước 2 xong, thay getMockQuizOverallStatsV2() bằng
+// GET /api/quiz/stats-v2 (hoặc tương đương) và MOCK_ESSAY_BANKS_V2 bằng GET /api/essay/banks thật.
+// ============================================================================
+
+export interface QuizOverallStatsV2 {
+  overall_correct_percentage: number;
+  correct_total: number;
+  questions_attempted: number;
+  sets_touched: number;
+  total_sets: number;
+}
+
+export function getMockQuizOverallStatsV2(): QuizOverallStatsV2 {
+  const touchedSets = MOCK_QUIZ_SETS_V2.filter((set) => set.status.kind !== "untouched");
+  const correctTotal = touchedSets.reduce((acc, set) => acc + set.status.correct_count, 0);
+  const questionsAttempted = touchedSets.length * QUIZ_SET_V2_TOTAL_QUESTIONS;
+
+  return {
+    overall_correct_percentage: questionsAttempted > 0 ? Math.round((correctTotal / questionsAttempted) * 100) : 0,
+    correct_total: correctTotal,
+    questions_attempted: questionsAttempted,
+    sets_touched: touchedSets.length,
+    total_sets: QUIZ_SET_V2_COUNT
+  };
+}
+
+// TODO: Phase 7 v2 - chờ Quiz v2/Essay v2 backend (Bước 2). Mapping "topic_category (thật, từ
+// GET /api/dashboard/weak-topics) -> essay bank category (Essay v2)" là TẠM, dựa trên từ khóa
+// đơn giản - topic_category thật ở Phase 5a/5b gốc chưa từng được gắn với 1 trong 4 category
+// Essay v2 (Lý thuyết/Vận dụng/Bán trắc nghiệm/Tình huống). Bước 2 cần thay bằng mapping thật
+// dựa trên category thực sự của câu hỏi trong ngân hàng đề mới, không suy đoán theo từ khóa nữa.
+export function mapWeakTopicToEssayBankCategoryMock(topicCategory: string): EssayBankCategory {
+  const normalized = topicCategory.toLowerCase();
+
+  if (normalized.includes("tình huống") || normalized.includes("vụ án")) {
+    return "tinh_huong";
+  }
+
+  if (normalized.includes("vận dụng") || normalized.includes("áp dụng") || normalized.includes("thực tiễn")) {
+    return "van_dung";
+  }
+
+  if (normalized.includes("đúng") || normalized.includes("sai") || normalized.includes("nhận định")) {
+    return "ban_trac_nghiem";
+  }
+
+  return "ly_thuyet";
+}
