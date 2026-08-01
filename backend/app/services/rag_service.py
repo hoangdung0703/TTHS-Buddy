@@ -460,6 +460,14 @@ def _is_fallback_answer(answer_text: str) -> bool:
     return "không tìm thấy nội dung liên quan" in answer_text.lower()
 
 
+def _extract_cited_dieu_numbers(answer_text: str) -> set[str]:
+    """RAG_SYSTEM_PROMPT rule 2 requires the model to name a legal_text citation as "Theo Dieu
+    [so] [ten van ban]..." - reusing DIEU_NUMBER_PATTERN (built for detecting a Dieu number in
+    the student's question) against the generated answer instead lets us tell which retrieved
+    legal_primary chunks were actually used vs merely retrieved."""
+    return {match.group(1) for match in DIEU_NUMBER_PATTERN.finditer(answer_text)}
+
+
 async def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient) -> RetrievalResult:
     vector = embed_query(question, settings)
 
@@ -501,8 +509,11 @@ async def stream_answer_question(
 ) -> AsyncIterator[tuple[str, ChatStreamCitationsEvent | ChatStreamAnswerDeltaEvent |
                           ChatStreamSuggestedFollowupsEvent | ChatStreamDoneEvent]]:
     """Streaming counterpart of the old answer_question (Phase 4 Extension - see
-    requirements.md). Yields (event_name, payload) tuples in the exact order the SSE contract
-    requires: citations -> answer_delta (one or more) -> suggested_followups -> done.
+    requirements.md). Yields (event_name, payload) tuples in the order: answer_delta (one or
+    more) -> citations -> suggested_followups -> done - except for the two early-return cases
+    below (aggregate-structure and no-context-blocks), which have a deterministic, already-final
+    answer up front and so emit citations (always empty in both cases) before their single
+    answer_delta.
 
     `result` is mutated in place with the final answer/citations/is_fallback/etc as a side
     effect, for the caller to log to chat_query_logs after the stream ends - kept OUT of the
@@ -510,12 +521,17 @@ async def stream_answer_question(
     intentionally not part of the public API response (see requirements.md Phase 9: those two
     fields are read only from chat_query_logs via the service role, never exposed to the client).
 
-    Citations are only trustworthy once we know the answer isn't actually a refusal disguised as
-    "context was found" (see the is_fallback comment on the old answer_question this replaces) -
-    generation can still refuse even when retrieval passed threshold. Since the system prompt
-    requires the fallback sentence to be used verbatim and first, buffering just the first
-    len(FALLBACK_ANSWER) characters of the stream is enough to decide correctly without waiting
-    for the full answer, so "citations" still goes out essentially immediately.
+    Citations are trustworthy only once both (a) we know the answer isn't a refusal disguised as
+    "context was found" (generation can still refuse even when retrieval passed threshold), and
+    (b) we know which of the retrieved legal_text chunks the model actually used - retrieval
+    threshold is intentionally lenient, and since the either/or short-circuit between legal_text
+    and academic_reference was removed (see requirements.md "BUG PHÁT HIỆN SAU"), legal_primary
+    can contain a Dieu that scored high purely from incidental keyword overlap (e.g. "Dieu 1.
+    Pham vi dieu chinh" matching a question about "phuong phap dieu chinh") that the model
+    correctly ignored in favor of academic_reference. Both require the complete answer text, so
+    citations are computed after the stream ends rather than guessed from retrieval alone -
+    forwarding every token to the client immediately keeps the perceived response latency the
+    same as before; only the citations badge is delayed until the answer it describes exists.
     """
     if is_aggregate_structure_question(question):
         source_document = detect_source_document(question)
@@ -561,41 +577,10 @@ async def stream_answer_question(
 
     user_prompt = build_user_prompt(question, retrieval.context_blocks, recent_turns)
 
-    buffer = ""
-    citations_sent = False
     answer_parts: list[str] = []
-
     async for text_chunk in stream_generate_answer(RAG_SYSTEM_PROMPT, user_prompt, settings):
         answer_parts.append(text_chunk)
-
-        if citations_sent:
-            yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=text_chunk))
-            continue
-
-        buffer += text_chunk
-        if len(buffer) < len(FALLBACK_ANSWER):
-            continue  # not enough buffered yet to tell fallback apart from a real answer
-
-        is_fallback = _is_fallback_answer(buffer)
-        citations = [] if is_fallback else _build_citations(retrieval.legal_primary)
-        related_articles = [] if is_fallback else _build_related_articles(retrieval.legal_related)
-        yield ("citations", ChatStreamCitationsEvent(
-            citations=citations, related_articles=related_articles,
-            conversation_id=conversation_id, rewritten_question=question
-        ))
-        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=buffer))
-        citations_sent = True
-
-    if not citations_sent:
-        # Whole answer was shorter than FALLBACK_ANSWER - decide now instead, on stream end.
-        is_fallback = _is_fallback_answer(buffer)
-        citations = [] if is_fallback else _build_citations(retrieval.legal_primary)
-        related_articles = [] if is_fallback else _build_related_articles(retrieval.legal_related)
-        yield ("citations", ChatStreamCitationsEvent(
-            citations=citations, related_articles=related_articles,
-            conversation_id=conversation_id, rewritten_question=question
-        ))
-        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=buffer))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=text_chunk))
 
     answer_text = "".join(answer_parts)
     # Same trust-the-model's-own-refusal reasoning as the old answer_question: the retrieval
@@ -604,14 +589,27 @@ async def stream_answer_question(
     # when the model refuses anyway, clear citations/related_articles so the final logged/served
     # answer never shows "sources" for a response that admits it found nothing relevant.
     is_fallback = _is_fallback_answer(answer_text)
-    citations = [] if is_fallback else _build_citations(retrieval.legal_primary)
+
+    # Restrict citations to the legal_primary chunks the model actually cited (per the system
+    # prompt's rule 2, a legal_text citation always names its Dieu as "Theo Dieu [so]...") rather
+    # than every chunk that merely passed retrieval threshold - see the module-level docstring's
+    # "BUG PHAT HIEN SAU" reference for why a high-scoring legal_primary chunk isn't necessarily
+    # one the model actually used.
+    cited_dieu_numbers = _extract_cited_dieu_numbers(answer_text)
+    actually_cited_primary = [c for c in retrieval.legal_primary if c.payload["dieu_number"] in cited_dieu_numbers]
+    citations = [] if is_fallback else _build_citations(actually_cited_primary)
     related_articles = [] if is_fallback else _build_related_articles(retrieval.legal_related)
 
+    yield ("citations", ChatStreamCitationsEvent(
+        citations=citations, related_articles=related_articles,
+        conversation_id=conversation_id, rewritten_question=question
+    ))
+
     suggested_followups: list[SuggestedFollowup] = []
-    if not is_fallback and retrieval.legal_primary:
+    if not is_fallback and actually_cited_primary:
         cited_keys = {(c.dieu_number, c.law_version) for c in citations}
         suggested_followups = _build_suggested_followups(
-            qdrant_client, settings.qdrant_collection, retrieval.legal_primary[0], cited_keys
+            qdrant_client, settings.qdrant_collection, actually_cited_primary[0], cited_keys
         )
 
     result.answer = answer_text

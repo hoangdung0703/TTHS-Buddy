@@ -39,8 +39,10 @@ class ChatSuggestionsResponse(BaseModel):
 
 
 # POST /api/chat/query is SSE (Phase 4 Extension) - one of these is the "data" payload of each
-# event, in this fixed order: citations -> answer_delta (one or more) -> suggested_followups ->
-# done. See rag_service.stream_answer_question for the event order guarantee.
+# event, in order: answer_delta (one or more) -> citations -> suggested_followups -> done (the
+# aggregate-structure and no-context-blocks cases emit citations, always empty, before their
+# single answer_delta instead - see rag_service.stream_answer_question for the full order
+# guarantee and why citations otherwise wait for the complete answer).
 class ChatStreamCitationsEvent(BaseModel):
     citations: list[Citation]
     related_articles: list[RelatedArticle]

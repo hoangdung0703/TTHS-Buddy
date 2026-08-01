@@ -67,11 +67,14 @@ async def query_chat(
     current_user: AuthUser = Depends(require_supabase_user),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
-    """SSE endpoint (Phase 4 Extension - see requirements.md). Event order: citations ->
-    answer_delta (one or more) -> suggested_followups -> done. The route stays thin per
-    requirements.md mục 4 ("khong viet logic don het vao route") - all retrieval/generation/
-    fallback logic lives in rag_service.stream_answer_question; this handler only does auth,
-    query understanding, SSE transport, and logging the final result once the stream ends.
+    """SSE endpoint (Phase 4 Extension - see requirements.md). Event order: answer_delta (one or
+    more) -> citations -> suggested_followups -> done - citations moved after answer_delta so
+    they can be computed from the complete generated answer (which legal_text Dieu the model
+    actually cited), not guessed from retrieval alone; see rag_service.stream_answer_question's
+    docstring. The route stays thin per requirements.md mục 4 ("khong viet logic don het vao
+    route") - all retrieval/generation/fallback logic lives in rag_service.stream_answer_question;
+    this handler only does auth, query understanding, SSE transport, and logging the final result
+    once the stream ends.
     """
     qdrant_client = request.app.state.qdrant_client
     supabase_client = request.app.state.supabase_client
