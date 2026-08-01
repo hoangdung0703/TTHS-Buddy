@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchValue
+from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
 
 from app.core.config import Settings
 from app.core.logging import get_logger
@@ -102,6 +102,36 @@ LEGAL_RELATED_COUNT = 2
 ACADEMIC_TOP_K = 3
 LEGAL_SCORE_THRESHOLD = 0.5
 ACADEMIC_SCORE_THRESHOLD = 0.5
+
+# An academic_reference passage that spans multiple paragraphs (ingestion/chunking.py splits
+# academic_reference by paragraph, not by whole subsection - see requirements.md Phase 3) gets
+# fragmented into several consecutive chunk_index values, only some of which score high enough
+# to land in the top-k semantic hits: the paragraph that states the topic/opens the passage
+# scores highest (densest keyword overlap with a broad question), while later paragraphs that
+# narrate specific facts (dates, law names) within the SAME passage often score noticeably lower
+# and fall out of a small top-k - confirmed by direct reproduction on "lich su phat trien phap
+# luat TTHS": the corpus has the full 1975-1988 and 1989-nay periods (chunk_index 23-30 of
+# "Giao trinh Luat To tung hinh su"), but ACADEMIC_TOP_K=3 only ever surfaced the opening chunks
+# (20-21) - even raising top-k to 20 never surfaced chunk_index 27/29 (they don't score high
+# enough on pure semantic similarity despite being textually contiguous with what did score
+# high). Bounded window expansion around each real anchor's chunk_index fixes this in a way pure
+# top-k tuning structurally cannot, since it goes by document position (guaranteed complete) not
+# by semantic score (gappy).
+#
+# Biased forward-heavy (BACKWARD=2, FORWARD=10) rather than a symmetric window: both reproduced
+# cases (this one and "phuong phap dieu chinh" from the same chapter) show the top-scoring anchor
+# landing at or near the START of the relevant passage, not its middle/end - the opening sentence
+# of a subsection is exactly what's keyword-dense enough to rank highest. A symmetric window
+# would waste half its budget re-fetching content already adjacent to the anchor's own opening
+# paragraph instead of reaching the continuation that's actually missing.
+ACADEMIC_EXPANSION_BACKWARD = 2
+ACADEMIC_EXPANSION_FORWARD = 10
+# Hard cap on total EXTRA chunks (beyond the original anchors) added across every anchor combined
+# - bounds worst-case context growth regardless of how many anchors or how wide the window is.
+# ~933 chars/chunk average (see requirements.md) x 12 = ~11k extra chars (~2.8k tokens): enough to
+# fully cover one fragmented passage (the reproduced case needs 9 chunks forward of its anchor)
+# without letting expansion balloon on every query.
+ACADEMIC_EXPANSION_MAX_EXTRA = 12
 
 # Phase 6: how many "next question" chips to surface after an answer, and how many neighbor
 # candidates to fetch before filtering out self/already-cited Dieu (fetch a buffer since some
@@ -451,9 +481,57 @@ def _retrieve_legal(client: QdrantClient, collection: str, question: str,
     return primary, related
 
 
+def _expand_academic_neighbors(client: QdrantClient, collection: str,
+                                anchors: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """For each anchor academic_reference chunk, pulls in nearby chunk_index neighbors from the
+    SAME source_document (see ACADEMIC_EXPANSION_* constants for why forward-biased and bounded)
+    to fill in a paragraph-fragmented passage a small top-k would otherwise only partially
+    surface. An anchor with an isolated chunk_index (nothing else nearby in the corpus - e.g. a
+    stray bibliography-entry chunk far from any real passage) simply yields no neighbors, so this
+    never manufactures context that isn't already position-adjacent to a real semantic hit."""
+    seen_keys = {(a.payload["source_document"], a.payload["chunk_index"]) for a in anchors}
+    extra: list[RetrievedChunk] = []
+
+    for anchor in anchors:
+        chunk_index = anchor.payload.get("chunk_index")
+        if chunk_index is None:
+            continue
+
+        points, _ = client.scroll(
+            collection_name=collection,
+            scroll_filter=Filter(must=[
+                FieldCondition(key="source_type", match=MatchValue(value="academic_reference")),
+                FieldCondition(key="source_document", match=MatchValue(value=anchor.payload["source_document"])),
+                FieldCondition(key="chunk_index", range=Range(
+                    gte=chunk_index - ACADEMIC_EXPANSION_BACKWARD, lte=chunk_index + ACADEMIC_EXPANSION_FORWARD
+                )),
+            ]),
+            limit=ACADEMIC_EXPANSION_BACKWARD + ACADEMIC_EXPANSION_FORWARD + 1,
+            with_payload=True,
+        )
+        for point in points:
+            key = (point.payload["source_document"], point.payload["chunk_index"])
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            extra.append(RetrievedChunk(point_id=str(point.id), score=None, is_exact_match=False,
+                                         payload=point.payload))
+            if len(extra) == ACADEMIC_EXPANSION_MAX_EXTRA:
+                return extra
+
+    return extra
+
+
 def _retrieve_academic(client: QdrantClient, collection: str, vector: list[float]) -> list[RetrievedChunk]:
     chunks = _retrieve_semantic(client, collection, vector, "academic_reference", ACADEMIC_TOP_K)
-    return [c for c in chunks if (c.score or 0.0) >= ACADEMIC_SCORE_THRESHOLD]
+    anchors = [c for c in chunks if (c.score or 0.0) >= ACADEMIC_SCORE_THRESHOLD]
+    if not anchors:
+        return anchors
+
+    neighbors = _expand_academic_neighbors(client, collection, anchors)
+    combined = anchors + neighbors
+    combined.sort(key=lambda c: (c.payload["source_document"], c.payload["chunk_index"]))
+    return combined
 
 
 def _is_fallback_answer(answer_text: str) -> bool:

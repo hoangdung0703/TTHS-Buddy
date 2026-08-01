@@ -76,6 +76,11 @@ async def verify_supabase_connection(client: Client) -> None:
 # ingestion/vector_store.py's FILTERABLE_PAYLOAD_FIELDS.
 FILTERABLE_PAYLOAD_FIELDS = ("source_type", "dieu_number", "source_document")
 
+# chunk_index needs a separate INTEGER (not KEYWORD) index - rag_service's academic_reference
+# neighbor expansion range-filters on it (Range(gte=..., lte=...)), which Qdrant only accepts
+# against a numeric-typed index. Kept in sync with ingestion/vector_store.py.
+FILTERABLE_INTEGER_PAYLOAD_FIELDS = ("chunk_index",)
+
 
 async def ensure_qdrant_collection(client: QdrantClient, collection_name: str) -> None:
     def _ensure_collection() -> None:
@@ -88,5 +93,8 @@ async def ensure_qdrant_collection(client: QdrantClient, collection_name: str) -
         for field_name in FILTERABLE_PAYLOAD_FIELDS:
             client.create_payload_index(collection_name, field_name=field_name,
                                          field_schema=PayloadSchemaType.KEYWORD)
+        for field_name in FILTERABLE_INTEGER_PAYLOAD_FIELDS:
+            client.create_payload_index(collection_name, field_name=field_name,
+                                         field_schema=PayloadSchemaType.INTEGER)
 
     await asyncio.to_thread(_ensure_collection)

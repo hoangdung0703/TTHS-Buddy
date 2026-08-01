@@ -29,6 +29,10 @@ UPSERT_BATCH_SIZE = 100
 # (re)created on every ensure_collection call rather than left as one-off manual commands.
 FILTERABLE_PAYLOAD_FIELDS = ("source_type", "dieu_number", "source_document", "chuong_number")
 
+# chunk_index needs a separate INTEGER (not KEYWORD) index - rag_service's academic_reference
+# neighbor expansion range-filters on it, which Qdrant only accepts against a numeric-typed index.
+FILTERABLE_INTEGER_PAYLOAD_FIELDS = ("chunk_index",)
+
 
 def create_qdrant_client() -> QdrantClient:
     settings = get_ingestion_settings()
@@ -38,6 +42,8 @@ def create_qdrant_client() -> QdrantClient:
 def _ensure_payload_indexes(client: QdrantClient, collection: str) -> None:
     for field_name in FILTERABLE_PAYLOAD_FIELDS:
         client.create_payload_index(collection, field_name=field_name, field_schema=PayloadSchemaType.KEYWORD)
+    for field_name in FILTERABLE_INTEGER_PAYLOAD_FIELDS:
+        client.create_payload_index(collection, field_name=field_name, field_schema=PayloadSchemaType.INTEGER)
 
 
 def ensure_collection(client: QdrantClient) -> None:
