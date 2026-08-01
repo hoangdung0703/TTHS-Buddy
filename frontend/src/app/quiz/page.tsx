@@ -1,270 +1,148 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+// TODO: Phase 5a/5b v2 backend chưa xong, dùng mock tạm (xem requirements.md "Phase 5a/5b v2").
+// Route này TẠM THỜI thay thế luồng Quiz Phase 5a gốc (5 bộ x 18 câu, backend thật đã chạy) bằng
+// UI mock mới (15 bộ x 5 câu mcq_4choice thuần túy) theo thiết kế Figma mới của nhóm luật. Việc
+// route khỏi backend thật là có chủ đích - PHẢI hoàn thành Bước 2 (backend thật) trước khi nhóm
+// luật UAT, không được để UAT trên bản mock này.
+import { Check } from "lucide-react";
+import Link from "next/link";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ApiError, getQuiz, getQuizSets, submitQuiz } from "@/lib/api";
-import type { QuizQuestion, QuizSetSummary, QuizSubmitResponse } from "@/lib/types";
+import { MOCK_QUIZ_SETS_V2, QUIZ_SET_V2_TOTAL_QUESTIONS } from "@/lib/mockDataV2";
+import type { QuizSetSummaryV2 } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
-type SetsLoadState = "loading" | "ready" | "error";
-type LoadState = "loading" | "ready" | "error";
+function ProgressRing({ correct, total }: { correct: number; total: number }) {
+  const size = 36;
+  const strokeWidth = 2.5;
+  const radius = (size - strokeWidth * 2) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dash = (correct / total) * circumference;
+  const isComplete = correct === total;
+
+  return (
+    <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden>
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="hsl(var(--primary) / 0.1)" strokeWidth={strokeWidth} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={isComplete ? "hsl(var(--accent))" : "hsl(var(--primary))"}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${circumference}`}
+          className="transition-[stroke-dasharray] duration-300"
+        />
+      </svg>
+      {isComplete ? (
+        <Check className="absolute h-3.5 w-3.5 text-accent" strokeWidth={2.5} />
+      ) : (
+        <span className="absolute font-sans text-[9px] font-semibold text-primary">
+          {correct}/{total}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function QuizSetCard({ set }: { set: QuizSetSummaryV2 }) {
+  const { status } = set;
+  const isDone = status.kind === "done";
+  const isInProgress = status.kind === "in_progress";
+  const label = `Bộ đề ${String(set.quiz_set_id).padStart(2, "0")}`;
+
+  return (
+    <Link
+      href={`/quiz/${set.quiz_set_id}`}
+      className={cn(
+        "group flex flex-col gap-2.5 rounded-xl border px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
+        isDone ? "border-accent/30 bg-accent/[0.06]" : "border-border bg-card hover:bg-primary/[0.03]"
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <span
+          className={cn(
+            "font-sans text-xs font-semibold uppercase tracking-wider",
+            isDone ? "text-accent" : "text-primary"
+          )}
+        >
+          {label}
+        </span>
+        {(isDone || isInProgress) && <ProgressRing correct={status.correct_count} total={set.total_questions} />}
+      </div>
+
+      <div className="min-h-[1.1rem] font-sans text-xs">
+        {isDone && (
+          <span className={status.correct_count === set.total_questions ? "text-accent" : "text-muted-foreground"}>
+            {status.correct_count === set.total_questions
+              ? `Hoàn thành · ${set.total_questions}/${set.total_questions} đúng`
+              : `Đã hoàn thành · ${status.correct_count}/${set.total_questions} đúng`}
+          </span>
+        )}
+        {isInProgress && <span className="text-primary">Đang làm · {status.correct_count}/{set.total_questions} đúng</span>}
+        {status.kind === "untouched" && <span className="text-muted-foreground/60">Chưa làm</span>}
+      </div>
+
+      <span className="rounded-full bg-primary px-3 py-1 text-center font-sans text-xs font-medium text-primary-foreground opacity-0 transition-opacity group-hover:opacity-100">
+        {isDone ? "Làm lại" : isInProgress ? "Tiếp tục" : "Bắt đầu"}
+      </span>
+    </Link>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="font-sans text-[0.7rem] font-normal uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="font-serif text-base font-normal tracking-tight text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function ProgressSummary({ sets }: { sets: QuizSetSummaryV2[] }) {
+  const done = sets.filter((set) => set.status.kind === "done").length;
+  const inProgress = sets.filter((set) => set.status.kind === "in_progress").length;
+  const totalCorrect = sets.reduce((acc, set) => (set.status.kind !== "untouched" ? acc + set.status.correct_count : acc), 0);
+  const totalAttempted = (done + inProgress) * QUIZ_SET_V2_TOTAL_QUESTIONS;
+
+  return (
+    <div className="mb-10 flex flex-wrap gap-x-8 gap-y-2 rounded-xl border border-border bg-primary/[0.04] px-5 py-3.5">
+      <Stat label="Bộ đề hoàn thành" value={`${done} / ${sets.length}`} />
+      <div className="w-px self-stretch bg-border" />
+      <Stat label="Đang làm" value={String(inProgress)} />
+      <div className="w-px self-stretch bg-border" />
+      <Stat label="Tổng số câu đúng" value={totalAttempted > 0 ? `${totalCorrect} / ${totalAttempted}` : "—"} />
+    </div>
+  );
+}
 
 export default function QuizPage() {
-  const [setsLoadState, setSetsLoadState] = useState<SetsLoadState>("loading");
-  const [quizSets, setQuizSets] = useState<QuizSetSummary[]>([]);
-  const [selectedQuizSet, setSelectedQuizSet] = useState<number | null>(null);
-
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
-  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<QuizSubmitResponse | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadQuizSets();
-  }, []);
-
-  function loadQuizSets(): void {
-    setSetsLoadState("loading");
-    setSelectedQuizSet(null);
-
-    getQuizSets()
-      .then((response) => {
-        setQuizSets(response);
-        setSetsLoadState("ready");
-      })
-      .catch(() => setSetsLoadState("error"));
-  }
-
-  function chooseQuizSet(quizSet: number): void {
-    setSelectedQuizSet(quizSet);
-    loadQuiz(quizSet);
-  }
-
-  function loadQuiz(quizSet: number): void {
-    setLoadState("loading");
-    setResult(null);
-    setSelectedOptions({});
-    setError(null);
-
-    getQuiz(quizSet)
-      .then((response) => {
-        setQuestions(response.questions);
-        setLoadState("ready");
-      })
-      .catch(() => setLoadState("error"));
-  }
-
-  async function handleSubmit(): Promise<void> {
-    if (selectedQuizSet === null) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      const response = await submitQuiz({
-        quiz_set: selectedQuizSet,
-        answers: questions.map((question) => ({
-          question_id: question.question_id,
-          selected_option: selectedOptions[question.question_id] ?? ""
-        }))
-      });
-      setResult(response);
-    } catch (submitError) {
-      const message = submitError instanceof ApiError ? submitError.message : "Không thể nộp bài, vui lòng thử lại.";
-      setError(message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  const allAnswered = questions.length > 0 && questions.every((question) => selectedOptions[question.question_id] !== undefined);
-
-  if (selectedQuizSet === null) {
-    return (
-      <AuthenticatedLayout title="Trắc nghiệm">
-        <div className="mx-auto max-w-3xl space-y-4 px-6 py-8">
-          <p className="text-sm text-muted-foreground">Chọn một bộ đề để bắt đầu làm bài.</p>
-
-          {setsLoadState === "loading" ? (
-            <div className="space-y-4">
-              {[0, 1, 2].map((index) => (
-                <div key={index} className="h-24 animate-pulse rounded-lg border border-border bg-muted/60" />
-              ))}
-            </div>
-          ) : null}
-
-          {setsLoadState === "error" ? (
-            <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              <span className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                Không tải được danh sách bộ đề.
-              </span>
-              <Button variant="outline" size="sm" onClick={loadQuizSets}>
-                Thử lại
-              </Button>
-            </div>
-          ) : null}
-
-          {setsLoadState === "ready"
-            ? quizSets.map((set) => (
-                <Card
-                  key={set.quiz_set}
-                  className="cursor-pointer transition-colors hover:bg-accent"
-                  onClick={() => chooseQuizSet(set.quiz_set)}
-                >
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle>{`BỘ ĐỀ SỐ ${String(set.quiz_set).padStart(2, "0")}`}</CardTitle>
-                      <Badge variant="outline">{set.total_questions} câu</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {set.main_topics.map((topic) => (
-                        <Badge key={topic} variant="accent">
-                          {topic}
-                        </Badge>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            : null}
-        </div>
-      </AuthenticatedLayout>
-    );
-  }
+  const sets = MOCK_QUIZ_SETS_V2;
 
   return (
     <AuthenticatedLayout title="Trắc nghiệm">
-      <div className="mx-auto max-w-3xl space-y-6 px-6 py-8">
-        <Button variant="outline" size="sm" onClick={() => setSelectedQuizSet(null)}>
-          ← Chọn bộ đề khác
-        </Button>
+      <div className="mx-auto max-w-5xl px-6 py-8">
+        <div className="mb-6">
+          <h1 className="mb-1.5 font-serif text-3xl font-light tracking-tight text-foreground">Trắc nghiệm</h1>
+          <p className="text-sm font-light text-muted-foreground">
+            Chọn 1 trong {sets.length} bộ đề — mỗi bộ {QUIZ_SET_V2_TOTAL_QUESTIONS} câu
+          </p>
+        </div>
 
-        {loadState === "loading" ? (
-          <div className="space-y-4">
-            {[0, 1, 2].map((index) => (
-              <div key={index} className="h-32 animate-pulse rounded-lg border border-border bg-muted/60" />
-            ))}
-          </div>
-        ) : null}
+        <ProgressSummary sets={sets} />
 
-        {loadState === "error" ? (
-          <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <span className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              Không tải được bộ câu hỏi.
-            </span>
-            <Button variant="outline" size="sm" onClick={() => loadQuiz(selectedQuizSet)}>
-              Thử lại
-            </Button>
-          </div>
-        ) : null}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {sets.map((set) => (
+            <QuizSetCard key={set.quiz_set_id} set={set} />
+          ))}
+        </div>
 
-        {loadState === "ready" && result === null
-          ? questions.map((question, index) => (
-              <Card key={question.question_id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Câu {index + 1}</CardTitle>
-                    <Badge variant="outline">Điều {question.dieu_number}</Badge>
-                  </div>
-                  <p className="pt-1 text-sm font-normal text-foreground">{question.question_text}</p>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {question.mcq_options.map((option) => (
-                    <label
-                      key={option}
-                      className="flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-2 text-sm transition-colors hover:bg-accent"
-                    >
-                      <input
-                        type="radio"
-                        name={question.question_id}
-                        checked={selectedOptions[question.question_id] === option}
-                        onChange={() =>
-                          setSelectedOptions((current) => ({ ...current, [question.question_id]: option }))
-                        }
-                        className="mt-0.5"
-                      />
-                      <span>{option}</span>
-                    </label>
-                  ))}
-                </CardContent>
-              </Card>
-            ))
-          : null}
-
-        {loadState === "ready" && result === null ? (
-          <div className="space-y-3">
-            {error !== null ? (
-              <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-            ) : null}
-            <Button
-              className="w-full rounded-full"
-              disabled={!allAnswered || isSubmitting}
-              onClick={() => void handleSubmit()}
-            >
-              {isSubmitting ? "Đang chấm điểm..." : "Nộp bài"}
-            </Button>
-          </div>
-        ) : null}
-
-        {result !== null ? (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Kết quả</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold text-foreground">
-                  {result.score}/{result.total}
-                </p>
-                <p className="text-sm text-muted-foreground">câu trả lời đúng</p>
-              </CardContent>
-            </Card>
-
-            {questions.map((question, index) => {
-              const questionResult = result.results.find((item) => item.question_id === question.question_id);
-
-              return (
-                <Card key={question.question_id}>
-                  <CardHeader>
-                    <div className="flex items-center gap-2">
-                      {questionResult?.is_correct ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      ) : (
-                        <XCircle className="h-4 w-4 text-red-500" />
-                      )}
-                      <CardTitle>Câu {index + 1}</CardTitle>
-                    </div>
-                    <p className="pt-1 text-sm font-normal text-foreground">{question.question_text}</p>
-                  </CardHeader>
-                  <CardContent className="space-y-1 text-sm">
-                    <p className="text-muted-foreground">
-                      Bạn chọn: <span className="text-foreground">{selectedOptions[question.question_id]}</span>
-                    </p>
-                    {!questionResult?.is_correct ? (
-                      <p className="text-emerald-700">Đáp án đúng: {questionResult?.mcq_correct}</p>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              );
-            })}
-
-            <Button variant="secondary" className="w-full" onClick={() => loadQuiz(selectedQuizSet)}>
-              Làm bài mới
-            </Button>
-          </div>
-        ) : null}
+        <p className="mt-10 text-center text-xs text-muted-foreground/60">
+          Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp
+        </p>
       </div>
     </AuthenticatedLayout>
   );

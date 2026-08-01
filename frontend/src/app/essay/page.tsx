@@ -1,180 +1,167 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+// TODO: Phase 5a/5b v2 backend chưa xong, dùng mock tạm (xem requirements.md "Phase 5a/5b v2").
+// Route này TẠM THỜI thay thế luồng Tự luận Phase 5b gốc (pool phẳng, backend thật đã chạy)
+// bằng UI mock mới (4 ngân hàng theo category) theo thiết kế Figma mới của nhóm luật. Việc route
+// khỏi backend thật là có chủ đích - PHẢI hoàn thành Bước 2 (backend thật) trước khi nhóm luật
+// UAT, không được để UAT trên bản mock này.
+import { BookOpen, Briefcase, Check, MessageSquareQuote, ToggleLeft, Wrench } from "lucide-react";
+import Link from "next/link";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { ApiError, getEssayQuestion, submitEssay } from "@/lib/api";
-import type { EssayQuestion, EssaySubmitResponse } from "@/lib/types";
+import { MOCK_ESSAY_BANKS_V2 } from "@/lib/mockDataV2";
+import type { EssayBankV2 } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
-type LoadState = "loading" | "ready" | "error";
+const BANK_ICON: Record<EssayBankV2["category"], typeof BookOpen> = {
+  ly_thuyet: BookOpen,
+  van_dung: Wrench,
+  ban_trac_nghiem: ToggleLeft,
+  tinh_huong: Briefcase
+};
+
+// Xen kẽ navy/gold cho các card, giống bố cục Figma gốc (mục đích trang trí, không mang ý nghĩa dữ liệu).
+const BANK_ACCENT: Record<EssayBankV2["category"], "navy" | "gold"> = {
+  ly_thuyet: "navy",
+  van_dung: "gold",
+  ban_trac_nghiem: "navy",
+  tinh_huong: "gold"
+};
+
+function EssayBankCard({ bank }: { bank: EssayBankV2 }) {
+  const Icon = BANK_ICON[bank.category];
+  const accent = BANK_ACCENT[bank.category];
+  const isComplete = bank.progress.kind === "complete";
+  const isStarted = bank.progress.kind === "started";
+  const pct = bank.progress.kind !== "untouched" ? bank.progress.attempted_count / bank.total_questions : 0;
+
+  return (
+    <Link
+      href={`/essay/${bank.category}`}
+      className={cn(
+        "group flex flex-col gap-5 rounded-2xl border p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
+        isComplete ? "border-accent/30 bg-accent/[0.05]" : "border-border bg-card"
+      )}
+    >
+      <div className="flex items-start justify-between">
+        <div
+          className={cn(
+            "flex h-12 w-12 items-center justify-center rounded-xl border",
+            accent === "gold" ? "border-accent/35 bg-accent/10 text-accent" : "border-primary/15 bg-primary/[0.07] text-primary"
+          )}
+        >
+          <Icon size={22} strokeWidth={1.4} />
+        </div>
+        {isComplete && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/[0.12] px-2.5 py-0.5 text-[0.7rem] font-semibold uppercase tracking-wide text-accent">
+            <Check size={10} strokeWidth={2.5} />
+            Hoàn thành
+          </span>
+        )}
+        {isStarted && (
+          <span className="inline-flex items-center rounded-full border border-primary/10 bg-primary/[0.07] px-2.5 py-0.5 text-[0.7rem] font-medium text-primary">
+            Đang học
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <p className={cn("text-xs font-semibold uppercase tracking-wide opacity-80", accent === "gold" ? "text-accent" : "text-primary")}>
+          {bank.subtitle}
+        </p>
+        <h2 className="font-serif text-xl font-light tracking-tight text-foreground">{bank.title}</h2>
+        <p className="mt-1 text-sm font-light leading-relaxed text-muted-foreground">{bank.description}</p>
+      </div>
+
+      <div className="mt-auto flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="font-serif text-sm text-foreground">{bank.total_questions} câu</span>
+          {bank.progress.kind !== "untouched" ? (
+            <span className={cn("text-xs", isComplete ? "text-accent" : "text-muted-foreground")}>
+              {bank.progress.attempted_count} / {bank.total_questions} đã làm
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground/50">Chưa bắt đầu</span>
+          )}
+        </div>
+        <div className="h-[3px] overflow-hidden rounded-full bg-primary/[0.08]">
+          {pct > 0 && (
+            <div
+              className={cn("h-full rounded-full transition-all", isComplete ? "bg-accent" : "bg-primary")}
+              style={{ width: `${pct * 100}%` }}
+            />
+          )}
+        </div>
+      </div>
+
+      <span
+        className={cn(
+          "w-full rounded-full border border-primary/25 py-2.5 text-center text-sm font-medium transition-colors",
+          "text-primary group-hover:bg-primary group-hover:text-primary-foreground"
+        )}
+      >
+        {isComplete ? "Ôn lại" : isStarted ? "Tiếp tục" : "Bắt đầu luyện tập"}
+      </span>
+    </Link>
+  );
+}
 
 export default function EssayPage() {
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [question, setQuestion] = useState<EssayQuestion | null>(null);
-  const [answer, setAnswer] = useState<string>("");
-  const [result, setResult] = useState<EssaySubmitResponse | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadQuestion();
-  }, []);
-
-  function loadQuestion(excludeQuestionId?: string): void {
-    setLoadState("loading");
-    setResult(null);
-    setAnswer("");
-    setError(null);
-
-    getEssayQuestion(excludeQuestionId)
-      .then((response) => {
-        setQuestion(response);
-        setLoadState("ready");
-      })
-      .catch(() => setLoadState("error"));
-  }
-
-  async function handleSubmit(): Promise<void> {
-    if (question === null || answer.trim().length === 0) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      const response = await submitEssay({ question_id: question.question_id, user_answer: answer });
-      setResult(response);
-    } catch (submitError) {
-      const message = submitError instanceof ApiError ? submitError.message : "Không thể chấm bài, vui lòng thử lại.";
-      setError(message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
+  const banks = MOCK_ESSAY_BANKS_V2;
+  const totalAttempted = banks.reduce((acc, bank) => acc + (bank.progress.kind !== "untouched" ? bank.progress.attempted_count : 0), 0);
+  const totalQuestions = banks.reduce((acc, bank) => acc + bank.total_questions, 0);
+  const completedBanks = banks.filter((bank) => bank.progress.kind === "complete").length;
 
   return (
     <AuthenticatedLayout title="Tự luận">
-      <div className="mx-auto max-w-3xl space-y-6 px-6 py-8">
-        {loadState === "loading" ? <div className="h-40 animate-pulse rounded-lg border border-border bg-muted/60" /> : null}
+      <div className="mx-auto max-w-5xl px-6 py-8">
+        <div className="mb-10 flex flex-wrap items-end justify-between gap-6">
+          <div>
+            <h1 className="mb-1.5 font-serif text-3xl font-light tracking-tight text-foreground">Tự luận</h1>
+            <p className="text-sm font-light text-muted-foreground">Chọn ngân hàng câu hỏi để luyện tập — mỗi lượt 1 câu</p>
+          </div>
 
-        {loadState === "error" ? (
-          <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <span className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              Không tải được câu hỏi tự luận.
+          <div className="flex shrink-0 gap-6 rounded-xl border border-border bg-primary/[0.04] px-5 py-3.5">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">Ngân hàng hoàn thành</span>
+              <span className="font-serif text-base text-foreground">
+                {completedBanks} / {banks.length}
+              </span>
+            </div>
+            <div className="w-px self-stretch bg-border" />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">Câu đã luyện</span>
+              <span className="font-serif text-base text-foreground">
+                {totalAttempted} / {totalQuestions}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          {banks.map((bank) => (
+            <EssayBankCard key={bank.category} bank={bank} />
+          ))}
+        </div>
+
+        <Link
+          href="/essay/practice"
+          className="mt-10 flex items-center gap-3 rounded-xl border border-accent/25 bg-accent/[0.06] px-5 py-4 transition-colors hover:bg-accent/[0.1]"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+            <MessageSquareQuote size={16} strokeWidth={1.6} />
+          </span>
+          <span className="flex flex-col">
+            <span className="font-serif text-base text-foreground">Tôi hỏi · Bạn trả lời</span>
+            <span className="text-xs text-muted-foreground">
+              Minigame luyện tập nhanh — lấy ngẫu nhiên 1 câu từ toàn bộ ngân hàng tự luận
             </span>
-            <Button variant="outline" size="sm" onClick={() => loadQuestion()}>
-              Thử lại
-            </Button>
-          </div>
-        ) : null}
+          </span>
+        </Link>
 
-        {loadState === "ready" && question !== null ? (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Câu hỏi tự luận</CardTitle>
-                <Badge variant="outline">Điều {question.dieu_number}</Badge>
-              </div>
-              <p className="pt-1 text-sm font-normal text-foreground">{question.question_text}</p>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Textarea
-                value={answer}
-                onChange={(event) => setAnswer(event.target.value)}
-                placeholder="Nhập câu trả lời của bạn..."
-                disabled={result !== null}
-              />
-
-              {error !== null ? (
-                <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-              ) : null}
-
-              {result === null ? (
-                <Button
-                  className="w-full rounded-full"
-                  disabled={answer.trim().length === 0 || isSubmitting}
-                  onClick={() => void handleSubmit()}
-                >
-                  {isSubmitting ? "Đang chấm bài..." : "Nộp bài"}
-                </Button>
-              ) : null}
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {result !== null ? (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Ý đã trả lời đúng</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {result.matched_points.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Chưa có ý nào khớp với rubric.</p>
-                ) : (
-                  <ul className="space-y-2 text-sm">
-                    {result.matched_points.map((point) => (
-                      <li key={point} className="flex items-start gap-2">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Ý còn thiếu / sai</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {result.missing_points.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Không thiếu ý nào.</p>
-                ) : (
-                  <ul className="space-y-2 text-sm">
-                    {result.missing_points.map((point) => (
-                      <li key={point} className="flex items-start gap-2">
-                        <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Nhận xét</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-foreground">{result.feedback}</p>
-                {result.suggested_dieu.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    <span className="text-xs font-medium text-muted-foreground">Nên ôn lại:</span>
-                    {result.suggested_dieu.map((dieu) => (
-                      <Badge key={dieu} variant="accent">
-                        Điều {dieu}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-
-            <Button variant="secondary" className="w-full" onClick={() => loadQuestion(question?.question_id)}>
-              Câu hỏi tiếp theo
-            </Button>
-          </div>
-        ) : null}
+        <p className="mt-10 text-center text-xs text-muted-foreground/55">
+          Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp
+        </p>
       </div>
     </AuthenticatedLayout>
   );

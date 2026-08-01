@@ -162,3 +162,68 @@ export interface DashboardStats {
   average_score: number;
   dieu_studied_count: number;
 }
+
+// ============================================================================
+// Phase 5a/5b v2 (mock-only, see requirements.md "Phase 5a/5b v2") - the real
+// question bank + backend for these are NOT built yet (waiting on nhóm luật).
+// These types describe the RESPONSE SHAPE the future real endpoints are
+// expected to return, so that Bước 2 (wiring real API calls in lib/api.ts) is
+// a data-source swap, not a type rewrite. Do not use these for /quiz or
+// /essay's OLD (Phase 5a/5b original) flow - those keep using QuizQuestion /
+// EssayQuestion above, unaffected by this mock detour.
+// ============================================================================
+
+export type QuizSetV2StatusKind = "untouched" | "in_progress" | "done";
+
+export interface QuizSetV2Status {
+  kind: QuizSetV2StatusKind;
+  correct_count: number; // 0 when kind is "untouched"
+}
+
+// Future: GET /api/quiz/sets-v2 - 15 bộ x 5 câu mcq_4choice thuần túy (thay cho
+// GET /api/quiz/sets 5-bộ-x-18-câu của Phase 5a gốc, xem "Phase 5a/5b v2").
+export interface QuizSetSummaryV2 {
+  quiz_set_id: number; // 1-15
+  total_questions: number; // luôn = 5 ở v2
+  status: QuizSetV2Status;
+}
+
+export type EssayBankCategory = "ly_thuyet" | "van_dung" | "ban_trac_nghiem" | "tinh_huong";
+
+export type EssayBankProgressKind = "untouched" | "started" | "complete";
+
+export interface EssayBankProgressV2 {
+  kind: EssayBankProgressKind;
+  attempted_count: number;
+}
+
+// Future: GET /api/essay/banks - 4 ngân hàng theo category (thay cho pool phẳng
+// của Phase 5b gốc, xem "Phase 5a/5b v2").
+export interface EssayBankV2 {
+  category: EssayBankCategory;
+  title: string;
+  subtitle: string;
+  description: string;
+  total_questions: number;
+  progress: EssayBankProgressV2;
+}
+
+// Future: POST /api/essay/question (v2) - cùng shape với EssayQuestion (Phase 5b
+// gốc), thêm bank_category vì pool giờ tách theo ngân hàng.
+export interface EssayQuestionV2 extends EssayQuestion {
+  bank_category: EssayBankCategory;
+}
+
+// Future: POST /api/essay/practice/random - minigame "Tôi hỏi bạn trả lời", lấy
+// ngẫu nhiên 1 câu từ TOÀN BỘ pool tự luận, không giới hạn theo category. Nút
+// "Câu khác" chỉ gọi endpoint này lại (next random), KHÔNG gọi submit - bỏ qua
+// hoàn toàn, không tính là 1 lượt làm bài (quyết định đã chốt trong requirements.md).
+export interface PracticeQuestionV2 {
+  question_id: string;
+  bank_category: EssayBankCategory;
+  bank_label: string;
+  question_text: string;
+  legal_ref: string;
+  key_points: string[];
+  feedback: string;
+}
