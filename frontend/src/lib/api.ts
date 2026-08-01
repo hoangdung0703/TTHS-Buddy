@@ -26,6 +26,7 @@ import type {
   EssaySubmitRequest,
   EssaySubmitResponse,
   KeywordYesterday,
+  LegalArticle,
   QuizGenerateResponse,
   QuizSetSummary,
   QuizSubmitRequest,
@@ -193,6 +194,16 @@ export async function getConversationDetail(conversationId: string): Promise<Con
   }
 
   return apiFetch<ConversationDetailResponse>(`/api/chat/conversations/${conversationId}`);
+}
+
+// GET /api/legal/articles/{dieu_number} - the citation-pill "read full article" feature (see
+// requirements.md "Feature nhỏ - Xem toàn văn Điều luật từ citation pill"). law_version is
+// required, not optional: several documents in the corpus reuse the same dieu_number
+// (BLTTHS/BLHS/Nghi dinh 250/2 Thong tu lien tich), so it's the only thing that disambiguates
+// which article a given citation pill is actually pointing at.
+export async function getLegalArticle(dieuNumber: string, lawVersion: string): Promise<LegalArticle> {
+  const query = new URLSearchParams({ law_version: lawVersion });
+  return apiFetch<LegalArticle>(`/api/legal/articles/${encodeURIComponent(dieuNumber)}?${query.toString()}`);
 }
 
 export async function getQuizSets(): Promise<QuizSetSummary[]> {

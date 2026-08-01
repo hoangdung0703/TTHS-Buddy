@@ -7,6 +7,16 @@ export interface Citation {
   law_version: string;
 }
 
+// GET /api/legal/articles/{dieu_number} - full-text lookup for the citation-pill "read full
+// article" feature (see requirements.md "Feature nhỏ - Xem toàn văn Điều luật từ citation pill").
+export interface LegalArticle {
+  dieu_number: string;
+  dieu_title: string | null;
+  law_version: string | null;
+  source_document: string;
+  full_text: string;
+}
+
 export interface ChatQueryRequest {
   question: string;
 }

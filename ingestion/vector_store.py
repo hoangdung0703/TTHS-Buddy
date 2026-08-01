@@ -25,9 +25,10 @@ UPSERT_BATCH_SIZE = 100
 
 # Every payload field the backend filters on (rag_service.py) needs a keyword index, or Qdrant
 # rejects the filtered query with a 400 - discovered incrementally as each new filter was added
-# (source_type/dieu_number in Phase 4, source_document in Phase 6), so collected here and
-# (re)created on every ensure_collection call rather than left as one-off manual commands.
-FILTERABLE_PAYLOAD_FIELDS = ("source_type", "dieu_number", "source_document", "chuong_number")
+# (source_type/dieu_number in Phase 4, source_document in Phase 6, law_version in the
+# GET /api/legal/articles/{dieu_number} feature), so collected here and (re)created on every
+# ensure_collection call rather than left as one-off manual commands.
+FILTERABLE_PAYLOAD_FIELDS = ("source_type", "dieu_number", "source_document", "chuong_number", "law_version")
 
 # chunk_index needs a separate INTEGER (not KEYWORD) index - rag_service's academic_reference
 # neighbor expansion range-filters on it, which Qdrant only accepts against a numeric-typed index.
