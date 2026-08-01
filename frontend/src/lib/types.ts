@@ -49,6 +49,30 @@ export interface ChatSuggestion {
   text: string;
 }
 
+// GET /api/chat/conversations / GET /api/chat/conversations/{id} (Phase 4 Extension 2) - Sidebar
+// history list + conversation reload. Matches backend/app/models/chat.py's
+// Conversation*/ChatStream* models.
+export interface ConversationSummary {
+  conversation_id: string;
+  title: string;
+  updated_at: string;
+}
+
+export interface ConversationListResponse {
+  conversations: ConversationSummary[];
+}
+
+export interface ConversationTurn {
+  question: string;
+  answer: string;
+  created_at: string;
+}
+
+export interface ConversationDetailResponse {
+  conversation_id: string;
+  turns: ConversationTurn[];
+}
+
 export interface QuizQuestion {
   question_id: string;
   question_text: string;

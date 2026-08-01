@@ -8,6 +8,7 @@ __pycache__/
 /.next/
 frontend/.next/
 frontend/node_modules/
+frontend/tsconfig.tsbuildinfo
 backend/.venv/
 venv/
 /.env.local

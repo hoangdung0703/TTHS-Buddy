@@ -3,8 +3,10 @@
 import { LayoutGrid, MessageSquare, ListChecks, PenLine, Plus, Scale, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { getConversations } from "@/lib/api";
+import type { ConversationSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -20,13 +22,26 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/essay", label: "Tự luận", icon: PenLine }
 ];
 
-// Cosmetic-only placeholder to match the sidebar layout in frontend.md - conversation
-// history persistence is not part of the Phase 8 mock contract, so this list is static.
-const MOCK_CONVERSATION_HISTORY = [
-  { id: "conv-1", title: "Điều 23 - Suy đoán vô tội", tag: "Nguyên tắc", time: "Hôm nay" },
-  { id: "conv-2", title: "Điều kiện và thủ tục tạm giam", tag: "Biện pháp ngăn chặn", time: "Hôm qua" },
-  { id: "conv-3", title: "Quy trình khởi tố vụ án hình sự", tag: "Khởi tố", time: "25/07" }
-];
+// Coarse "Hom nay"/"Hom qua"/dd-mm label, computed client-side from the browser's local
+// timezone - good enough for a Sidebar history list, no need for the VN-timezone precision
+// dashboard_service.py uses for the "keywords yesterday" metric.
+function formatConversationTime(updatedAt: string): string {
+  const date = new Date(updatedAt);
+  const now = new Date();
+  const isSameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+
+  if (isSameDay(date, now)) {
+    return "Hôm nay";
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameDay(date, yesterday)) {
+    return "Hôm qua";
+  }
+
+  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
+}
 
 interface SidebarProps {
   userLabel: string | null;
@@ -35,13 +50,19 @@ interface SidebarProps {
 export function Sidebar({ userLabel }: SidebarProps) {
   const pathname = usePathname();
   const [historyQuery, setHistoryQuery] = useState<string>("");
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+
+  // Re-fetched on every pathname change (not just once on mount) so sending a first message on
+  // the bare /chat route - which creates a brand new conversation server-side - makes it appear
+  // in this list without requiring a full page reload.
+  useEffect(() => {
+    void getConversations().then(setConversations);
+  }, [pathname]);
 
   const filteredHistory = useMemo(
     () =>
-      MOCK_CONVERSATION_HISTORY.filter((item) =>
-        item.title.toLowerCase().includes(historyQuery.toLowerCase())
-      ),
-    [historyQuery]
+      conversations.filter((conversation) => conversation.title.toLowerCase().includes(historyQuery.toLowerCase())),
+    [conversations, historyQuery]
   );
 
   return (
@@ -104,20 +125,25 @@ export function Sidebar({ userLabel }: SidebarProps) {
       <div className="mt-4 flex-1 overflow-y-auto px-3">
         <p className="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Lịch sử</p>
         <ul className="space-y-1">
-          {filteredHistory.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                className="w-full rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
-              >
-                <p className="truncate font-medium text-foreground">{item.title}</p>
-                <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="truncate">{item.tag}</span>
-                  <span>{item.time}</span>
-                </div>
-              </button>
-            </li>
-          ))}
+          {filteredHistory.map((conversation) => {
+            const href = `/chat/${conversation.conversation_id}`;
+            const isActive = pathname === href;
+
+            return (
+              <li key={conversation.conversation_id}>
+                <Link
+                  href={href}
+                  className={cn(
+                    "block w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                    isActive ? "bg-accent" : "hover:bg-accent"
+                  )}
+                >
+                  <p className="truncate font-medium text-foreground">{conversation.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{formatConversationTime(conversation.updated_at)}</p>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       </div>
 

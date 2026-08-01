@@ -4,6 +4,8 @@
 import type {
   ChatQueryResponse,
   ChatSuggestion,
+  ConversationDetailResponse,
+  ConversationSummary,
   DashboardStats,
   EssayQuestion,
   EssaySubmitResponse,
@@ -86,6 +88,34 @@ export function resolveMockChatAnswer(question: string): ChatQueryResponse {
   }
 
   return MOCK_ANSWER_PRESUMPTION_OF_INNOCENCE;
+}
+
+// Phase 4 Extension 2: mock-mode stand-in for GET /api/chat/conversations - keeps the Sidebar
+// history list non-empty in demo/mock mode instead of the old hardcoded list living in
+// Sidebar.tsx itself.
+export const MOCK_CONVERSATIONS: ConversationSummary[] = [
+  { conversation_id: "mock-conv-1", title: "Điều 23 - Suy đoán vô tội", updated_at: new Date().toISOString() },
+  {
+    conversation_id: "mock-conv-2",
+    title: "Điều kiện và thủ tục tạm giam",
+    updated_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    conversation_id: "mock-conv-3",
+    title: "Quy trình khởi tố vụ án hình sự",
+    updated_at: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
+  }
+];
+
+export function resolveMockConversationDetail(conversationId: string): ConversationDetailResponse {
+  const summary = MOCK_CONVERSATIONS.find((conversation) => conversation.conversation_id === conversationId);
+  const question = summary?.title ?? "Câu hỏi mẫu";
+  const mockAnswer = resolveMockChatAnswer(question);
+
+  return {
+    conversation_id: conversationId,
+    turns: [{ question, answer: mockAnswer.answer, created_at: summary?.updated_at ?? new Date().toISOString() }]
+  };
 }
 
 export const MOCK_QUIZ_SETS: QuizSetSummary[] = [

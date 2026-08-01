@@ -1,14 +1,22 @@
 import uuid
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
-from app.models.chat import ChatQueryRequest, ChatSuggestion, ChatSuggestionsResponse
-from app.services.chat_log_service import get_recent_turns, log_chat_query
+from app.models.chat import (
+    ChatQueryRequest,
+    ChatSuggestion,
+    ChatSuggestionsResponse,
+    ConversationDetailResponse,
+    ConversationListResponse,
+    ConversationSummary,
+    ConversationTurn,
+)
+from app.services.chat_log_service import get_conversation_detail, get_recent_turns, list_conversations, log_chat_query
 from app.services.chat_suggestions_service import load_static_suggestions
 from app.services.query_understanding_service import rewrite_question
 from app.services.rag_service import RagAnswer, stream_answer_question
@@ -19,6 +27,33 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 @router.get("/suggestions", response_model=ChatSuggestionsResponse)
 async def get_chat_suggestions(current_user: AuthUser = Depends(require_supabase_user)) -> ChatSuggestionsResponse:
     return ChatSuggestionsResponse(suggestions=[ChatSuggestion(**s) for s in load_static_suggestions()])
+
+
+@router.get("/conversations", response_model=ConversationListResponse)
+async def get_conversations(
+    request: Request, current_user: AuthUser = Depends(require_supabase_user)
+) -> ConversationListResponse:
+    """Phase 4 Extension 2 - Sidebar history list. See chat_log_service.list_conversations for
+    the grouping/ownership logic; this route only wires auth + the service call."""
+    supabase_client = request.app.state.supabase_client
+    conversations = list_conversations(supabase_client, current_user.user_id)
+    return ConversationListResponse(conversations=[ConversationSummary(**c) for c in conversations])
+
+
+@router.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
+async def get_conversation(
+    conversation_id: uuid.UUID, request: Request, current_user: AuthUser = Depends(require_supabase_user)
+) -> ConversationDetailResponse:
+    """Phase 4 Extension 2 - reload one conversation's full turn history. SECURITY: ownership is
+    enforced inside get_conversation_detail (filters by current_user.user_id in the same Supabase
+    query as conversation_id) - a conversation_id that exists but belongs to a different user
+    returns None here exactly like one that doesn't exist at all, so this 404s instead of ever
+    confirming "that id belongs to someone else" to the caller."""
+    supabase_client = request.app.state.supabase_client
+    turns = get_conversation_detail(supabase_client, current_user.user_id, conversation_id)
+    if turns is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    return ConversationDetailResponse(conversation_id=conversation_id, turns=[ConversationTurn(**t) for t in turns])
 
 
 def _sse_format(event: str, payload) -> str:  # noqa: ANN001 - payload is one of the ChatStream*Event models

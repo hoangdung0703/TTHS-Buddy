@@ -21,6 +21,10 @@ CHAT_QUERY_LOGS_TABLE = "chat_query_logs"
 # su") to avoid token bloat on long conversations.
 RECENT_TURNS_LIMIT = 3
 
+# Phase 4 Extension 2: the Sidebar's "title" for a conversation is its first question, possibly
+# long - truncated here so the list view stays a clean chip/row, not a full sentence.
+CONVERSATION_TITLE_MAX_LENGTH = 60
+
 
 def get_recent_turns(supabase_client: Client, user_id: str, conversation_id: uuid.UUID) -> list[dict[str, str]]:
     """Returns up to RECENT_TURNS_LIMIT prior turns of this conversation, oldest first, as
@@ -49,6 +53,87 @@ def get_recent_turns(supabase_client: Client, user_id: str, conversation_id: uui
 
     rows = list(reversed(response.data or []))
     return [{"question": row.get("rewritten_question") or row["question"], "answer": row["answer"]} for row in rows]
+
+
+def _truncate_title(question: str) -> str:
+    stripped = question.strip()
+    if len(stripped) <= CONVERSATION_TITLE_MAX_LENGTH:
+        return stripped
+    return stripped[:CONVERSATION_TITLE_MAX_LENGTH].rstrip() + "…"
+
+
+def list_conversations(supabase_client: Client, user_id: str) -> list[dict[str, Any]]:
+    """Groups chat_query_logs rows by conversation_id, most-recently-updated first. Grouping is
+    done in Python from one filtered select, not a Postgres GROUP BY/RPC - this codebase has no
+    custom Postgres functions anywhere (see dashboard_service.py for the same aggregate-on-read
+    pattern used for keywords/weak-topics), only the supabase-py fluent .table() client. Rows
+    with conversation_id IS NULL (logged before migrations/0004_chat_multiturn.sql, or before a
+    client ever attached one) are excluded - they predate the conversation concept and can't be
+    grouped into one.
+
+    Ownership: filtered by user_id in this same query (the backend uses the Supabase
+    service-role key, which bypasses RLS - per migrations/0001 comments - so this explicit
+    filter is the ONLY thing preventing one user's rows from leaking into another's list)."""
+    try:
+        response = (
+            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+            .select("conversation_id, question, created_at")
+            .eq("user_id", user_id)
+            .not_.is_("conversation_id", "null")
+            .order("created_at", desc=False)
+            .execute()
+        )
+    except Exception:
+        logger.exception("Failed to list conversations (user_id=%s)", user_id)
+        return []
+
+    # Rows arrive oldest-first (asc), so the first time a conversation_id is seen its question
+    # is the conversation's opening question (-> title), and each subsequent sighting keeps
+    # pushing updated_at forward to that conversation's latest turn.
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in response.data or []:
+        conversation_id = row["conversation_id"]
+        if conversation_id not in grouped:
+            grouped[conversation_id] = {
+                "conversation_id": conversation_id,
+                "title": _truncate_title(row["question"]),
+                "updated_at": row["created_at"],
+            }
+        else:
+            grouped[conversation_id]["updated_at"] = row["created_at"]
+
+    conversations = list(grouped.values())
+    conversations.sort(key=lambda c: c["updated_at"], reverse=True)
+    return conversations
+
+
+def get_conversation_detail(supabase_client: Client, user_id: str,
+                             conversation_id: uuid.UUID) -> list[dict[str, Any]] | None:
+    """Returns all turns of one conversation, oldest first, or None if it doesn't exist OR
+    doesn't belong to this user - both cases are indistinguishable on purpose (404, not 403):
+    ownership is enforced by filtering on user_id in the SAME query as conversation_id, so a
+    nonexistent conversation_id and another user's real conversation_id both come back as an
+    empty result here, never revealing to a caller that a given id belongs to someone else."""
+    try:
+        response = (
+            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+            .select("question, answer, created_at")
+            .eq("user_id", user_id)
+            .eq("conversation_id", str(conversation_id))
+            .order("created_at", desc=False)
+            .execute()
+        )
+    except Exception:
+        logger.exception(
+            "Failed to read conversation detail (user_id=%s, conversation_id=%s)", user_id, conversation_id
+        )
+        return None
+
+    rows = response.data or []
+    if not rows:
+        return None
+
+    return [{"question": row["question"], "answer": row["answer"], "created_at": row["created_at"]} for row in rows]
 
 
 def _serialize_retrieved_chunk(chunk: RetrievedChunk) -> dict[str, Any]:

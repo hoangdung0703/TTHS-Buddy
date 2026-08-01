@@ -2,6 +2,7 @@ import {
   gradeMockEssay,
   gradeMockQuiz,
   MOCK_CHAT_SUGGESTIONS,
+  MOCK_CONVERSATIONS,
   MOCK_DASHBOARD_STATS,
   MOCK_ESSAY_QUESTIONS,
   MOCK_KEYWORDS_YESTERDAY,
@@ -9,6 +10,7 @@ import {
   MOCK_QUIZ_SETS,
   MOCK_WEAK_TOPICS,
   resolveMockChatAnswer,
+  resolveMockConversationDetail,
   withMockDelay
 } from "@/lib/mockData";
 import type {
@@ -16,6 +18,9 @@ import type {
   ChatStreamCitationsEvent,
   ChatStreamSuggestedFollowupsEvent,
   ChatSuggestion,
+  ConversationDetailResponse,
+  ConversationListResponse,
+  ConversationSummary,
   DashboardStats,
   EssayQuestion,
   EssaySubmitRequest,
@@ -171,6 +176,23 @@ export async function sendChatQuery(
       separatorIndex = buffer.indexOf("\n\n");
     }
   }
+}
+
+export async function getConversations(): Promise<ConversationSummary[]> {
+  if (isMockDataEnabled()) {
+    return withMockDelay(MOCK_CONVERSATIONS);
+  }
+
+  const { conversations } = await apiFetch<ConversationListResponse>("/api/chat/conversations");
+  return conversations;
+}
+
+export async function getConversationDetail(conversationId: string): Promise<ConversationDetailResponse> {
+  if (isMockDataEnabled()) {
+    return withMockDelay(resolveMockConversationDetail(conversationId));
+  }
+
+  return apiFetch<ConversationDetailResponse>(`/api/chat/conversations/${conversationId}`);
 }
 
 export async function getQuizSets(): Promise<QuizSetSummary[]> {

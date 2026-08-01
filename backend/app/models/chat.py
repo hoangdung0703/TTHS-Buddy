@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -59,3 +60,27 @@ class ChatStreamSuggestedFollowupsEvent(BaseModel):
 
 class ChatStreamDoneEvent(BaseModel):
     pass
+
+
+# Phase 4 Extension 2: read-back of chat_query_logs, grouped by conversation_id, for the
+# Sidebar history list and conversation reload. See chat_log_service.list_conversations /
+# get_conversation_detail.
+class ConversationSummary(BaseModel):
+    conversation_id: uuid.UUID
+    title: str
+    updated_at: datetime
+
+
+class ConversationListResponse(BaseModel):
+    conversations: list[ConversationSummary]
+
+
+class ConversationTurn(BaseModel):
+    question: str
+    answer: str
+    created_at: datetime
+
+
+class ConversationDetailResponse(BaseModel):
+    conversation_id: uuid.UUID
+    turns: list[ConversationTurn]
