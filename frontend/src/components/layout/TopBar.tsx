@@ -1,5 +1,6 @@
 "use client";
 
+import { Menu } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { getSupabaseClient } from "@/lib/supabaseClient";
@@ -7,6 +8,10 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 interface TopBarProps {
   title: string;
   userLabel: string | null;
+  // Opens the Sidebar drawer (see AuthenticatedLayout). The button itself is hidden above the
+  // "md" breakpoint via CSS - desktop always shows the Sidebar directly, so there's nothing to
+  // open there - rather than branching the render tree per viewport.
+  onMenuClick?: () => void;
 }
 
 function getInitials(label: string | null): string {
@@ -26,7 +31,7 @@ function formatVietnameseDateTime(date: Date): string {
   }).format(date);
 }
 
-export function TopBar({ title, userLabel }: TopBarProps) {
+export function TopBar({ title, userLabel, onMenuClick }: TopBarProps) {
   const router = useRouter();
 
   async function handleSignOut(): Promise<void> {
@@ -37,7 +42,17 @@ export function TopBar({ title, userLabel }: TopBarProps) {
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-6">
-      <h1 className="font-serif text-lg font-normal tracking-tight text-foreground">{title}</h1>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          aria-label="Mở menu điều hướng"
+          className="-ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent md:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <h1 className="font-serif text-lg font-normal tracking-tight text-foreground">{title}</h1>
+      </div>
 
       <div className="flex items-center gap-4">
         <span className="text-sm text-muted-foreground">{formatVietnameseDateTime(new Date())}</span>

@@ -175,9 +175,33 @@ export function ChatView({ conversationId }: ChatViewProps) {
         ) : null}
 
         {!isLoadingHistory && messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-muted-foreground">
-            <Scale className="h-8 w-8" />
-            <p className="text-sm">Đặt câu hỏi về Luật Tố tụng Hình sự để bắt đầu.</p>
+          <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Scale className="h-6 w-6" />
+            </span>
+            <div className="space-y-1.5">
+              <p className="font-serif text-lg font-light tracking-tight text-foreground">
+                Bắt đầu hỏi đáp về Luật Tố tụng Hình sự
+              </p>
+              <p className="max-w-md text-sm text-muted-foreground">
+                Hỏi trực tiếp về 1 Điều luật, hoặc hỏi phân tích sâu — mọi câu trả lời đều có trích dẫn.
+              </p>
+            </div>
+
+            {suggestions.length > 0 ? (
+              <div className="flex max-w-lg flex-wrap items-center justify-center gap-2 pt-2">
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.id}
+                    type="button"
+                    onClick={() => void handleAsk(suggestion.text)}
+                    className="rounded-full border border-border bg-secondary px-3.5 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-accent"
+                  >
+                    {suggestion.text}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -222,7 +246,9 @@ export function ChatView({ conversationId }: ChatViewProps) {
         <div ref={scrollAnchorRef} />
       </div>
 
-      {suggestions.length > 0 ? (
+      {/* Once there are messages, the empty-state's centered chip block above is gone - keep
+          the chips reachable here instead of only at the very start of the conversation. */}
+      {suggestions.length > 0 && messages.length > 0 ? (
         <div className="flex gap-2 overflow-x-auto pb-3 pt-2">
           {suggestions.map((suggestion) => (
             <button

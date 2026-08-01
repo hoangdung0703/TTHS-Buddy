@@ -89,7 +89,8 @@ export async function getChatSuggestions(): Promise<ChatSuggestion[]> {
     return withMockDelay(MOCK_CHAT_SUGGESTIONS);
   }
 
-  return apiFetch<ChatSuggestion[]>("/api/chat/suggestions");
+  const { suggestions } = await apiFetch<{ suggestions: ChatSuggestion[] }>("/api/chat/suggestions");
+  return suggestions;
 }
 
 export interface ChatStreamHandlers {

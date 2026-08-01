@@ -45,9 +45,13 @@ function formatConversationTime(updatedAt: string): string {
 
 interface SidebarProps {
   userLabel: string | null;
+  // Called after a nav/history selection - used by the mobile drawer (AuthenticatedLayout) to
+  // close itself once the user has picked a destination. Undefined on desktop, where the
+  // sidebar is always visible and there's nothing to close.
+  onNavigate?: () => void;
 }
 
-export function Sidebar({ userLabel }: SidebarProps) {
+export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const [historyQuery, setHistoryQuery] = useState<string>("");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -86,6 +90,7 @@ export function Sidebar({ userLabel }: SidebarProps) {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavigate}
               className={cn(
                 "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 isActive
@@ -104,6 +109,7 @@ export function Sidebar({ userLabel }: SidebarProps) {
             cấp với Trắc nghiệm/Tự luận mà là 1 chế độ luyện tập bên trong Tự luận. */}
         <Link
           href="/essay/practice"
+          onClick={onNavigate}
           className={cn(
             "ml-6 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
             pathname === "/essay/practice"
@@ -119,6 +125,7 @@ export function Sidebar({ userLabel }: SidebarProps) {
       <div className="px-3 pt-4">
         <Link
           href="/chat"
+          onClick={onNavigate}
           className="flex w-full items-center justify-center gap-2 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
         >
           <Plus className="h-4 w-4" />
@@ -149,6 +156,7 @@ export function Sidebar({ userLabel }: SidebarProps) {
               <li key={conversation.conversation_id}>
                 <Link
                   href={href}
+                  onClick={onNavigate}
                   className={cn(
                     "block w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
                     isActive ? "bg-accent" : "hover:bg-accent"

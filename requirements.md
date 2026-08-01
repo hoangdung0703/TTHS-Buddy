@@ -266,6 +266,20 @@ Phase 7 — Dashboard cá nhân (bản rút gọn cho 05/09, xem frontend.md đ�
 [ ] GET /api/dashboard/stats — trả về { total_quiz_attempts, average_score, dieu_studied_count } tính từ dữ liệu quiz/essay submissions đã lưu ở Phase 5a/5b — thay thế hẳn helper mock getDashboardStats đã dùng tạm ở Phase 8, tính 1 lần ở backend, không tính lại phía frontend
 [ ] Không làm: streak ngày học liên tiếp, circular progress breakdown theo 4+ nhóm chủ đề riêng biệt, gợi ý cá nhân hóa có lý do ngữ cảnh — các phần này để dành v2 (xem Mục 9)
 
+Phase 7 v2 — Redesign dashboard (logic đã chốt, đi kèm Quiz v2/Essay v2, một phần vẫn mock cho tới khi Bước 2 backend xong)
+Vấn đề bản cũ: 3 stat card ngang hàng đều nhau, không có trọng tâm, không dẫn tới hành động cụ thể — "báo cáo số liệu" thay vì "định hướng học tập".
+
+Cấu trúc mới đã chốt:
+- Hero — Gợi ý hành động: nếu có weak-topic (dữ liệu THẬT từ GET /api/dashboard/weak-topics, không đổi), gợi ý chủ đề điểm thấp nhất + CTA dẫn vào ngân hàng tự luận liên quan (map topic_category → 1 essay bank chứa câu hỏi topic đó — mapping này tạm dùng mock vì Essay v2 category thật chưa có backend). Nếu chưa có weak-topic (user mới), CTA chung: "Bắt đầu với 1 bộ trắc nghiệm" (dẫn /quiz) hoặc "Hỏi trợ lý AI" (dẫn /chat).
+- Khối 1 — MCQ tổng hợp: progress ring lớn (dùng lại đúng component ring đã build ở Quiz v2), % đúng tổng thể + số bộ đã chạm/15. Dữ liệu MOCK (chờ Bước 2 backend Quiz v2).
+- Khối 2 — 4 tracker tự luận song song: thanh tiến độ nhỏ mỗi ngân hàng (Lý thuyết/Vận dụng/Bán trắc nghiệm/Tình huống), hiện số câu đã luyện, KHÔNG hiện %/điểm (tự luận chấm rubric, không phải đúng/sai tuyệt đối, tránh gây hiểu lầm như điểm MCQ). Dữ liệu MOCK (chờ Bước 2 backend Essay v2).
+- Khối 3 — Từ khóa hôm qua: giữ nguyên, dữ liệu THẬT, không đổi.
+- Khối 4 — Chủ đề cần ôn lại: giữ nguyên nguồn dữ liệu THẬT (weak-topics), nhưng mỗi chủ đề thêm nút CTA dẫn thẳng vào ngân hàng tự luận tương ứng (thay vì chỉ hiển thị tên tĩnh như trước).
+
+[ ] Redesign frontend theo cấu trúc trên, dùng lại component đã có (progress ring từ Quiz v2, card style từ Essay v2) — không tạo mới từ đầu
+[ ] Đánh dấu rõ trong code phần nào dùng mock (Khối 1, Khối 2, phần mapping topic→bank ở Hero) vs phần nào dùng data thật (Khối 3, Khối 4, phần weak-topic detection ở Hero) — nhất quán với comment TODO đã dùng ở Phase 5a/5b v2 Bước 1
+[ ] Khi Bước 2 (backend Quiz v2/Essay v2) hoàn thành, quay lại thay mock ở Khối 1/2 bằng data thật — không quên, ghi vào checklist Bước 2 luôn
+
 Phase 8 — Frontend
 [ ] Đọc frontend.md và các ảnh reference trong design/ trước khi build — bám theo design system (màu, spacing, component) nhưng áp dụng đúng các điểm "rút gọn" đã note, không build theo đúng 100% mockup nếu mockup vượt scope backend thật
 [ ] Sidebar: thêm nav item "Trắc nghiệm" và "Tự luận" (2 trang riêng), cạnh "Tổng quan" và "Trợ lý AI" hiện có
@@ -365,3 +379,7 @@ Model reasoning liên luật phức tạp ngoài việc co-retrieval đơn giả
 Giao diện quản lý phiên bản văn bản (document versioning)
 Streak ngày học liên tiếp, breakdown tiến độ trắc nghiệm chi tiết theo nhiều nhóm chủ đề với circular progress riêng, gợi ý học tập có lý do cá nhân hóa theo ngữ cảnh hội thoại (xem frontend.md để biết bản đầy đủ dự kiến cho v2)
 Chấm tự luận hoàn toàn tự do không dựa trên rubric (essay_key_points) — module tự luận ở Phase 5b luôn phải grounding vào rubric có sẵn trong ngân hàng đề, không để LLM tự quyết định đúng/sai theo cảm tính
+
+Feature nhỏ — Sidebar mobile responsive + Chat empty state (sau deadline 05/09)
+[ ] Sidebar không tự thu gọn ở mobile viewport (< tablet) — hạn chế có sẵn của AuthenticatedLayout toàn app, phát hiện lần đầu lúc verify Phase 5a/5b v2 Bước 1, lần 2 lúc verify Phase 7 v2 dashboard mobile. Cần: hamburger menu hoặc drawer/overlay pattern chuẩn cho mobile, không hiển thị sidebar cố định chiếm màn hình nhỏ như hiện tại
+[ ] Chat empty state: khi vào /chat lần đầu (chưa có tin nhắn nào), hiện hướng dẫn ngắn gọn thay vì màn hình trống hoàn toàn — ví dụ: "Hỏi trực tiếp về 1 Điều luật, hoặc hỏi phân tích sâu — mọi câu trả lời đều có trích dẫn", kết hợp với suggestion chips tĩnh đã có sẵn (GET /api/chat/suggestions) làm điểm bắt đầu rõ ràng cho người dùng mới (đặc biệt quan trọng cho UAT với nhóm luật — họ cần hiểu ngay khả năng thật của bot)
