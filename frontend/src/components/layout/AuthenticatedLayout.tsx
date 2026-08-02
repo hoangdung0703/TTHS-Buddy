@@ -43,7 +43,7 @@ export function AuthenticatedLayout({ title, children }: AuthenticatedLayoutProp
         <div className="fixed inset-0 z-50 md:hidden">
           <button
             type="button"
-            aria-label="Đóng menu điều hướng"
+            aria-label="Đóng menu điều hướng (nhấn ra ngoài)"
             onClick={() => setIsMobileNavOpen(false)}
             className="absolute inset-0 bg-black/40"
           />
