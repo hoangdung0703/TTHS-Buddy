@@ -393,3 +393,16 @@ Bối cảnh: Sidebar hiển thị lịch sử hội thoại thật (Phase 4 Ext
 [ ] Frontend: cho phép sửa tên trực tiếp trong Sidebar (double-click hoặc icon edit nhỏ), input inline, lưu khi Enter/blur.
 [ ] Nút "Sao chép" trên mỗi câu trả lời AI trong Chat — copy toàn văn câu trả lời (không kèm citation pill) vào clipboard, có feedback ngắn (icon đổi tạm thời hoặc toast nhỏ) xác nhận đã copy thành công.
 [ ] Verify E2E sạch theo đúng quy tắc đã có (tài khoản thật, không mock): tạo vài hội thoại, đổi tên 1 cái, xóa 1 cái (xác nhận không còn trong danh sách, xác nhận API 404 khi cố gọi lại conversation đã xóa), test copy câu trả lời hoạt động đúng trên cả desktop và mobile.
+
+Feature — PWA (Progressive Web App), phạm vi có giới hạn (sau deadline 05/09)
+Quyết định phạm vi: app phụ thuộc hoàn toàn backend sống (RAG streaming, auth Supabase) — KHÔNG làm offline-first đầy đủ (giả vờ hoạt động khi mất mạng gây trải nghiệm tệ hơn không làm gì). Chỉ làm "installable app":
+1. Cài vào màn hình chính được (manifest.json + icon nhiều cỡ, dùng lại logo Scale icon + palette navy/gold đã có, không cần thiết kế mới)
+2. Cache tài nguyên tĩnh (JS/CSS/font) để load nhanh hơn lần mở sau
+3. Trang fallback offline thân thiện ("Không có kết nối — vui lòng thử lại") khi mất mạng, thay vì lỗi trắng
+4. KHÔNG cache/giả lập Chat/Quiz/Essay khi offline — các tính năng này luôn cần mạng thật, phải báo rõ ràng khi offline thay vì hiển thị dữ liệu cache cũ gây hiểu lầm
+
+[x] manifest.json: tên app, icon (192/512/apple-touch-icon), theme_color/background_color khớp palette editorial (navy #1E2460 hoặc ivory #F5F0E8, tự chọn hợp lý), display: standalone — dùng Next App Router native `app/manifest.ts` (route `/manifest.webmanifest`), không cần plugin
+[x] Service worker: cache-first cho static assets, network-only cho mọi API call (/api/*) — không cache response API dù là GET, vì dữ liệu (chat, quiz, dashboard) luôn cần mới nhất — viết tay `public/sw.js` (không dùng next-pwa/Workbox) để kiểm soát chính xác rule network-only cho /api/*
+[x] Trang/màn hình fallback khi offline — `public/offline.html` tĩnh (không phải Next/RSC page — tránh hydration mismatch khi SW trả về cho URL khác lúc offline)
+[x] Icon set: tạo từ chính logo Scale icon hiện có (lucide-react trong khung bg-primary), render ra các cỡ cần thiết — không cần thiết kế mới qua Figma — script `scripts/generate-pwa-icons.mjs` (sharp) render lại path data của lucide Scale
+[x] Verify: cài thử trên điện thoại thật (hoặc Chrome DevTools Application tab mô phỏng), xác nhận installable, icon hiển thị đúng, tắt mạng xác nhận fallback offline hiện đúng còn API call thật vẫn network-only không bị cache sai — verify bằng Playwright (build production + `next start`, `context.setOffline(true)`): SW registered & controlling, manifest đúng field, static assets nằm trong cache SW, gọi API thật khi offline reject ngay ("Failed to fetch", không treo/không trả cache), navigate route mới lúc offline hiện đúng offline.html

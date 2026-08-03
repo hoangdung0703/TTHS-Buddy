@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Không có kết nối - TTHS Buddy</title>
+    <!--
+      Plain static HTML, deliberately with no framework/JS bundle: this is served by the
+      service worker (public/sw.js) as the fallback for any failed navigation while offline,
+      possibly for a URL this page was never built for. A hydrated Next.js/RSC page here would
+      hydration-mismatch against that URL and can silently blank out - a static page can't.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.5rem;
+        padding: 1.5rem;
+        text-align: center;
+        background: #f5f0e8;
+        color: #1a1830;
+        font-family: "Segoe UI", Inter, system-ui, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #1a1830;
+          color: #f5f0e8;
+        }
+      }
+      .icon {
+        width: 3.5rem;
+        height: 3.5rem;
+        border-radius: 0.75rem;
+        background: #1e2460;
+        color: #f5f0e8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 300;
+        margin: 0 0 0.5rem;
+      }
+      p {
+        max-width: 24rem;
+        font-size: 0.875rem;
+        color: #6b6580;
+        margin: 0;
+      }
+      button {
+        border: none;
+        border-radius: 999px;
+        background: #1e2460;
+        color: #f5f0e8;
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: 0.625rem 1.5rem;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="icon" aria-hidden="true">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="1" y1="1" x2="23" y2="23"></line>
+        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+        <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+        <line x1="12" y1="20" x2="12.01" y2="20"></line>
+      </svg>
+    </div>
+    <div>
+      <h1>Không có kết nối</h1>
+      <p>Vui lòng kiểm tra kết nối mạng và thử lại. TTHS Buddy cần kết nối mạng để hoạt động.</p>
+    </div>
+    <button type="button" onclick="location.reload()">Thử lại</button>
+  </body>
+</html>
