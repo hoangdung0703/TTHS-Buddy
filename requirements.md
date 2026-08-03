@@ -75,7 +75,7 @@ Chiến lược chunking: tách BLTTHS và văn bản liên quan theo từng Đi
 Metadata cho vector. Mỗi chunk khi embed phải lưu: source_document, dieu_number, dieu_title, khoan_number (có thể null), law_version, chunk_text.
 Auth cho mọi route không public. Mọi route /api trừ /health và /auth/* đều yêu cầu Supabase JWT hợp lệ trong header Authorization: Bearer <token>, được verify ở phía server.
 Xử lý lỗi tập trung. Mọi lỗi trả về theo 1 format JSON thống nhất — không để lộ raw stack trace hay thông báo lỗi nội bộ ra client.
-CORS. Giới hạn ở http://localhost:3000 trong môi trường development.
+CORS. Giới hạn ở http://localhost:3000 trong môi trường development (đọc từ CORS_ALLOWED_ORIGINS, mặc định "http://localhost:3000" nếu không set — không phá vỡ giới hạn này, chỉ cho phép cấu hình thêm origin qua env thay vì hardcode; xem Mục 7 phần "Test qua LAN").
 Type safety. Frontend: TypeScript strict mode, không dùng any. Backend: Pydantic models cho mọi request/response, type hint cho mọi function.
 Không được "chữa cháy" bằng cách để model tự đoán. Không bao giờ để LLM tự "điền" một số điều luật nghe có vẻ hợp lý nếu nó không có trong context được cung cấp.
 
@@ -345,10 +345,25 @@ QDRANT_URL=your_qdrant_cloud_url
 QDRANT_API_KEY=your_qdrant_api_key
 QDRANT_COLLECTION=ttths_law_chunks
 
+# CORS - danh sách origin cho phép, phân tách bằng dấu phẩy. Mặc định "http://localhost:3000"
+# nếu không set.
+# CORS_ALLOWED_ORIGINS=http://localhost:3000,http://192.168.1.5:3000
+
 # Frontend (.env.local)
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+
+Test qua LAN (điện thoại thật, ví dụ cài thử PWA - xem Mục 9 "Feature - PWA"): mỗi lần đổi
+mạng/IP không cần sửa code, chỉ cần:
+1. Lấy IP LAN hiện tại của máy chạy dev (vd. 192.168.1.5).
+2. Backend: chạy uvicorn với --host 0.0.0.0 (thay vì mặc định 127.0.0.1) để nghe trên LAN.
+3. Frontend: `next dev -H 0.0.0.0` (hoặc thêm vào script dev) để nghe trên LAN.
+4. Set CORS_ALLOWED_ORIGINS (root .env) thêm origin LAN, vd.
+   "http://localhost:3000,http://192.168.1.5:3000".
+5. Set NEXT_PUBLIC_API_BASE_URL (frontend/.env.local) trỏ về IP LAN của backend, vd.
+   "http://192.168.1.5:8000".
+6. Trên điện thoại (cùng WiFi/mạng LAN với máy dev), truy cập http://192.168.1.5:3000.
 
 
 8. Tiêu chí nghiệm thu (Definition of Done)

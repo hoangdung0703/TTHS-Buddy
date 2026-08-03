@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     qdrant_url: AnyHttpUrl = Field(alias="QDRANT_URL")
     qdrant_api_key: str = Field(alias="QDRANT_API_KEY", min_length=1)
     qdrant_collection: str = Field(alias="QDRANT_COLLECTION", min_length=1)
+    cors_allowed_origins: str = Field(default="http://localhost:3000", alias="CORS_ALLOWED_ORIGINS")
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
     @field_validator("environment")
     @classmethod
