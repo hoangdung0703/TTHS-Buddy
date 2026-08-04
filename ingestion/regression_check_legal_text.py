@@ -22,6 +22,22 @@ from ingestion.config import CHUNKS_OUTPUT_PATH
 from ingestion.document_registry import DOCUMENT_REGISTRY
 from ingestion.parse_law import parse_document
 
+# Chunks whose golden chunk_text was hand-spliced from a SEPARATE Tesseract rescue pass
+# (rescue_unusable_chunks.py) on top of the normal parse_document() output - e.g. "Luat to
+# chuc toa an nhan dan.pdf" Dieu 152 khoan 5 spans a clean page and a RECITATION-blocked page;
+# the clean half comes from chunk_legal_text as usual, but the blocked half was recovered via
+# local Tesseract OCR and manually appended, with the page's trailing admin signature block
+# manually dropped (see requirements.md Phase 5a/5b v2 Buoc A "sua nguyen nhan that" notes).
+# chunk_legal_text() alone can never reproduce this - it has no Tesseract step - so a fresh
+# re-parse will ALWAYS "mismatch" here. This is not a regression to fix; it is the expected,
+# permanent shape of this one golden entry. Listed explicitly (like
+# KNOWN_NON_KHOAN_TITLE_CONTINUATIONS below) instead of silently ignored, so it stays visible
+# and its assumption breaks loudly if it ever becomes wrong (see the check right below the
+# main diff loop).
+KNOWN_MANUAL_TESSERACT_PATCHES: set[tuple[str, str, str | None]] = {
+    ("Luật tổ chức toà án nhân dân.pdf", "152", "5"),
+}
+
 
 def _key_for(chunk: dict) -> tuple:
     return (chunk["source_document"], chunk["dieu_number"], chunk["khoan_number"])
@@ -55,16 +71,22 @@ def main() -> int:
         common = golden_keys & fresh_keys
 
         mismatches = []
+        known_patch_hits = []
         for k in sorted(common, key=_sort_key):
             g = golden_by_key[k]
             f = fresh_by_key[k]
             if g["dieu_title"] != f["dieu_title"] or g["chunk_text"] != f["chunk_text"]:
-                mismatches.append((k, g["dieu_title"], f["dieu_title"]))
+                if k in KNOWN_MANUAL_TESSERACT_PATCHES:
+                    known_patch_hits.append(k)
+                else:
+                    mismatches.append((k, g["dieu_title"], f["dieu_title"]))
 
         print(f"  golden chunks: {len(golden_keys)}   fresh chunks: {len(fresh_keys)}")
         print(f"  missing (in golden, not fresh): {len(missing)}")
         print(f"  extra   (in fresh, not golden): {len(extra)}")
         print(f"  content mismatches (title/text differ): {len(mismatches)}")
+        if known_patch_hits:
+            print(f"  known manual Tesseract patches (expected diff, not a regression): {known_patch_hits}")
         if missing:
             print(f"    missing keys: {sorted(missing, key=_sort_key)[:10]}")
         if extra:

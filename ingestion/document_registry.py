@@ -74,6 +74,27 @@ DOCUMENT_REGISTRY: list[DocumentConfig] = [
     DocumentConfig(
         filename="Bảo vệ quyền con người bằng TTHS.pdf",
         source_type="academic_reference"
+    ),
+    DocumentConfig(
+        filename="Luật tổ chức toà án nhân dân.pdf",
+        source_type="legal_text",
+        law_version="Luật Tổ chức Tòa án nhân dân số 34/2024/QH15 (sửa đổi, bổ sung đến 2025)"
+    ),
+    DocumentConfig(
+        filename="693495639-TINH-HUỐNG-TỐ-TỤNG-HINH-SỰ.pdf",
+        source_type="academic_reference"
+    ),
+    DocumentConfig(
+        filename="Giao-Trinh-Luat-Tố-Tụng-Hinh-Sự-Dh-Luat-Hn.pdf",
+        source_type="academic_reference"
+    ),
+    DocumentConfig(
+        filename="784492208-ĐỀ-CƯƠNG-LUẬT-TỐ-TỤNG-HINH-SỰ.pdf",
+        source_type="academic_reference"
+    ),
+    DocumentConfig(
+        filename="Đề cương ôn tập LTTHS theo từng chương.pdf",
+        source_type="academic_reference"
     )
 ]
 

@@ -23,33 +23,20 @@ logger = get_logger(__name__)
 
 RESCUE_STAGING_PATH = CHUNKS_OUTPUT_PATH.parent / "chunks_tesseract_rescue.json"
 
-GIAO_TRINH_FILENAME = "Giáo trình Luật Tố tụng hình sự -đã nén.pdf"
 TT01_FILENAME = "Thông tư liên tịch 01_2026 VKSND - BCA - BQP.pdf"
+TOA_AN_FILENAME = "Luật tổ chức toà án nhân dân.pdf"
 
 # Exact page numbers (1-indexed) that were RECITATION-blocked or otherwise failed during the
 # Gemini Vision batch, recovered from that run's log - see the OCR summary reported after the
 # original batch. Re-deriving this from chunks.json alone isn't possible since chunk
 # boundaries don't carry a page reference; these lists are the authoritative record.
-GIAO_TRINH_PROBLEM_PAGES: list[int] = [
-    5, 12, 24, 28, 40, 41, 48, 52, 60, 61, 63, 66, 67, 68, 72, 74, 75, 76, 77, 78, 81, 84, 86,
-    87, 90, 91, 93, 94, 98, 99, 100, 102, 105, 108, 109, 117, 125, 126, 127, 129, 131, 134, 138,
-    140, 141, 142, 143, 144, 145, 151, 152, 156, 157, 161, 163, 166, 167, 168, 169, 171, 173,
-    174, 175, 176, 177, 178, 179, 180, 181, 187, 188, 191, 192, 195, 200, 201, 204, 205, 206,
-    207, 208, 209, 210, 211, 213, 214, 216, 217, 219, 220, 234, 235, 236, 237, 239, 242, 243,
-    244, 245, 247, 249, 250, 254, 257, 258, 259, 261, 262, 264, 266, 271, 272, 273, 279, 282,
-    285, 288, 290, 291, 293, 294, 295, 296, 297, 300, 303, 306, 307, 308, 309, 310, 311, 315,
-    318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 335, 337, 340, 341, 342,
-    346, 347, 348, 349, 351, 356, 359, 361, 362, 363, 365, 367, 368, 371, 373, 374, 375, 378,
-    379, 381, 384, 388, 389, 393, 397, 398, 400, 402, 403, 406, 415, 417, 418, 420, 433, 434,
-    435, 439, 445, 446, 454, 456, 460, 461, 465, 466, 469, 470, 471, 479, 481, 482, 483, 484,
-    485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502,
-    503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 516, 517, 518, 519, 520,
-    521, 522, 523, 524, 525, 526, 527, 528, 529, 530, 531, 532, 533, 534, 535, 536, 537, 538,
-    539, 540, 541, 542, 543, 544, 545, 546, 547, 548, 549, 550, 551, 552, 553, 554, 555, 556,
-    557, 558, 559, 560, 561, 562, 563, 564, 565, 566, 567, 568, 569, 570, 571, 572, 573, 574,
-    575, 576
-]
+#
+# The "Giao trinh -da nen.pdf" entry that used to live here (251 problem pages) was removed
+# when that document was retired and replaced wholesale by a cleanly-extracting re-scan
+# (Phase 5a/5b v2 Buoc A - see requirements.md) - its chunks (and the Qdrant points for them)
+# no longer exist, so there is nothing left to rescue.
 TT01_PROBLEM_PAGES: list[int] = [37]
+TOA_AN_PROBLEM_PAGES: list[int] = [62]
 
 # Keeps rescue chunk_index values from colliding with the original paragraph-based numbering
 # (0..N) so the (source_document, chunk_index) idempotent-upsert key stays unique.
@@ -88,26 +75,26 @@ def rescue_document(filename: str, problem_pages: list[int]) -> tuple[list[dict[
 def main() -> None:
     configure_logging()
 
-    gt_new, gt_stats = rescue_document(GIAO_TRINH_FILENAME, GIAO_TRINH_PROBLEM_PAGES)
     tt01_new, tt01_stats = rescue_document(TT01_FILENAME, TT01_PROBLEM_PAGES)
+    toa_an_new, toa_an_stats = rescue_document(TOA_AN_FILENAME, TOA_AN_PROBLEM_PAGES)
 
     staging = {
-        "giao_trinh": {"stats": gt_stats, "chunks": gt_new},
-        "tt01": {"stats": tt01_stats, "chunks": tt01_new}
+        "tt01": {"stats": tt01_stats, "chunks": tt01_new},
+        "toa_an": {"stats": toa_an_stats, "chunks": toa_an_new}
     }
     RESCUE_STAGING_PATH.write_text(json.dumps(staging, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("\n" + "=" * 80)
     print("Tesseract rescue summary (staged, chunks.json NOT modified yet)")
     print("=" * 80)
-    print(f"\n{GIAO_TRINH_FILENAME} ({len(GIAO_TRINH_PROBLEM_PAGES)} problem pages):")
-    print(f"  ok:       {gt_stats['ok']}")
-    print(f"  degraded: {gt_stats['degraded']}")
-    print(f"  unusable: {gt_stats['unusable']}")
     print(f"\n{TT01_FILENAME} ({len(TT01_PROBLEM_PAGES)} problem pages):")
     print(f"  ok:       {tt01_stats['ok']}")
     print(f"  degraded: {tt01_stats['degraded']}")
     print(f"  unusable: {tt01_stats['unusable']}")
+    print(f"\n{TOA_AN_FILENAME} ({len(TOA_AN_PROBLEM_PAGES)} problem pages):")
+    print(f"  ok:       {toa_an_stats['ok']}")
+    print(f"  degraded: {toa_an_stats['degraded']}")
+    print(f"  unusable: {toa_an_stats['unusable']}")
     print(f"\nStaged results written to {RESCUE_STAGING_PATH}")
 
 

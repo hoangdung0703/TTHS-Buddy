@@ -83,27 +83,86 @@ def _aggregate_quality(offsets: list[tuple[int, int, PageExtraction]], start: in
     return method, worst_quality
 
 
-def _split_dieu_into_khoan(dieu_number: str, dieu_title: str, body: str) -> list[tuple[str | None, str]]:
+# "Luat to chuc toa an nhan dan.pdf" Dieu 150 quotes several OTHER laws' own numbered clauses
+# verbatim as illustrative amendment text (see KNOWN_BOGUS_DIEU_MATCHES above for the sibling
+# bug this is adjacent to). Its real top-level khoan ("1.", "2.", ...) are genuinely interleaved
+# with those quoted laws' OWN "1.", "2." clause numbers, which KHOAN_PATTERN can't tell apart
+# from real ones - splitting on every match produces multiple chunks with the SAME khoan_number
+# (khoan "1" three times, khoan "2" four times - confirmed by direct inspection), which collide
+# into the same deterministic Qdrant point ID (vector_store.build_point_id keys only on
+# dieu_number + khoan_number) and silently drop all but the last upserted chunk. No general
+# rule safely disambiguates real-vs-quoted khoan numbering here, so this specific Dieu is kept
+# as a single unsplit chunk instead (~6.3k chars - large but coherent, and correctness beats
+# chunk-size convention for this one-off case).
+KNOWN_NO_KHOAN_SPLIT_DIEU: set[tuple[str, str]] = {
+    ("Luật tổ chức toà án nhân dân.pdf", "150"),
+}
+
+# "Van ban hop nhat BLHS 2015.pdf" Dieu 189 khoan 3 is printed TWICE in the source PDF itself
+# (confirmed by direct visual inspection of page 97 - both paragraphs sit as ordinary body text,
+# no quote marks, no footnote marker, no "truoc day quy dinh" framing - this is a genuine
+# publishing/editing error in the government's own consolidated text, NOT the "quoted excerpt
+# from another law" pattern behind KNOWN_BOGUS_DIEU_MATCHES above): once reading "hang pham
+# phap tri gia tu 500.000.000 dong tro len...", once reading "vat pham phap tri gia
+# 500.000.000 dong tro len...". "vat pham phap" is the term used everywhere else in this same
+# Dieu (khoan 1, khoan 2) and 22x across the whole document; "hang pham phap" appears nowhere
+# else at all - confirmed the current/correct wording is "vat pham phap", "hang pham phap" is
+# a leftover draft phrase mistakenly left in. Both share the same khoan_number "3", which
+# collided into the same deterministic Qdrant point ID; by document order "vat pham phap" is
+# parsed second and so already happened to win the upsert - this fix just makes chunks.json
+# agree with what Qdrant already (correctly) holds instead of also carrying the wrong duplicate.
+KNOWN_DUPLICATE_KHOAN_TO_DROP: dict[tuple[str, str, str], str] = {
+    ("Văn bản hợp nhất BLHS 2015.pdf", "189", "3"): "hàng phạm pháp trị giá từ 500.000.000",
+}
+
+
+def _split_dieu_into_khoan(
+    source_document: str, dieu_number: str, dieu_title: str, body: str
+) -> list[tuple[str | None, str, int, int]]:
+    """Returns (khoan_number, chunk_text, local_start, local_end) - the last two are offsets
+    into `body` (the reconstructed, header-rewritten string, NOT full_text), used by the caller
+    to compute per-segment extraction_quality instead of one value for the whole Dieu (see
+    chunk_legal_text - a Dieu long enough to khoan-split can straddle a page boundary where only
+    SOME khoan actually touch a bad page)."""
+    if (source_document, dieu_number) in KNOWN_NO_KHOAN_SPLIT_DIEU:
+        return [(None, body, 0, len(body))]
+
     if len(body) <= LONG_DIEU_CHAR_THRESHOLD:
-        return [(None, body)]
+        return [(None, body, 0, len(body))]
 
     matches = list(KHOAN_PATTERN.finditer(body))
     if len(matches) < 2:
-        return [(None, body)]
+        return [(None, body, 0, len(body))]
 
     header_line = f"Điều {dieu_number}. {dieu_title}"
-    segments: list[tuple[str | None, str]] = []
+    segments: list[tuple[str | None, str, int, int]] = []
 
     intro = body[:matches[0].start()].strip()
     if len(intro) > len(header_line):
-        segments.append((None, intro))
+        segments.append((None, intro, 0, matches[0].start()))
 
+    dropped_duplicates = 0
     for i, match in enumerate(matches):
         khoan_number = match.group(1)
         seg_start = match.start()
         seg_end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
         khoan_text = body[seg_start:seg_end].strip()
-        segments.append((khoan_number, f"{header_line}\n{khoan_text}"))
+
+        drop_marker = KNOWN_DUPLICATE_KHOAN_TO_DROP.get((source_document, dieu_number, khoan_number))
+        if drop_marker is not None and drop_marker in khoan_text:
+            dropped_duplicates += 1
+            continue
+
+        segments.append((khoan_number, f"{header_line}\n{khoan_text}", seg_start, seg_end))
+
+    expected_drops = sum(
+        1 for (doc, dnum, _knum) in KNOWN_DUPLICATE_KHOAN_TO_DROP if doc == source_document and dnum == dieu_number
+    )
+    assert dropped_duplicates == expected_drops, (
+        f"Known duplicate-khoan fix for {source_document} Dieu {dieu_number} expected to drop "
+        f"{expected_drops} segment(s) but dropped {dropped_duplicates} - source PDF may have "
+        f"been re-extracted differently; update KNOWN_DUPLICATE_KHOAN_TO_DROP."
+    )
 
     return segments
 
@@ -296,6 +355,36 @@ def _merge_wrapped_title(dieu_title: str, body_after_title_line: str) -> tuple[s
 # interspersed page-number/footnote-only line, e.g. Dieu 356's "177"). Matched by exact
 # substring at position 0 so ingestion fails loudly (assert) if a re-typeset source document
 # ever stops matching, instead of silently mis-applying a stale fix.
+
+# "Luat to chuc toa an nhan dan.pdf" is a consolidated ("hop nhat") text with footnote markers
+# recording amendment history. For 3 repealed articles whose body is nothing but "(duoc bai
+# bo)", the footnote's superscript number lands fused directly onto "Dieu N." with NO
+# separating space (unlike every other footnote in this doc, which attaches to the end of a
+# real title/body instead) - e.g. raw text "Dieu 63.19 (duoc bai bo)" captures dieu_title as
+# "19 (duoc bai bo)". Confirmed by direct inspection (grep for "^Dieu \d+\." + digit): only
+# these 3 titles in the whole 148-Dieu document contain any digit at all, all identically
+# shaped, all repealed placeholder articles with no other content to lose - so a small
+# enumerated fix (matching the KNOWN_NON_KHOAN_TITLE_CONTINUATIONS convention above) is safer
+# than a general leading-digit-strip rule that could misfire on some other document.
+KNOWN_FOOTNOTE_FUSED_DIEU_TITLES: dict[tuple[str, str], str] = {
+    ("Luật tổ chức toà án nhân dân.pdf", "63"): "19 ",
+    ("Luật tổ chức toà án nhân dân.pdf", "79"): "25 ",
+    ("Luật tổ chức toà án nhân dân.pdf", "82"): "28 ",
+}
+
+
+def _strip_known_footnote_fused_prefix(source_document: str, dieu_number: str, dieu_title: str) -> str:
+    prefix = KNOWN_FOOTNOTE_FUSED_DIEU_TITLES.get((source_document, dieu_number))
+    if prefix is None:
+        return dieu_title
+    assert dieu_title.startswith(prefix), (
+        f"Known footnote-fused-title fix for {source_document} Dieu {dieu_number} no longer "
+        f"matches the source text - source PDF may have been re-extracted differently; "
+        f"update KNOWN_FOOTNOTE_FUSED_DIEU_TITLES."
+    )
+    return dieu_title[len(prefix):]
+
+
 KNOWN_NON_KHOAN_TITLE_CONTINUATIONS: dict[tuple[str, str], str] = {
     ("Bộ luật TTHS.pdf", "8"): "pháp của cá nhân",
     ("Bộ luật TTHS.pdf", "11"): "nhân; danh dự, uy tín, tài sản của pháp nhân",
@@ -370,6 +459,90 @@ def _apply_known_title_continuation(source_document: str, dieu_number: str, dieu
     return merged, skip
 
 
+
+# "Luat to chuc toa an nhan dan.pdf" Dieu 150 ("Sua doi, bo sung, bai bo mot so dieu cua luat
+# co lien quan") quotes verbatim excerpts from several OTHER laws' own transitional articles
+# as illustrative amendment text. Every such quoted excerpt is wrapped in curly quotes (" ...")
+# so its "Dieu N." header sits right after a quote-mark, which already fails DIEU_PATTERN's
+# line-start anchor (real behavior, not a fix) - except ONE: the quoted excerpt from Luat Thi
+# hanh an dan su's own "Dieu 116. Dieu khoan chuyen tiep" is missing its opening quote mark in
+# the source PDF, so it lines up at true line start and DIEU_PATTERN wrongly matches it as if
+# it were THIS document's Dieu 116 - colliding with the real "Dieu 116. Thu ky Toa an" earlier
+# in the document (confirmed: exactly 2 matches for dieu_number "116", verified by direct
+# inspection of both). Left unfixed, this: (a) mislabels ~10 khoan of unrelated foreign-law text
+# as if they were part of "Dieu 116" of this law, (b) truncates the real Dieu 150's own body at
+# that point instead of continuing to Dieu 151, and (c) collides multiple duplicate khoan
+# numbers (1, 2 each appear 3-4x across the bogus fragment) into the same deterministic Qdrant
+# point ID, silently dropping all but the last one on upsert. Filtered out by exact
+# (source_document, dieu_number, title-first-line) match, verified by count, so ingestion fails
+# loudly (assert) if a re-typeset source document changes the false-positive count.
+KNOWN_BOGUS_DIEU_MATCHES: dict[tuple[str, str], tuple[str, int]] = {
+    ("Luật tổ chức toà án nhân dân.pdf", "116"): ("Điều khoản chuyển tiếp", 1),
+}
+
+
+def _filter_known_bogus_dieu_matches(source_document: str, matches: list[re.Match]) -> list[re.Match]:
+    if not KNOWN_BOGUS_DIEU_MATCHES:
+        return matches
+
+    removed_counts: dict[tuple[str, str], int] = {}
+    kept: list[re.Match] = []
+    for match in matches:
+        key = (source_document, match.group(1))
+        bogus_title, expected_count = KNOWN_BOGUS_DIEU_MATCHES.get(key, (None, 0))
+        if bogus_title is not None and match.group(2).strip() == bogus_title:
+            removed_counts[key] = removed_counts.get(key, 0) + 1
+            continue
+        kept.append(match)
+
+    for key, (bogus_title, expected_count) in KNOWN_BOGUS_DIEU_MATCHES.items():
+        if key[0] != source_document:
+            continue
+        actual = removed_counts.get(key, 0)
+        # <= not ==: callers may parse a single-page/partial slice of the document (e.g. the
+        # Tesseract rescue pass in rescue_unusable_chunks.py, which re-chunks one rendered page
+        # at a time) where the bogus match's page legitimately isn't present at all (actual=0
+        # is then correct, not a drift signal). Over-removal (actual > expected) is still the
+        # real drift signal this assert guards against - it would mean the pattern now also
+        # matches something it shouldn't.
+        assert actual <= expected_count, (
+            f"Known bogus-Dieu-match fix for {key[0]} Dieu {key[1]} expected to remove at most "
+            f"{expected_count} match(es) but removed {actual} - source PDF may have been "
+            f"re-extracted differently; update KNOWN_BOGUS_DIEU_MATCHES."
+        )
+
+    return kept
+
+
+# The "Noi nhan" (cc/distribution list) at the very end of "Thong tu lien tich
+# 01_2026...pdf"'s last Dieu (39, "To chuc thuc hien") is corrupted by the same
+# character-duplication artifact seen elsewhere in this raw_documents folder (confirmed by
+# direct inspection: "NNooi i nnhhaann" instead of "Noi nhan") - it drags is_text_garbage's
+# ratio over threshold for the WHOLE chunk even though the real legal content just before it
+# (khoan 1, 2, and the signing officials' block) is completely clean. It is pure administrative
+# boilerplate (who the document was cc'd to), not part of Dieu 39's actual legal content, so
+# dropping it loses nothing - truncated out before quality is computed, not just cosmetically
+# trimmed after, so the surviving text is correctly classified "ok" instead of "unusable".
+KNOWN_TRAILING_BOILERPLATE_MARKERS: dict[tuple[str, str], str] = {
+    ("Thông tư liên tịch 01_2026 VKSND - BCA - BQP.pdf", "39"): "Nơi nhận",
+}
+
+
+def _truncate_known_trailing_boilerplate(
+    source_document: str, dieu_number: str, full_text: str, start: int, end: int
+) -> int:
+    marker = KNOWN_TRAILING_BOILERPLATE_MARKERS.get((source_document, dieu_number))
+    if marker is None:
+        return end
+    marker_pos = full_text.find(marker, start, end)
+    assert marker_pos != -1, (
+        f"Known trailing-boilerplate fix for {source_document} Dieu {dieu_number} - marker "
+        f"{marker!r} no longer found - source PDF may have been re-extracted differently; "
+        f"update KNOWN_TRAILING_BOILERPLATE_MARKERS."
+    )
+    return marker_pos
+
+
 def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_version: str) -> list[dict[str, Any]]:
     full_text, offsets = _build_document_text(pages)
 
@@ -377,6 +550,7 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
     dieu_search_text = full_text[:appendix_match.start()] if appendix_match else full_text
 
     matches = list(DIEU_PATTERN.finditer(dieu_search_text))
+    matches = _filter_known_bogus_dieu_matches(source_document, matches)
     dieu_starts = [m.start() for m in matches]
     chuong_events, muc_events = _find_chuong_muc_events(dieu_search_text, dieu_starts)
     chuong_muc_assignments = _assign_chuong_muc(dieu_starts, chuong_events, muc_events)
@@ -389,11 +563,17 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
         # su10") before any wrap-merge logic runs - same noise pattern as mid-title page
         # breaks, just landing on line 1 itself instead of a later line.
         dieu_title = TRAILING_PAGE_NUMBER_PATTERN.sub("", match.group(2).strip()).strip()
+        dieu_title = _strip_known_footnote_fused_prefix(source_document, dieu_number, dieu_title)
         start = match.start()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(dieu_search_text)
-        body = full_text[start:end].strip()
+        end = _truncate_known_trailing_boilerplate(source_document, dieu_number, full_text, start, end)
+        raw_body = full_text[start:end]
+        body = raw_body.strip()
+        left_strip = len(raw_body) - len(raw_body.lstrip())
+        body_start_in_full_text = start + left_strip
 
         title_line_end = body.find("\n")
+        rest_offset_in_full_text: int | None = None
         if title_line_end != -1:
             dieu_title, skip = _apply_known_title_continuation(
                 source_document, dieu_number, dieu_title, body[title_line_end + 1:]
@@ -401,13 +581,41 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
             if skip == 0:
                 dieu_title, skip = _merge_wrapped_title(dieu_title, body[title_line_end + 1:])
             rest = body[title_line_end + 1 + skip:]
-            body = f"Điều {dieu_number}. {dieu_title}\n{rest}"
+            rest_offset_in_full_text = body_start_in_full_text + title_line_end + 1 + skip
+            header_line = f"Điều {dieu_number}. {dieu_title}"
+            body = f"{header_line}\n{rest}"
+            header_len = len(header_line) + 1
         else:
             body = f"Điều {dieu_number}. {dieu_title}"
+            header_len = len(body)
 
-        method, quality = _aggregate_quality(offsets, start, end)
+        whole_method, whole_quality = _aggregate_quality(offsets, start, end)
 
-        for khoan_number, chunk_text in _split_dieu_into_khoan(dieu_number, dieu_title, body):
+        def _local_to_global(local_offset: int) -> int:
+            # Offsets inside the (possibly rewritten) header line have no exact source - any
+            # point in there is still part of the same Dieu's opening page, so start is a
+            # correct enough anchor for quality lookup purposes.
+            if rest_offset_in_full_text is None or local_offset <= header_len:
+                return start
+            return rest_offset_in_full_text + (local_offset - header_len)
+
+        segments = _split_dieu_into_khoan(source_document, dieu_number, dieu_title, body)
+        single_segment = len(segments) == 1
+
+        for khoan_number, chunk_text, seg_local_start, seg_local_end in segments:
+            if single_segment:
+                method, quality = whole_method, whole_quality
+            else:
+                # A khoan-split Dieu can straddle a page boundary where only SOME khoan
+                # actually touch a bad page - compute quality from this segment's own span
+                # instead of reusing the whole-Dieu aggregate, so clean khoan aren't punished
+                # for a different khoan's bad page (confirmed real case: Luat to chuc toa an
+                # nhan dan Dieu 152 khoan 1-4 live entirely on a clean page but khoan 5 touches
+                # a RECITATION-blocked one - see requirements.md Phase 5a/5b v2 Buoc A notes).
+                method, quality = _aggregate_quality(
+                    offsets, _local_to_global(seg_local_start), _local_to_global(seg_local_end)
+                )
+
             chunks.append({
                 "source_type": "legal_text",
                 "source_document": source_document,
