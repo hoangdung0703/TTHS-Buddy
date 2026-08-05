@@ -519,3 +519,35 @@ Phát hiện phụ quan trọng khi implement + test rate limiting (đáng đưa
 Chưa fix, đợi quyết định ưu tiên tiếp theo:
 - Medium: filter user_id là lớp phòng thủ duy nhất do service-role bypass RLS (mục Medium ở trên) — chưa có hành động cụ thể được yêu cầu.
 - Low: nâng next lên v16 để dọn nốt postcss/sharp CVE (không cấp thiết, không exploitable hiện tại).
+
+Đánh giá capacity thực tế phục vụ demo/UAT (05/08/2026)
+Bối cảnh: sau khi rate limiting được thêm (mục Audit bảo mật ở trên), cần xác nhận hệ thống thực sự chịu được quy mô UAT dự kiến (~20-30 người dùng cùng lúc, không phải scale lớn) trước khi bước sang deploy thật.
+
+Phát hiện chính — KHÔNG nằm ở "uvicorn --reload single worker" như giả định ban đầu, mà là bug code-level rẻ hơn nhiều để sửa: 2 lời gọi Gemini đồng bộ (`httpx.post` sync, không phải `AsyncClient`) được gọi TRỰC TIẾP trong route/service async, chặn đứng toàn bộ event loop trong lúc chờ Gemini trả lời:
+- `rewrite_question()` (query understanding, chat.py) → gọi `generate_answer()` sync.
+- `embed_query()` (retrieval embedding, rag_service.py `retrieve_context`) → gọi Gemini embedContent sync.
+- `grade_essay_answer()` (chấm essay, essay.py) → gọi `generate_answer()` sync.
+Đối chiếu: truy vấn Qdrant trong CÙNG hàm `retrieve_context` đã được bọc đúng qua `asyncio.to_thread` từ trước (có comment giải thích rõ lý do "qdrant_client is a sync client") — 3 điểm trên là chỗ duy nhất còn sót lại chưa áp dụng cùng pattern.
+
+Rate limit Gemini/Qdrant đối chiếu quy mô UAT: model `gemini-3.1-flash-lite` free tier chỉ 15 request/phút (Tier 1 trả phí: 150-300 RPM) — mỗi câu chat = 2 Gemini call (rewrite + embed) + 1 stream generate, mỗi câu essay = 1 call; billing tier hiện tại của project CHƯA XÁC NHẬN được (cần kiểm tra Google Cloud Console trước UAT, rủi ro độc lập với bug blocking, đặc biệt nếu đang free tier với 20-30 user hỏi chat gần đồng thời). Qdrant xác nhận đang free tier (0.5 vCPU/1GB RAM/4GB disk) — không có giới hạn RPS công bố cứng như Gemini, rủi ro chính là latency tăng dưới tải cao chứ không bị chặn hẳn.
+
+Test tải thật (backend dev thật `uvicorn --reload`, gọi Gemini/Qdrant/Supabase thật không mock, auth bằng JWT tự ký hợp lệ với SUPABASE_JWT_SECRET thật của project cho các user_id giả — an toàn vì quiz_attempts/essay_attempts/chat_query_logs không có FK constraint trên user_id, không tạo user thật nào trên Supabase Auth, toàn bộ dữ liệu test đã xóa sạch sau mỗi lần chạy):
+
+TRƯỚC fix:
+- Baseline 1 request chat đơn lẻ: 7.64s, TTFB 5.64s.
+- 10 request chat đồng thời: 10/10 thành công (không crash/hang), nhưng duration trung bình 32.28s (chậm 4.2 lần so với baseline), TTFB trung bình 25.89s, wall time toàn bộ 35.34s ≈ gần bằng 10× baseline — khớp giả thuyết serialize gần như hoàn toàn qua 2 điểm blocking trên. RSS bộ nhớ backend không đổi trong suốt burst (27.8MB trước/giữa/sau) — không phát hiện memory leak.
+- 15 quiz submit đồng thời (user khác nhau) + 5 essay submit đồng thời: 100% thành công, verify qua GET /api/quiz/stats và GET /api/essay/banks của từng user xác nhận KHÔNG có race condition/lẫn dữ liệu chéo-user — filter user_id trong mọi query (đã audit ở mục Audit bảo mật) an toàn dưới tải đồng thời thật, không chỉ đúng về lý thuyết.
+
+[x] Fix: bọc `rewrite_question`, `embed_query`, `grade_essay_answer` bằng `asyncio.to_thread(...)` — đúng pattern đã dùng cho Qdrant, không đổi logic/hành vi bên trong 3 hàm.
+
+SAU fix (đo lại đúng bộ test cũ để so sánh trực tiếp, không chỉ tin theo dự đoán):
+- Baseline 1 request chat đơn lẻ: 7.68s, TTFB 5.34s (không đổi so với trước fix — đúng dự kiến, solo request không có ai để serialize cùng).
+- 10 request chat đồng thời: 10/10 thành công, duration trung bình 10.64s (cải thiện ~3.0×), **TTFB trung bình 5.56s (cải thiện ~4.7×, gần bằng baseline solo 5.34s)**, wall time toàn bộ 13.40s (cải thiện ~2.6×). TTFB gần bằng baseline chứng minh 10 user giờ nhận được câu trả lời bắt đầu chạy gần như đồng thời thật, không còn xếp hàng chờ nhau.
+- Regression smoke test (chat/quiz/essay từng luồng đơn giản): cả 3 đều 200 OK, hành vi/kết quả trả về giống hệt trước fix (quiz chấm điểm đúng, essay trả feedback + matched_points đúng cấu trúc) — xác nhận không có hồi quy do đổi cách gọi async.
+
+Ước tính capacity cấu hình dev TRƯỚC fix (đã lỗi thời sau khi fix, giữ lại để đối chiếu): ngưỡng "bắt đầu chậm rõ rệt" ~8-10 user chat đồng thời, 20-30 user ngoại suy TTFB 50-85s (đủ để UAT viên nghĩ app treo dù kỹ thuật không lỗi). SAU fix, TTFB dưới tải gần bằng baseline nên ngưỡng này dịch chuyển đáng kể lên cao hơn nhiều - giới hạn thực tế còn lại nhiều khả năng chuyển sang phía Gemini RPM (nếu free tier) hoặc Qdrant free-tier resource, không còn là bug code-level.
+
+Khuyến nghị cho bước deploy tiếp theo (chưa làm, đợi quyết định):
+1. Xác nhận billing tier Gemini trước UAT — nếu free tier (15 RPM), bắt buộc nâng cấp hoặc giảm số user hỏi chat đồng thời.
+2. `uvicorn --reload` là dev-only (tự restart khi sửa code) — production nên dùng Gunicorn + UvicornWorker, số worker = 2×CPU core + 1 (công thức chuẩn Gunicorn), cho khả năng chịu lỗi (1 worker crash không sập cả service) và tận dụng multi-core thật, bổ sung cho fix asyncio.to_thread ở trên chứ không thay thế.
+3. Quiz/Essay race condition: đã xác nhận an toàn dưới tải đồng thời thật, không cần hành động thêm.
