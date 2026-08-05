@@ -75,7 +75,7 @@ Chiến lược chunking: tách BLTTHS và văn bản liên quan theo từng Đi
 Metadata cho vector. Mỗi chunk khi embed phải lưu: source_document, dieu_number, dieu_title, khoan_number (có thể null), law_version, chunk_text.
 Auth cho mọi route không public. Mọi route /api trừ /health và /auth/* đều yêu cầu Supabase JWT hợp lệ trong header Authorization: Bearer <token>, được verify ở phía server.
 Xử lý lỗi tập trung. Mọi lỗi trả về theo 1 format JSON thống nhất — không để lộ raw stack trace hay thông báo lỗi nội bộ ra client.
-CORS. Giới hạn ở http://localhost:3000 trong môi trường development (đọc từ CORS_ALLOWED_ORIGINS, mặc định "http://localhost:3000" nếu không set — không phá vỡ giới hạn này, chỉ cho phép cấu hình thêm origin qua env thay vì hardcode; xem Mục 7 phần "Test qua LAN").
+CORS. Giới hạn ở http://localhost:3000 trong môi trường development.
 Type safety. Frontend: TypeScript strict mode, không dùng any. Backend: Pydantic models cho mọi request/response, type hint cho mọi function.
 Không được "chữa cháy" bằng cách để model tự đoán. Không bao giờ để LLM tự "điền" một số điều luật nghe có vẻ hợp lý nếu nó không có trong context được cung cấp.
 
@@ -240,11 +240,22 @@ Thay đổi so với Phase 5a/5b gốc đang chạy thật:
 - Số liệu chính xác từng ngân hàng (bao nhiêu câu Lý thuyết/Vận dụng/Tình huống) phụ thuộc ngân hàng đề mới nhóm luật đang tổng hợp — CHƯA CÓ, chỉ có ngân hàng "Bán trắc nghiệm" (15 câu, đã có sẵn từ dữ liệu cũ).
 
 [x] Bước 1 (ĐÃ HOÀN THÀNH): build UI 3 màn hình mới (chọn bộ trắc nghiệm 15 bộ, chọn ngân hàng tự luận 4 loại, minigame Tôi hỏi bạn trả lời) dựa theo Figma export trong design/figma-export/, dùng mock data cục bộ (mockDataV2.ts, tách biệt hoàn toàn khỏi NEXT_PUBLIC_USE_MOCK_DATA/lib/api.ts/lib/mockData.ts) — CHƯA đụng vào backend/quiz_service.py/essay_service.py hiện có (vẫn chạy đúng, chỉ frontend tạm không trỏ vào)
-[ ] QUYẾT ĐỊNH QUAN TRỌNG: việc build UI mock này tạm thời route /quiz và /essay khỏi backend thật đang chạy (đã verify hoạt động đúng qua UAT-readiness trước đó) — chỉ chấp nhận được vì UAT với nhóm luật CHƯA bắt đầu. Phải hoàn thành Bước 2 (backend thật) TRƯỚC khi bắt đầu UAT, không được để nhóm luật UAT trên bản mock
+[x] QUYẾT ĐỊNH QUAN TRỌNG: việc build UI mock này tạm thời route /quiz và /essay khỏi backend thật đang chạy (đã verify hoạt động đúng qua UAT-readiness trước đó) — chỉ chấp nhận được vì UAT với nhóm luật CHƯA bắt đầu. Phải hoàn thành Bước 2 (backend thật) TRƯỚC khi bắt đầu UAT, không được để nhóm luật UAT trên bản mock — ĐÃ HOÀN THÀNH, /quiz và /essay giờ gọi backend thật 100%, mockDataV2.ts đã xóa hẳn khỏi repo, sẵn sàng UAT
 
 Phát hiện phụ khi verify Bước 1 (không phải lỗi của 3 trang mới, ghi lại để không quên): Sidebar không tự thu gọn ở mobile viewport (< tablet) — hạn chế có sẵn của AuthenticatedLayout toàn app (Chat/Dashboard cũng vậy), chưa từng được kiểm tra kỹ trên mobile thật. Đáng làm thành 1 việc QA riêng trước UAT (đã note nhu cầu QA mobile Quiz/Essay từ trước, giờ mở rộng thêm phạm vi sang cả khung Sidebar).
-[ ] Bước 2 (sau khi có ngân hàng đề mới): parse_question_bank.py cần viết lại đáng kể — tách 15 câu mcq_true_false thành category riêng thay vì gắn quiz_set, xử lý ngân hàng đề mới (Lý thuyết/Vận dụng/Tình huống) theo đúng pipeline đã có (parse PDF → LLM hỗ trợ chuẩn hóa essay_key_points → spot-check thủ công như đã làm ở Phase 5a gốc). Redesign question_bank_service.py: quiz rotation giờ chọn ngẫu nhiên 5/75 câu thay vì lấy nguyên 1 bộ cố định 18 câu; essay rotation cần filter theo category
-[ ] Migration: thêm cột category vào bảng câu hỏi tự luận (hoặc tách bảng riêng nếu hợp lý hơn — tự quyết định lúc build Bước 2)
+[x] Bước 2 — ĐANG LÀM, dữ liệu thật đã nhận: 
+    - Ngân hàng đề mới "Tôi hỏi bạn trả lời(2).pdf" — đã có đủ 4 category (Lý thuyết/Vận dụng/Bán trắc nghiệm/Tình huống), gồm cả câu cũ lẫn câu mới trộn lẫn. Toàn bộ nội dung file này đi vào Tự luận (4 ngân hàng), thay thế hẳn cách tổ chức essay cũ (pool phẳng 30 câu + 15 mcq_true_false riêng biệt) — cần đối chiếu xem 15 câu Nhận định Đúng/Sai cũ và 30 câu tự luận cũ có bị trùng/đã được gộp vào file mới hay không trước khi quyết định giữ/bỏ dữ liệu cũ (không giả định, kiểm tra thật như đã làm mọi lần trước).
+    - 8 file PDF mới bổ sung cho corpus RAG (Qdrant) — CHƯA rõ loại (legal_text hay academic_reference), cần phân loại bằng nội dung thật như đã làm ở Phase 3 gốc, không đoán theo tên file.
+    - MCQ: quyết định cuối cùng — XÓA hẳn 15 câu mcq_true_false khỏi trắc nghiệm (không chuyển đổi qua lại nữa), chỉ giữ 75 câu mcq_4choice gốc (5 bộ × 15 câu ban đầu, KHÔNG phải 5 bộ × 18 câu đã trộn Nhận định trước đây). Xáo trộn ngẫu nhiên 75 câu này, chia lại thành 15 bộ đề mới, mỗi bộ 5 câu — khớp đúng thiết kế UI đã build ở Bước 1.
+[x] parse_question_bank_v2.py (file mới, tái sử dụng helper từ parse_question_bank.py qua import thay vì viết đè lên bản gốc): parse "Tôi hỏi bạn trả lời (2).pdf" theo đúng 4 category thật (Bán trắc nghiệm 50/Lý thuyết 20/Vận dụng 26/Tình huống 15 = 111 câu) — phát hiện 65/111 câu KHÔNG có bullet "Từ khóa cho bài học" như file cũ (khác giả định ban đầu), dùng LLM trích xuất key points có kiểm soát chặt (grounded extraction) cho nhóm này thay vì chỉ chuẩn hóa bullet có sẵn. Reshuffle 75 câu mcq_4choice (seed cố định 20260804) thành 15 bộ × 5. Rà soát phát hiện + sửa: 1 câu MCQ trùng lặp có sẵn từ nguồn gốc (Bộ 7, soạn 1 câu mới thay thế, đã người dùng duyệt), 3 câu tình huống bị cụt do parse (khôi phục đủ cấu trúc nhiều nhánh từ PDF gốc). question_bank.json cuối cùng: 186 câu (75 mcq_4choice + 111 essay).
+[x] parse_law.py mở rộng: 8 file PDF mới đã phân loại + ingest vào corpus ở Bước A (đã hoàn thành trước đó, xem log Bước A phía trên) - không cần làm lại ở Bước B.
+[x] Redesign question_bank_service.py: quiz KHÔNG dùng rotation ngẫu nhiên nữa — mỗi quiz_set là bộ cố định 5 câu (khớp đúng thiết kế UI "15 bộ cố định" đã build ở Bước 1), select_quiz_questions chỉ xáo trộn thứ tự hiển thị. Essay rotation filter theo category (bank practice) hoặc toàn bộ pool (minigame "Tôi hỏi bạn trả lời", không giới hạn category theo đúng thiết kế).
+[x] Migration backend/migrations/0006_essay_attempts_category.sql: thêm cột category vào essay_attempts — đã chạy thủ công trên Supabase, verify qua GET /api/essay/banks trả đúng questions_practiced sau khi nộp bài thật.
+[x] Nối backend thật vào UI Quiz v2/Essay v2 đã build ở Bước 1 — mockDataV2.ts đã xóa hẳn khỏi repo, mọi trang (/quiz, /quiz/[setId], /essay, /essay/[category], /essay/practice) gọi API thật qua lib/api.ts (getQuizSetsV2/getQuizV2/submitQuizV2/getEssayBanksV2/getEssayBankQuestionV2/getPracticeQuestionV2 + submitEssay dùng chung). Route mới: GET /api/quiz/stats, GET /api/essay/banks; POST /api/essay/question nhận thêm {category?, exclude_question_id?}.
+[x] Cập nhật Phase 7 v2 dashboard: Khối 1 (MCQ progress ring) dùng GET /api/quiz/stats thật, Khối 2 (4 tracker tự luận) dùng GET /api/essay/banks thật — TODO comment đã xóa. Khối 3/4/Hero's weak-topic mapping vẫn dùng mapping heuristic theo từ khóa (chưa nằm trong phạm vi Bước B, đã ghi rõ trong code).
+[x] Verify E2E sạch đầy đủ (tài khoản Supabase thật tạo qua Admin API cho mục đích test, xóa sau khi xong; NEXT_PUBLIC_USE_MOCK_DATA=false; backend+frontend dev server thật; lái bằng Playwright headless, chụp screenshot từng bước) — đã xác nhận: đăng nhập → Dashboard hiển thị đúng data thật (Khối 1: 0/5, đã làm 1/15 bộ; Khối 2: đúng số câu đã luyện từng ngân hàng) → Trắc nghiệm 15 bộ hiển thị đủ, Bộ 07 chứa đúng câu MCQ mới soạn (Điều 74), làm bài + nộp + chấm điểm + hiển thị giải thích đúng, quay lại danh sách bộ đề cập nhật đúng trạng thái "Đã hoàn thành" → Tự luận 4 ngân hàng đúng số câu (20/26/50/15), làm bài Bán trắc nghiệm nhận chấm điểm LLM thật grounded vào rubric (test câu trả lời lạc đề, LLM nhận diện đúng và trả về missing_points + feedback hợp lý), câu Tình huống nhiều nhánh hiển thị đủ → Minigame "Tôi hỏi bạn trả lời" lấy ngẫu nhiên đúng từ toàn pool, "Câu khác" không tính lượt (đếm phiên không tăng), nộp bài thật tính lượt đúng. Không có console error/failed request trong toàn bộ luồng.
+
+Phase 5a/5b v2 — HOÀN THÀNH TOÀN BỘ (Bước 1 + Bước A + Bước B). question_bank.json: 186 câu thật (75 mcq_4choice/15 bộ + 111 essay/4 category). Corpus RAG: 2644/2644 chunk/point khớp tuyệt đối, 0 unusable. Backend + frontend nối API thật 100%, E2E verify sạch. Sẵn sàng UAT với nhóm luật.
 
 Phase 5b — Module tự luận (câu hỏi mở)
 [ ] essay_service.py — nhận câu trả lời tự do (free-text) của user cho 1 câu hỏi trong ngân hàng đề, chấm điểm bằng LLM-as-judge dựa trên essay_key_points (rubric) đã có sẵn trong ngân hàng đề — KHÔNG để LLM tự đánh giá đúng/sai theo cảm tính, phải grounding vào rubric cụ thể
@@ -345,25 +356,10 @@ QDRANT_URL=your_qdrant_cloud_url
 QDRANT_API_KEY=your_qdrant_api_key
 QDRANT_COLLECTION=ttths_law_chunks
 
-# CORS - danh sách origin cho phép, phân tách bằng dấu phẩy. Mặc định "http://localhost:3000"
-# nếu không set.
-# CORS_ALLOWED_ORIGINS=http://localhost:3000,http://192.168.1.5:3000
-
 # Frontend (.env.local)
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-
-Test qua LAN (điện thoại thật, ví dụ cài thử PWA - xem Mục 9 "Feature - PWA"): mỗi lần đổi
-mạng/IP không cần sửa code, chỉ cần:
-1. Lấy IP LAN hiện tại của máy chạy dev (vd. 192.168.1.5).
-2. Backend: chạy uvicorn với --host 0.0.0.0 (thay vì mặc định 127.0.0.1) để nghe trên LAN.
-3. Frontend: `next dev -H 0.0.0.0` (hoặc thêm vào script dev) để nghe trên LAN.
-4. Set CORS_ALLOWED_ORIGINS (root .env) thêm origin LAN, vd.
-   "http://localhost:3000,http://192.168.1.5:3000".
-5. Set NEXT_PUBLIC_API_BASE_URL (frontend/.env.local) trỏ về IP LAN của backend, vd.
-   "http://192.168.1.5:8000".
-6. Trên điện thoại (cùng WiFi/mạng LAN với máy dev), truy cập http://192.168.1.5:3000.
 
 
 8. Tiêu chí nghiệm thu (Definition of Done)
@@ -416,8 +412,52 @@ Quyết định phạm vi: app phụ thuộc hoàn toàn backend sống (RAG str
 3. Trang fallback offline thân thiện ("Không có kết nối — vui lòng thử lại") khi mất mạng, thay vì lỗi trắng
 4. KHÔNG cache/giả lập Chat/Quiz/Essay khi offline — các tính năng này luôn cần mạng thật, phải báo rõ ràng khi offline thay vì hiển thị dữ liệu cache cũ gây hiểu lầm
 
-[x] manifest.json: tên app, icon (192/512/apple-touch-icon), theme_color/background_color khớp palette editorial (navy #1E2460 hoặc ivory #F5F0E8, tự chọn hợp lý), display: standalone — dùng Next App Router native `app/manifest.ts` (route `/manifest.webmanifest`), không cần plugin
-[x] Service worker: cache-first cho static assets, network-only cho mọi API call (/api/*) — không cache response API dù là GET, vì dữ liệu (chat, quiz, dashboard) luôn cần mới nhất — viết tay `public/sw.js` (không dùng next-pwa/Workbox) để kiểm soát chính xác rule network-only cho /api/*
-[x] Trang/màn hình fallback khi offline — `public/offline.html` tĩnh (không phải Next/RSC page — tránh hydration mismatch khi SW trả về cho URL khác lúc offline)
-[x] Icon set: tạo từ chính logo Scale icon hiện có (lucide-react trong khung bg-primary), render ra các cỡ cần thiết — không cần thiết kế mới qua Figma — script `scripts/generate-pwa-icons.mjs` (sharp) render lại path data của lucide Scale
-[x] Verify: cài thử trên điện thoại thật (hoặc Chrome DevTools Application tab mô phỏng), xác nhận installable, icon hiển thị đúng, tắt mạng xác nhận fallback offline hiện đúng còn API call thật vẫn network-only không bị cache sai — verify bằng Playwright (build production + `next start`, `context.setOffline(true)`): SW registered & controlling, manifest đúng field, static assets nằm trong cache SW, gọi API thật khi offline reject ngay ("Failed to fetch", không treo/không trả cache), navigate route mới lúc offline hiện đúng offline.html
+[ ] manifest.json: tên app, icon (192/512/apple-touch-icon), theme_color/background_color khớp palette editorial (navy #1E2460 hoặc ivory #F5F0E8, tự chọn hợp lý), display: standalone
+[ ] Service worker: cache-first cho static assets, network-only cho mọi API call (/api/*) — không cache response API dù là GET, vì dữ liệu (chat, quiz, dashboard) luôn cần mới nhất
+[ ] Trang/màn hình fallback khi offline
+[ ] Icon set: tạo từ chính logo Scale icon hiện có (lucide-react trong khung bg-primary), render ra các cỡ cần thiết — không cần thiết kế mới qua Figma
+[ ] Verify: cài thử trên điện thoại thật (hoặc Chrome DevTools Application tab mô phỏng), xác nhận installable, icon hiển thị đúng, tắt mạng xác nhận fallback offline hiện đúng còn API call thật vẫn network-only không bị cache sai
+
+Feature — Mobile Responsive UI toàn app (song song với Bước 2, không phụ thuộc dữ liệu)
+Bối cảnh: Sidebar mobile đã có drawer pattern (feature trước), nhưng chưa audit toàn diện responsive cho nội dung chính từng trang (Chat, Quiz v2 grid 15 bộ, Essay v2 4 category card, Dashboard 4 khối, câu hỏi/form dài).
+[ ] Audit từng trang ở viewport mobile thật (< 768px): Welcome/Sign in/Sign up (đã làm trước, xác nhận lại), Chat (bong bóng tin nhắn, citation pill, input), Quiz set grid + màn làm bài, Essay bank cards + màn làm bài + minigame, Dashboard 4 khối (đặc biệt Hero và 2 hàng card đôi)
+[ ] Sửa các điểm vỡ layout phát hiện được — ưu tiên: không tràn ngang (horizontal scroll không mong muốn), touch target đủ lớn (tối thiểu 44x44px), text không bị quá nhỏ để đọc
+[ ] Verify bằng viewport thật (điện thoại qua LAN, hoặc Playwright mobile viewport) cho từng trang, không chỉ resize DevTools qua loa
+
+Bước A (Phase 5a/5b v2) — ĐÃ HOÀN THÀNH: ingest 5 file mới + thay thế Giáo trình bản chất lượng thấp
+- Xóa 1030 chunk cũ "Giáo trình Luật Tố tụng hình sự -đã nén.pdf", thay bằng bản mới chất lượng tốt hơn (722 chunk, không lỗi font).
+- Ingest 4 file mới: Luật tổ chức tòa án nhân dân (171 chunk, legal_text), Tình huống tố tụng hình sự (14 chunk, academic_reference), 784492208-Đề cương (64 chunk, academic_reference), Đề cương ôn tập theo chương (139 chunk, academic_reference).
+- Tổng corpus: 2645 chunk, 2639 point Qdrant (6 chunk unusable không embed, gồm 5 chunk cũ đã biết + Điều 152 Luật tổ chức TAND mới phát hiện — lỗi font gốc + RECITATION chặn OCR fallback, chấp nhận vì nội dung ít khả năng bị hỏi).
+- Bỏ qua 3 file trùng lặp với corpus đã có (Thông tư liên tịch 05, Nghị định 250 (1), Thông tư liên tịch 01/2026 (1)) — không ingest.
+
+3 bug phát hiện khi spot-check "Luật tổ chức tòa án nhân dân" (văn bản legal_text hoàn toàn mới, không có sẵn known-fix list):
+1. Số chú thích dính liền tiêu đề Điều bãi bỏ (Điều 63, 79, 82) — đã sửa.
+2. NGHIÊM TRỌNG: Điều 150 trích dẫn nguyên văn "Điều 116" của Luật Thi hành án dân sự làm ví dụ minh họa (thiếu dấu ngoặc kép mở trong PDF gốc) — bị parser nhận nhầm là Điều 116 thật, ĐÈ LÊN Điều 116 thật ("Thư ký Tòa án") và cắt cụt Điều 150. Đây là loại lỗi nguy hiểm nhất đã gặp trong toàn dự án: không mất dữ liệu (dễ phát hiện) mà THAY THẾ dữ liệu đúng bằng dữ liệu sai, trông vẫn hợp lệ. Đã sửa bằng danh sách loại trừ tường minh + assert tự báo lỗi nếu PDF gốc đổi.
+3. Điều 150 (sau khi sửa bug #2) vẫn bị tách khoản tự động, sinh khoản trùng số do văn bản trích dẫn lồng nhau có đánh số riêng → đụng độ point ID Qdrant, 7/182 chunk sẽ âm thầm mất khi upsert. Đã sửa: giữ Điều 150 làm 1 chunk duy nhất không tách khoản.
+
+Bài học: với văn bản legal_text mới không có known-fix list sẵn, BẮT BUỘC spot-check kỹ ngay từ lần ingest đầu tiên (không đợi phát hiện qua RAG chat như các bug trước) — đặc biệt cảnh giác với Điều luật có nội dung trích dẫn văn bản pháp luật khác bên trong (dễ gây nhận nhầm số Điều).
+
+Chuỗi audit dữ liệu sau Bước A (đáng đưa vào phần Methodology/Data Quality của bài báo)
+Phát hiện xuất phát từ 1 câu hỏi đơn giản ("vì sao Giáo trình mới ít chunk hơn bản cũ, vì sao unusable không rescue"), dẫn tới chuỗi điều tra hé lộ 1 khoảng trống đã tồn tại từ Phase 3 và 1 bug hệ thống mới:
+
+1. Giáo trình mới (722 chunk) ít hơn bản cũ (1030 chunk) — xác nhận bằng đo garbage-ratio (is_text_garbage): bản cũ 99.8% trang garbage do lỗi hỏng font "nén" file gốc (không phải thiếu nội dung — đối chiếu mục lục/tác giả từng chương khớp 100% giữa 2 bản). Số chunk ít hơn ở bản mới hoàn toàn do chunker gộp đúng thành đoạn văn mạch lạc khi text sạch, đúng target design ~1288 ký tự/chunk.
+
+2. Rescue tầng 2 (Tesseract fallback cho chunk unusable) CHƯA TỪNG được chạy trong toàn bộ dự án — tồn tại từ Phase 3 dưới dạng "one-off recovery script" (rescue_unusable_chunks.py) nhưng không ai từng thực thi cho tới lượt audit này. Không phải hồi quy do Bước A gây ra.
+
+3. Khi chạy rescue lần đầu, phát hiện bug hệ thống nghiêm trọng hơn cả vấn đề OCR: chunking.py tính extraction_quality theo TOÀN BỘ Điều (span đầu-cuối), không theo từng Khoản riêng — khiến các Khoản hoàn toàn sạch (nằm trọn trên trang tốt) bị gắn nhầm "unusable" oan chỉ vì 1 Khoản khác của cùng Điều chạm trang lỗi. Đã sửa: tính quality theo từng Khoản độc lập. Quét lại toàn bộ 6 văn bản legal_text (1543 chunk) xác nhận chỉ 2 vị trí bị ảnh hưởng (TT01 Điều 39, Luật tổ chức TAND Điều 152) — không lan rộng hơn.
+
+4. Trong lúc dọn dẹp, đối chiếu số liệu chunks.json (2645) vs Qdrant (2644) phát hiện thêm 1 lỗi in ấn thật trong chính văn bản gốc "Văn bản hợp nhất BLHS 2015.pdf": Điều 189 Khoản 3 xuất hiện lặp 2 lần liền kề trong bản PDF chính phủ công bố (không phải lỗi trích xuất của dự án) — 1 bản dùng thuật ngữ "hàng phạm pháp" (chỉ xuất hiện đúng 1 lần/toàn văn bản, xác định là câu chữ nháp sót lại), 1 bản dùng "vật phạm pháp" (xuất hiện 22 lần xuyên suốt, đúng thuật ngữ chuẩn/hiện hành). Qdrant tình cờ giữ đúng bản hiện hành do thứ tự upsert — đã sửa loại trừ tường minh bản sai, không còn phụ thuộc vào sự tình cờ này.
+
+Bài học tổng quát: (a) 1 script "one-off, chưa từng chạy" trong pipeline có thể ẩn giấu bug thật lâu dài — đáng định kỳ tự hỏi "cơ chế này có thực sự đang hoạt động, hay chỉ tồn tại trên giấy"; (b) tính toán ở cấp "toàn bộ Điều" cho 1 thuộc tính vốn có thể khác nhau ở cấp "từng Khoản" (extraction_quality) là 1 dạng lỗi khái quát hóa sai phạm vi, nên rà soát khi thiết kế field metadata; (c) văn bản pháp luật do chính cơ quan nhà nước công bố vẫn có thể chứa lỗi in ấn thật (không phải luôn là lỗi từ phía công cụ xử lý), cần cơ chế phát hiện qua tần suất thuật ngữ/đối chiếu chứ không mặc định tin tưởng nguồn.
+
+Số liệu cuối cùng sau toàn bộ Bước A: 2644 chunk, 2644 point Qdrant, khớp tuyệt đối, 0 unusable, 0 point ID trùng lặp.
+
+Bước B — Xử lý Bộ 7 thiếu 1 câu (sau khi xóa mcq4-set7-q4 trùng lặp)
+Quyết định: KHÔNG phục hồi câu trùng, KHÔNG rút câu từ bộ khác — soạn 1 câu MCQ mới bằng LLM để đắp đủ 5 câu cho Bộ 7. Đây là lần đầu tiên dự án để LLM tự soạn nội dung câu hỏi mới (khác hẳn việc chuẩn hóa/trích xuất từ nguồn có sẵn đã làm xuyên suốt từ Phase 5a) — áp ràng buộc chặt:
+[x] Câu mới PHẢI grounding vào đúng 1 Điều luật thật có trong corpus Qdrant (không tự bịa tình huống/quy định) — chọn 1 Điều liên quan chủ đề tương tự các câu khác trong Bộ 7 nếu hợp lý (quyền bào chữa), lấy nguyên văn nội dung Điều đó làm cơ sở soạn câu hỏi + 4 đáp án (1 đúng, 3 nhiễu hợp lý)
+[x] Đáp án đúng phải trích dẫn/diễn giải chính xác nội dung Điều đã chọn, không suy diễn thêm
+[x] BẮT BUỘC hiển thị đầy đủ câu hỏi mới (câu hỏi, 4 đáp án, đáp án đúng, Điều luật căn cứ) để người dùng duyệt trước khi thêm vào question_bank.json — không tự động chấp nhận, đúng quy trình spot-check đã áp dụng cho mọi dữ liệu câu hỏi khác trong dự án
+
+Câu mới mcq4-set7-q5: grounding vào Điều 74 BLTTHS ("Thời điểm người bào chữa tham gia tố tụng"), cùng chủ đề quyền bào chữa với mcq4-set7-q1 (Điều 76). Đáp án đúng diễn giải sát nguyên văn Khoản về trường hợp án an ninh quốc gia. Đã người dùng duyệt trước khi thêm vào question_bank.json.
+
+Bước B — HOÀN THÀNH. Số liệu cuối cùng: question_bank.json = 186 câu (75 mcq_4choice chia đều 15 bộ × 5 câu, không bộ nào thiếu/dư; 111 câu tự luận chia 4 category: Bán trắc nghiệm 50, Lý thuyết 20, Vận dụng 26, Tình huống 15). 15 câu mcq_true_false cũ đã xóa hẳn khỏi trắc nghiệm, không còn tồn tại dưới bất kỳ hình thức nào trong file.

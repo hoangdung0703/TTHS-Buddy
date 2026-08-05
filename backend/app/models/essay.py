@@ -8,6 +8,16 @@ class EssayQuestionOut(BaseModel):
     question_text: str
     dieu_number: str | None
     topic_category: str | None
+    category: str
+
+
+class EssayQuestionRequest(BaseModel):
+    # category=None: draws from the whole 111-question pool (the "Toi hoi ban tra loi"
+    # minigame, requirements.md "Phase 5a/5b v2"). category set: scoped to that bank.
+    category: str | None = None
+    # Set by the "Cau khac" (skip) button to guarantee a different question than the one just
+    # shown, without recording an attempt (skipping is explicitly not an attempt).
+    exclude_question_id: str | None = None
 
 
 class EssaySubmitRequest(BaseModel):
@@ -20,3 +30,13 @@ class EssaySubmitResponse(BaseModel):
     missing_points: list[str]
     feedback: str
     suggested_dieu: list[str]
+
+
+class EssayBankSummary(BaseModel):
+    category: str
+    total_questions: int
+    questions_practiced: int
+
+
+class EssayBanksResponse(BaseModel):
+    banks: list[EssayBankSummary]

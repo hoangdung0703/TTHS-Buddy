@@ -1,16 +1,13 @@
 "use client";
 
-// TODO: Phase 5a/5b v2 backend chưa xong, dùng mock tạm (xem requirements.md "Phase 5a/5b v2").
-// Route này TẠM THỜI thay thế luồng Tự luận Phase 5b gốc (pool phẳng, backend thật đã chạy)
-// bằng UI mock mới (4 ngân hàng theo category) theo thiết kế Figma mới của nhóm luật. Việc route
-// khỏi backend thật là có chủ đích - PHẢI hoàn thành Bước 2 (backend thật) trước khi nhóm luật
-// UAT, không được để UAT trên bản mock này.
 import { Check, MessageSquareQuote } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
+import { Button } from "@/components/ui/button";
+import { getEssayBanksV2 } from "@/lib/api";
 import { ESSAY_BANK_ACCENT, ESSAY_BANK_ICON } from "@/lib/essayBankPresentation";
-import { MOCK_ESSAY_BANKS_V2 } from "@/lib/mockDataV2";
 import type { EssayBankV2 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -93,10 +90,24 @@ function EssayBankCard({ bank }: { bank: EssayBankV2 }) {
 }
 
 export default function EssayPage() {
-  const banks = MOCK_ESSAY_BANKS_V2;
-  const totalAttempted = banks.reduce((acc, bank) => acc + (bank.progress.kind !== "untouched" ? bank.progress.attempted_count : 0), 0);
-  const totalQuestions = banks.reduce((acc, bank) => acc + bank.total_questions, 0);
-  const completedBanks = banks.filter((bank) => bank.progress.kind === "complete").length;
+  const [banks, setBanks] = useState<EssayBankV2[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    loadBanks();
+  }, []);
+
+  function loadBanks(): void {
+    setLoadError(false);
+    setBanks(null);
+    getEssayBanksV2()
+      .then(setBanks)
+      .catch(() => setLoadError(true));
+  }
+
+  const totalAttempted = banks?.reduce((acc, bank) => acc + (bank.progress.kind !== "untouched" ? bank.progress.attempted_count : 0), 0) ?? 0;
+  const totalQuestions = banks?.reduce((acc, bank) => acc + bank.total_questions, 0) ?? 0;
+  const completedBanks = banks?.filter((bank) => bank.progress.kind === "complete").length ?? 0;
 
   return (
     <AuthenticatedLayout title="Tự luận">
@@ -107,28 +118,49 @@ export default function EssayPage() {
             <p className="text-sm font-light text-muted-foreground">Chọn ngân hàng câu hỏi để luyện tập — mỗi lượt 1 câu</p>
           </div>
 
-          <div className="flex shrink-0 gap-6 rounded-xl border border-border bg-primary/[0.04] px-5 py-3.5">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">Ngân hàng hoàn thành</span>
-              <span className="font-serif text-base text-foreground">
-                {completedBanks} / {banks.length}
-              </span>
+          {banks !== null ? (
+            <div className="flex shrink-0 gap-6 rounded-xl border border-border bg-primary/[0.04] px-5 py-3.5">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">Ngân hàng hoàn thành</span>
+                <span className="font-serif text-base text-foreground">
+                  {completedBanks} / {banks.length}
+                </span>
+              </div>
+              <div className="w-px self-stretch bg-border" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">Câu đã luyện</span>
+                <span className="font-serif text-base text-foreground">
+                  {totalAttempted} / {totalQuestions}
+                </span>
+              </div>
             </div>
-            <div className="w-px self-stretch bg-border" />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">Câu đã luyện</span>
-              <span className="font-serif text-base text-foreground">
-                {totalAttempted} / {totalQuestions}
-              </span>
-            </div>
-          </div>
+          ) : null}
         </div>
 
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          {banks.map((bank) => (
-            <EssayBankCard key={bank.category} bank={bank} />
-          ))}
-        </div>
+        {loadError ? (
+          <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <span>Không tải được danh sách ngân hàng câu hỏi.</span>
+            <Button variant="outline" size="sm" onClick={loadBanks}>
+              Thử lại
+            </Button>
+          </div>
+        ) : null}
+
+        {banks === null && !loadError ? (
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-56 animate-pulse rounded-2xl border border-border bg-muted/60" />
+            ))}
+          </div>
+        ) : null}
+
+        {banks !== null ? (
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {banks.map((bank) => (
+              <EssayBankCard key={bank.category} bank={bank} />
+            ))}
+          </div>
+        ) : null}
 
         <Link
           href="/essay/practice"

@@ -10,11 +10,14 @@ from app.models.quiz import (
     QuizResultOut,
     QuizSetsResponse,
     QuizSetSummary,
+    QuizStatsResponse,
     QuizSubmitRequest,
     QuizSubmitResponse,
 )
 from app.services.question_bank_service import (
+    QUIZ_SET_COUNT,
     get_quiz_set_summaries,
+    get_quiz_stats,
     load_question_bank,
     save_quiz_attempt,
     select_quiz_questions,
@@ -23,34 +26,43 @@ from app.services.quiz_service import grade_mcq_answer
 
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
-VALID_QUIZ_SETS = {1, 2, 3, 4, 5}
+VALID_QUIZ_SETS = set(range(1, QUIZ_SET_COUNT + 1))
 
 
 def _validate_quiz_set(quiz_set: int) -> None:
     if quiz_set not in VALID_QUIZ_SETS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="quiz_set must be between 1 and 5")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                             detail=f"quiz_set must be between 1 and {QUIZ_SET_COUNT}")
 
 
 @router.get("/sets", response_model=QuizSetsResponse)
-async def get_quiz_sets(current_user: AuthUser = Depends(require_supabase_user)) -> QuizSetsResponse:
-    return QuizSetsResponse(quiz_sets=[QuizSetSummary(**s) for s in get_quiz_set_summaries()])
+async def get_quiz_sets(
+    request: Request,
+    current_user: AuthUser = Depends(require_supabase_user),
+) -> QuizSetsResponse:
+    summaries = get_quiz_set_summaries(request.app.state.supabase_client, current_user.user_id)
+    return QuizSetsResponse(quiz_sets=[QuizSetSummary(**s) for s in summaries])
+
+
+@router.get("/stats", response_model=QuizStatsResponse)
+async def get_quiz_statistics(
+    request: Request,
+    current_user: AuthUser = Depends(require_supabase_user),
+) -> QuizStatsResponse:
+    return QuizStatsResponse(**get_quiz_stats(request.app.state.supabase_client, current_user.user_id))
 
 
 @router.post("/generate", response_model=QuizGenerateResponse)
 async def generate_quiz(
     body: QuizGenerateRequest,
-    request: Request,
     current_user: AuthUser = Depends(require_supabase_user),
 ) -> QuizGenerateResponse:
     _validate_quiz_set(body.quiz_set)
 
-    questions = select_quiz_questions(
-        request.app.state.supabase_client, current_user.user_id, body.quiz_set,
-        dieu_number=body.dieu_number, topic_category=body.topic_category,
-    )
+    questions = select_quiz_questions(body.quiz_set)
     if not questions:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                             detail="No questions found for the given quiz_set/filters")
+                             detail="No questions found for the given quiz_set")
 
     return QuizGenerateResponse(questions=[
         QuizQuestionOut(

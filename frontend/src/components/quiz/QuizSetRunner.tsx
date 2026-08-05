@@ -1,45 +1,61 @@
 "use client";
 
-// TODO: Phase 5a/5b v2 backend chưa xong, dùng mock tạm (xem requirements.md "Phase 5a/5b v2").
-// Làm bài + chấm điểm hoàn toàn cục bộ (getMockQuizQuestionsV2/gradeMockQuizV2), không gọi
-// POST /api/quiz/generate hay POST /api/quiz/submit thật.
 import { CheckCircle2, XCircle } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getMockQuizQuestionsV2, gradeMockQuizV2, withMockDelayV2 } from "@/lib/mockDataV2";
-import type { QuizSubmitResponse } from "@/lib/types";
+import { getQuizV2, submitQuizV2 } from "@/lib/api";
+import type { QuizQuestion, QuizSubmitResponse } from "@/lib/types";
 
 interface QuizSetRunnerProps {
   quizSetId: number;
 }
 
 export function QuizSetRunner({ quizSetId }: QuizSetRunnerProps) {
-  const [questions] = useState(() => getMockQuizQuestionsV2(quizSetId));
+  const [questions, setQuestions] = useState<QuizQuestion[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   const [result, setResult] = useState<QuizSubmitResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const allAnswered = questions.every((question) => selectedOptions[question.question_id] !== undefined);
+  useEffect(() => {
+    loadQuestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quizSetId]);
+
+  function loadQuestions(): void {
+    setLoadError(false);
+    setQuestions(null);
+    setSelectedOptions({});
+    setResult(null);
+    getQuizV2(quizSetId)
+      .then(setQuestions)
+      .catch(() => setLoadError(true));
+  }
+
+  const allAnswered = questions !== null && questions.every((question) => selectedOptions[question.question_id] !== undefined);
   const label = `Bộ đề ${String(quizSetId).padStart(2, "0")}`;
 
   async function handleSubmit(): Promise<void> {
+    if (questions === null) return;
     setIsSubmitting(true);
     const answers = questions.map((question) => ({
       question_id: question.question_id,
       selected_option: selectedOptions[question.question_id] ?? ""
     }));
-    const response = await withMockDelayV2(gradeMockQuizV2(quizSetId, answers));
-    setResult(response);
-    setIsSubmitting(false);
+    try {
+      const response = await submitQuizV2(quizSetId, answers);
+      setResult(response);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function handleRetry(): void {
-    setSelectedOptions({});
-    setResult(null);
+    loadQuestions();
   }
 
   return (
@@ -51,7 +67,24 @@ export function QuizSetRunner({ quizSetId }: QuizSetRunnerProps) {
         <Badge variant="outline">{label}</Badge>
       </div>
 
-      {result === null
+      {loadError ? (
+        <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>Không tải được câu hỏi cho bộ đề này.</span>
+          <Button variant="outline" size="sm" onClick={loadQuestions}>
+            Thử lại
+          </Button>
+        </div>
+      ) : null}
+
+      {questions === null && !loadError ? (
+        <div className="space-y-4">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-40 animate-pulse rounded-lg border border-border bg-muted/60" />
+          ))}
+        </div>
+      ) : null}
+
+      {questions !== null && result === null
         ? questions.map((question, index) => (
             <Card key={question.question_id}>
               <CardHeader>
@@ -82,11 +115,13 @@ export function QuizSetRunner({ quizSetId }: QuizSetRunnerProps) {
           ))
         : null}
 
-      {result === null ? (
+      {questions !== null && result === null ? (
         <Button className="w-full rounded-full" disabled={!allAnswered || isSubmitting} onClick={() => void handleSubmit()}>
           {isSubmitting ? "Đang chấm điểm..." : "Nộp bài"}
         </Button>
-      ) : (
+      ) : null}
+
+      {questions !== null && result !== null ? (
         <div className="space-y-4">
           <Card className="border-accent/30 bg-accent/[0.06]">
             <CardHeader>
@@ -121,6 +156,7 @@ export function QuizSetRunner({ quizSetId }: QuizSetRunnerProps) {
                     Bạn chọn: <span className="text-foreground">{selectedOptions[question.question_id]}</span>
                   </p>
                   {!questionResult?.is_correct ? <p className="text-emerald-700">Đáp án đúng: {questionResult?.mcq_correct}</p> : null}
+                  {questionResult?.explanation ? <p className="text-muted-foreground">{questionResult.explanation}</p> : null}
                 </CardContent>
               </Card>
             );
@@ -135,7 +171,7 @@ export function QuizSetRunner({ quizSetId }: QuizSetRunnerProps) {
             </Button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -220,7 +220,8 @@ export function gradeMockQuiz(answers: QuizAnswer[]): QuizSubmitResponse {
       question_id: answer.question_id,
       is_correct: answer.selected_option === correctOption,
       mcq_correct: correctOption,
-      dieu_number: question?.dieu_number ?? ""
+      dieu_number: question?.dieu_number ?? "",
+      explanation: null
     };
   });
 

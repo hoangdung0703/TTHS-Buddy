@@ -1,22 +1,18 @@
 "use client";
 
-// TODO: Phase 5a/5b v2 backend chưa xong, dùng mock tạm (xem requirements.md "Phase 5a/5b v2").
-// Route này TẠM THỜI thay thế luồng Quiz Phase 5a gốc (5 bộ x 18 câu, backend thật đã chạy) bằng
-// UI mock mới (15 bộ x 5 câu mcq_4choice thuần túy) theo thiết kế Figma mới của nhóm luật. Việc
-// route khỏi backend thật là có chủ đích - PHẢI hoàn thành Bước 2 (backend thật) trước khi nhóm
-// luật UAT, không được để UAT trên bản mock này.
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { ProgressRing } from "@/components/quiz/ProgressRing";
-import { MOCK_QUIZ_SETS_V2, QUIZ_SET_V2_TOTAL_QUESTIONS } from "@/lib/mockDataV2";
+import { Button } from "@/components/ui/button";
+import { getQuizSetsV2 } from "@/lib/api";
 import type { QuizSetSummaryV2 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function QuizSetCard({ set }: { set: QuizSetSummaryV2 }) {
   const { status } = set;
   const isDone = status.kind === "done";
-  const isInProgress = status.kind === "in_progress";
   const label = `Bộ đề ${String(set.quiz_set_id).padStart(2, "0")}`;
 
   return (
@@ -36,23 +32,23 @@ function QuizSetCard({ set }: { set: QuizSetSummaryV2 }) {
         >
           {label}
         </span>
-        {(isDone || isInProgress) && <ProgressRing correct={status.correct_count} total={set.total_questions} />}
+        {isDone && <ProgressRing correct={status.correct_count} total={set.total_questions} />}
       </div>
 
       <div className="min-h-[1.1rem] font-sans text-xs">
-        {isDone && (
+        {isDone ? (
           <span className={status.correct_count === set.total_questions ? "text-accent" : "text-muted-foreground"}>
             {status.correct_count === set.total_questions
               ? `Hoàn thành · ${set.total_questions}/${set.total_questions} đúng`
               : `Đã hoàn thành · ${status.correct_count}/${set.total_questions} đúng`}
           </span>
+        ) : (
+          <span className="text-muted-foreground/60">Chưa làm</span>
         )}
-        {isInProgress && <span className="text-primary">Đang làm · {status.correct_count}/{set.total_questions} đúng</span>}
-        {status.kind === "untouched" && <span className="text-muted-foreground/60">Chưa làm</span>}
       </div>
 
       <span className="rounded-full bg-primary px-3 py-1 text-center font-sans text-xs font-medium text-primary-foreground opacity-0 transition-opacity group-hover:opacity-100">
-        {isDone ? "Làm lại" : isInProgress ? "Tiếp tục" : "Bắt đầu"}
+        {isDone ? "Làm lại" : "Bắt đầu"}
       </span>
     </Link>
   );
@@ -69,15 +65,12 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function ProgressSummary({ sets }: { sets: QuizSetSummaryV2[] }) {
   const done = sets.filter((set) => set.status.kind === "done").length;
-  const inProgress = sets.filter((set) => set.status.kind === "in_progress").length;
-  const totalCorrect = sets.reduce((acc, set) => (set.status.kind !== "untouched" ? acc + set.status.correct_count : acc), 0);
-  const totalAttempted = (done + inProgress) * QUIZ_SET_V2_TOTAL_QUESTIONS;
+  const totalCorrect = sets.reduce((acc, set) => (set.status.kind === "done" ? acc + set.status.correct_count : acc), 0);
+  const totalAttempted = done * (sets[0]?.total_questions ?? 5);
 
   return (
     <div className="mb-10 flex flex-wrap gap-x-8 gap-y-2 rounded-xl border border-border bg-primary/[0.04] px-5 py-3.5">
       <Stat label="Bộ đề hoàn thành" value={`${done} / ${sets.length}`} />
-      <div className="w-px self-stretch bg-border" />
-      <Stat label="Đang làm" value={String(inProgress)} />
       <div className="w-px self-stretch bg-border" />
       <Stat label="Tổng số câu đúng" value={totalAttempted > 0 ? `${totalCorrect} / ${totalAttempted}` : "—"} />
     </div>
@@ -85,7 +78,20 @@ function ProgressSummary({ sets }: { sets: QuizSetSummaryV2[] }) {
 }
 
 export default function QuizPage() {
-  const sets = MOCK_QUIZ_SETS_V2;
+  const [sets, setSets] = useState<QuizSetSummaryV2[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    loadSets();
+  }, []);
+
+  function loadSets(): void {
+    setLoadError(false);
+    setSets(null);
+    getQuizSetsV2()
+      .then(setSets)
+      .catch(() => setLoadError(true));
+  }
 
   return (
     <AuthenticatedLayout title="Trắc nghiệm">
@@ -93,17 +99,38 @@ export default function QuizPage() {
         <div className="mb-6">
           <h1 className="mb-1.5 font-serif text-3xl font-light tracking-tight text-foreground">Trắc nghiệm</h1>
           <p className="text-sm font-light text-muted-foreground">
-            Chọn 1 trong {sets.length} bộ đề — mỗi bộ {QUIZ_SET_V2_TOTAL_QUESTIONS} câu
+            {sets ? `Chọn 1 trong ${sets.length} bộ đề — mỗi bộ ${sets[0]?.total_questions ?? 5} câu` : "Đang tải danh sách bộ đề..."}
           </p>
         </div>
 
-        <ProgressSummary sets={sets} />
+        {loadError ? (
+          <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <span>Không tải được danh sách bộ đề.</span>
+            <Button variant="outline" size="sm" onClick={loadSets}>
+              Thử lại
+            </Button>
+          </div>
+        ) : null}
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {sets.map((set) => (
-            <QuizSetCard key={set.quiz_set_id} set={set} />
-          ))}
-        </div>
+        {sets === null && !loadError ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {Array.from({ length: 10 }).map((_, index) => (
+              <div key={index} className="h-24 animate-pulse rounded-xl border border-border bg-muted/60" />
+            ))}
+          </div>
+        ) : null}
+
+        {sets !== null ? (
+          <>
+            <ProgressSummary sets={sets} />
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {sets.map((set) => (
+                <QuizSetCard key={set.quiz_set_id} set={set} />
+              ))}
+            </div>
+          </>
+        ) : null}
 
         <p className="mt-10 text-center text-xs text-muted-foreground/60">
           Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp

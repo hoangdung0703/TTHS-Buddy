@@ -12,18 +12,38 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { useAuthSession } from "@/hooks/useAuthSession";
-import { getKeywordsYesterday, getWeakTopics } from "@/lib/api";
-// TODO: Phase 7 v2 - chờ Quiz v2/Essay v2 backend (Bước 2). Khối 1 và Khối 2 đọc mock ở đây
-// (xem requirements.md "Phase 7 v2"), Khối 3/Khối 4/Hero's weak-topic detection dùng data thật
-// bên dưới (getKeywordsYesterday/getWeakTopics, không đổi).
-import { getMockQuizOverallStatsV2, mapWeakTopicToEssayBankCategoryMock, MOCK_ESSAY_BANKS_V2 } from "@/lib/mockDataV2";
-import type { KeywordYesterday, WeakTopic } from "@/lib/types";
+import { getEssayBanksV2, getKeywordsYesterday, getQuizStatsV2, getWeakTopics } from "@/lib/api";
+import type { EssayBankCategory, EssayBankV2, KeywordYesterday, QuizStatsV2, WeakTopic } from "@/lib/types";
 
 type LoadState = "loading" | "ready" | "error";
 
 interface DashboardData {
   keywords: KeywordYesterday[];
   weakTopics: WeakTopic[];
+  quizStats: QuizStatsV2;
+  essayBanks: EssayBankV2[];
+}
+
+// topic_category (Phase 5a/5b gốc, từ get_weak_topics) chưa từng được gắn với 1 trong 4
+// category Essay v2 (Lý thuyết/Vận dụng/Bán trắc nghiệm/Tình huống) - đây vẫn là mapping
+// heuristic theo từ khóa, KHÔNG phải category thật của câu hỏi (xem requirements.md "Phase 7
+// v2" - phần này chưa nằm trong phạm vi Bước B, chỉ Khối 1/2 chuyển sang data thật).
+function mapWeakTopicToEssayBankCategory(topicCategory: string): EssayBankCategory {
+  const normalized = topicCategory.toLowerCase();
+
+  if (normalized.includes("tình huống") || normalized.includes("vụ án")) {
+    return "tinh_huong";
+  }
+
+  if (normalized.includes("vận dụng") || normalized.includes("áp dụng") || normalized.includes("thực tiễn")) {
+    return "van_dung";
+  }
+
+  if (normalized.includes("đúng") || normalized.includes("sai") || normalized.includes("nhận định")) {
+    return "ban_trac_nghiem";
+  }
+
+  return "ly_thuyet";
 }
 
 function getGreeting(hour: number): string {
@@ -82,7 +102,7 @@ function DashboardHero({ weakTopics }: { weakTopics: WeakTopic[] }) {
     );
   }
 
-  const suggestedCategory = mapWeakTopicToEssayBankCategoryMock(lowestTopic.topic_category);
+  const suggestedCategory = mapWeakTopicToEssayBankCategory(lowestTopic.topic_category);
 
   return (
     <Card className="border-accent/25 bg-accent/[0.06]">
@@ -114,15 +134,13 @@ export default function DashboardPage() {
   function loadDashboard(): void {
     setLoadState("loading");
 
-    Promise.all([getKeywordsYesterday(), getWeakTopics()])
-      .then(([keywords, weakTopics]) => {
-        setData({ keywords, weakTopics });
+    Promise.all([getKeywordsYesterday(), getWeakTopics(), getQuizStatsV2(), getEssayBanksV2()])
+      .then(([keywords, weakTopics, quizStats, essayBanks]) => {
+        setData({ keywords, weakTopics, quizStats, essayBanks });
         setLoadState("ready");
       })
       .catch(() => setLoadState("error"));
   }
-
-  const quizStats = getMockQuizOverallStatsV2();
 
   return (
     <AuthenticatedLayout title="Tổng quan học tập">
@@ -176,18 +194,18 @@ export default function DashboardPage() {
             <DashboardHero weakTopics={data.weakTopics} />
 
             <div className="grid gap-4 md:grid-cols-2">
-              {/* Khối 1 - MCQ tổng hợp (MOCK, xem requirements.md "Phase 7 v2") */}
+              {/* Khối 1 - MCQ tổng hợp (data thật: GET /api/quiz/stats) */}
               <Card>
                 <CardHeader>
                   <CardTitle className="font-serif text-base font-light tracking-tight">Trắc nghiệm</CardTitle>
                 </CardHeader>
                 <CardContent className="flex items-center gap-5">
-                  <ProgressRing correct={quizStats.correct_total} total={quizStats.questions_attempted} size={88} />
+                  <ProgressRing correct={data.quizStats.correct_total} total={data.quizStats.questions_total} size={88} />
                   <div className="space-y-1">
-                    <p className="font-serif text-2xl font-normal text-foreground">{quizStats.overall_correct_percentage}%</p>
+                    <p className="font-serif text-2xl font-normal text-foreground">{data.quizStats.average_score_percentage}%</p>
                     <p className="text-sm text-muted-foreground">tỉ lệ đúng tổng thể</p>
                     <p className="text-xs text-muted-foreground">
-                      Đã làm {quizStats.sets_touched} / {quizStats.total_sets} bộ đề
+                      Đã làm {data.quizStats.quiz_sets_attempted} / {data.quizStats.total_quiz_sets} bộ đề
                     </p>
                     <Button asChild variant="outline" size="sm" className="mt-1 rounded-full">
                       <Link href="/quiz">Vào trắc nghiệm</Link>
@@ -196,14 +214,14 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              {/* Khối 2 - 4 tracker tự luận song song (MOCK, xem requirements.md "Phase 7 v2") */}
+              {/* Khối 2 - 4 tracker tự luận song song (data thật: GET /api/essay/banks) */}
               <Card>
                 <CardHeader>
                   <CardTitle className="font-serif text-base font-light tracking-tight">Tự luận theo ngân hàng</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-3">
-                    {MOCK_ESSAY_BANKS_V2.map((bank) => (
+                    {data.essayBanks.map((bank) => (
                       <EssayBankMiniTracker key={bank.category} bank={bank} />
                     ))}
                   </div>
@@ -246,7 +264,7 @@ export default function DashboardPage() {
                   <p className="text-sm text-muted-foreground">Không có chủ đề nào cần ôn lại.</p>
                 ) : (
                   data.weakTopics.map((topic) => {
-                    const category = mapWeakTopicToEssayBankCategoryMock(topic.topic_category);
+                    const category = mapWeakTopicToEssayBankCategory(topic.topic_category);
 
                     return (
                       <div key={topic.topic_category} className="space-y-2">

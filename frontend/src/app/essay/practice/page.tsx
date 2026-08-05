@@ -1,17 +1,17 @@
 "use client";
 
-// TODO: Phase 5a/5b v2 backend chưa xong, dùng mock tạm (xem requirements.md "Phase 5a/5b v2").
-// Minigame "Tôi hỏi bạn trả lời" - lấy ngẫu nhiên từ toàn bộ pool tự luận cục bộ
-// (MOCK_PRACTICE_QUESTIONS_V2), không gọi API thật nào. Nút "Câu khác" (skip) chỉ đổi câu, KHÔNG
-// chấm điểm và KHÔNG tính vào lịch sử/thống kê - quyết định đã chốt trong requirements.md
-// ("Phase 5a/5b v2": nghiêng về hoàn toàn bỏ qua, không tính là 1 lượt làm bài).
+// Minigame "Tôi hỏi bạn trả lời" - lấy ngẫu nhiên từ toàn bộ pool tự luận (POST /api/essay/question
+// không kèm category), chấm bằng POST /api/essay/submit thật. Nút "Câu khác" (skip) chỉ đổi câu
+// (exclude_question_id = câu hiện tại), KHÔNG chấm điểm và KHÔNG tính vào lịch sử/thống kê -
+// quyết định đã chốt trong requirements.md ("Phase 5a/5b v2": nghiêng về hoàn toàn bỏ qua).
 import { Check, ChevronRight, Minus, RefreshCw, Send } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { Badge } from "@/components/ui/badge";
-import { getRandomMockPracticeQuestion, gradeMockPracticeAnswer, withMockDelayV2 } from "@/lib/mockDataV2";
+import { Button } from "@/components/ui/button";
+import { getPracticeQuestionV2, submitEssay } from "@/lib/api";
 import type { EssaySubmitResponse, PracticeQuestionV2 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +22,8 @@ type Phase = "answering" | "reviewing";
 const PIP_TRACK_LENGTH = 5;
 
 export default function EssayPracticePage() {
-  const [question, setQuestion] = useState<PracticeQuestionV2>(() => getRandomMockPracticeQuestion());
+  const [question, setQuestion] = useState<PracticeQuestionV2 | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [answer, setAnswer] = useState("");
   const [phase, setPhase] = useState<Phase>("answering");
   const [result, setResult] = useState<EssaySubmitResponse | null>(null);
@@ -31,32 +32,45 @@ export default function EssayPracticePage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    loadQuestion();
+  }, []);
+
+  useEffect(() => {
     if (phase === "answering") textareaRef.current?.focus();
   }, [phase]);
 
+  function loadQuestion(excludeQuestionId?: string): void {
+    setLoadError(false);
+    getPracticeQuestionV2(excludeQuestionId)
+      .then((next) => {
+        setQuestion(next);
+        setAnswer("");
+        setResult(null);
+        setPhase("answering");
+      })
+      .catch(() => setLoadError(true));
+  }
+
   async function handleSubmit(): Promise<void> {
-    if (answer.trim().length === 0) return;
+    if (answer.trim().length === 0 || question === null) return;
     setIsSubmitting(true);
-    const response = await withMockDelayV2(gradeMockPracticeAnswer(question, answer));
-    setResult(response);
-    setPhase("reviewing");
-    setAnsweredCount((count) => count + 1);
-    setIsSubmitting(false);
+    try {
+      const response = await submitEssay({ question_id: question.question_id, user_answer: answer });
+      setResult(response);
+      setPhase("reviewing");
+      setAnsweredCount((count) => count + 1);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   // "Câu khác": bỏ qua hoàn toàn, không chấm điểm, không tăng answeredCount.
   function handleSkip(): void {
-    setQuestion(getRandomMockPracticeQuestion(question.question_id));
-    setAnswer("");
-    setResult(null);
-    setPhase("answering");
+    loadQuestion(question?.question_id);
   }
 
   function handleNextQuestion(): void {
-    setQuestion(getRandomMockPracticeQuestion(question.question_id));
-    setAnswer("");
-    setResult(null);
-    setPhase("answering");
+    loadQuestion(question?.question_id);
   }
 
   const pipCurrent = (answeredCount % PIP_TRACK_LENGTH) + 1;
@@ -89,7 +103,18 @@ export default function EssayPracticePage() {
           </span>
         </div>
 
-        {phase === "answering" && (
+        {loadError ? (
+          <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <span>Không tải được câu hỏi.</span>
+            <Button variant="outline" size="sm" onClick={() => loadQuestion()}>
+              Thử lại
+            </Button>
+          </div>
+        ) : null}
+
+        {question === null && !loadError ? <div className="h-64 animate-pulse rounded-2xl border border-border bg-muted/60" /> : null}
+
+        {question !== null && phase === "answering" && (
           <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_4px_24px_rgba(30,36,96,0.07)]">
             <div className="border-b border-border/70 p-6 sm:p-8">
               <div className="mb-5 flex items-center justify-between">
@@ -150,7 +175,7 @@ export default function EssayPracticePage() {
           </div>
         )}
 
-        {phase === "reviewing" && result !== null && (
+        {question !== null && phase === "reviewing" && result !== null && (
           <div className="flex flex-col gap-5">
             <div className="rounded-2xl border border-border bg-card p-5">
               <div className="flex items-start justify-between gap-4">
@@ -178,7 +203,7 @@ export default function EssayPracticePage() {
               </div>
 
               <div className="space-y-4 p-6">
-                <p className="text-sm leading-loose text-foreground/85">{question.feedback}</p>
+                <p className="text-sm leading-loose text-foreground/85">{result.feedback}</p>
 
                 <div>
                   <p className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Các điểm cần có</p>

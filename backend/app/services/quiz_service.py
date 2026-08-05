@@ -1,13 +1,15 @@
-"""MCQ format validation and answer grading for Phase 5a. mcq_4choice (4 options) and
-mcq_true_false (2 options) share the same "exactly 1 correct answer" shape, just a different
-expected option count, so both are validated through the same function.
+"""MCQ format validation and answer grading for Phase 5a/5b v2. Only mcq_4choice exists in the
+question bank now - the 15 mcq_true_false questions were deliberately dropped entirely (not
+converted) when the bank was restructured into 15 fixed 5-question sets (see requirements.md
+"Phase 5a/5b v2" Buoc B) - EXPECTED_OPTION_COUNT is a dict keyed by question_type rather than a
+single constant so a second MCQ shape could still be reintroduced later without touching
+is_valid_mcq_question's logic, but there is deliberately only one entry today.
 
-The question bank currently has 18 MCQ questions per quiz_set (15 mcq_4choice + 3
-mcq_true_false, verified in ingestion/question_bank.json) - enough for a full rotation-based
-attempt (see question_bank_service.QUESTIONS_PER_ATTEMPT), so the "generate more via LLM if the
-bank isn't big enough" fallback mentioned in requirements.md is not implemented: it isn't
-needed against the real data, and requirements.md explicitly prioritizes the law students'
-pre-written questions over LLM-generated ones anyway.
+The question bank has exactly 75 mcq_4choice questions, reshuffled once at parse time into 15
+fixed sets of 5 (ingestion/parse_question_bank_v2.py) - the "generate more via LLM if the bank
+isn't big enough" fallback mentioned in requirements.md is not implemented: it isn't needed
+against the real data, and requirements.md explicitly prioritizes the law students' pre-written
+questions over LLM-generated ones anyway.
 """
 from __future__ import annotations
 
@@ -15,7 +17,6 @@ from typing import Any
 
 EXPECTED_OPTION_COUNT = {
     "mcq_4choice": 4,
-    "mcq_true_false": 2,
 }
 
 

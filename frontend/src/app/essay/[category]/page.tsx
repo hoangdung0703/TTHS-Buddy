@@ -2,28 +2,27 @@ import { notFound } from "next/navigation";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { EssayBankRunner } from "@/components/essay/EssayBankRunner";
-import { MOCK_ESSAY_BANKS_V2 } from "@/lib/mockDataV2";
+import { ESSAY_BANK_TITLES } from "@/lib/essayBankPresentation";
 import type { EssayBankCategory } from "@/lib/types";
 
 interface EssayBankPageProps {
   params: Promise<{ category: string }>;
 }
 
-const VALID_CATEGORIES = new Set(MOCK_ESSAY_BANKS_V2.map((bank) => bank.category));
+const VALID_CATEGORIES = new Set<string>(["ly_thuyet", "van_dung", "ban_trac_nghiem", "tinh_huong"]);
 
-// TODO: Phase 5a/5b v2 backend chưa xong, dùng mock tạm (xem requirements.md "Phase 5a/5b v2").
 export default async function EssayBankPage({ params }: EssayBankPageProps) {
   const { category } = await params;
 
-  if (!VALID_CATEGORIES.has(category as EssayBankCategory)) {
+  if (!VALID_CATEGORIES.has(category)) {
     notFound();
   }
 
-  const bank = MOCK_ESSAY_BANKS_V2.find((item) => item.category === category);
+  const bankCategory = category as EssayBankCategory;
 
   return (
-    <AuthenticatedLayout title={`Tự luận · ${bank?.title ?? ""}`}>
-      <EssayBankRunner category={category as EssayBankCategory} />
+    <AuthenticatedLayout title={`Tự luận · ${ESSAY_BANK_TITLES[bankCategory]}`}>
+      <EssayBankRunner category={bankCategory} />
     </AuthenticatedLayout>
   );
 }

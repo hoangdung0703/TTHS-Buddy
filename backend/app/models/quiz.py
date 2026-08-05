@@ -3,20 +3,31 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+class QuizSetStatus(BaseModel):
+    kind: str  # "untouched" | "done"
+    correct_count: int
+
+
 class QuizSetSummary(BaseModel):
-    quiz_set: int
+    quiz_set_id: int
     total_questions: int
-    main_topics: list[str]
+    status: QuizSetStatus
 
 
 class QuizSetsResponse(BaseModel):
     quiz_sets: list[QuizSetSummary]
 
 
+class QuizStatsResponse(BaseModel):
+    average_score_percentage: int
+    correct_total: int
+    questions_total: int
+    quiz_sets_attempted: int
+    total_quiz_sets: int
+
+
 class QuizGenerateRequest(BaseModel):
     quiz_set: int
-    dieu_number: str | None = None
-    topic_category: str | None = None
 
 
 class QuizQuestionOut(BaseModel):

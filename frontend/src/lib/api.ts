@@ -15,6 +15,7 @@ import {
   resolveMockConversationDetail,
   withMockDelay
 } from "@/lib/mockData";
+import { ESSAY_BANK_DESCRIPTIONS, ESSAY_BANK_SUBTITLES, ESSAY_BANK_TITLES } from "@/lib/essayBankPresentation";
 import type {
   ChatStreamAnswerDeltaEvent,
   ChatStreamCitationsEvent,
@@ -24,13 +25,21 @@ import type {
   ConversationListResponse,
   ConversationSummary,
   DashboardStats,
+  EssayBankCategory,
+  EssayBankSummary,
+  EssayBankV2,
   EssayQuestion,
+  EssayQuestionV2,
   EssaySubmitRequest,
   EssaySubmitResponse,
   KeywordYesterday,
   LegalArticle,
+  PracticeQuestionV2,
   QuizGenerateResponse,
+  QuizQuestion,
   QuizSetSummary,
+  QuizSetSummaryV2,
+  QuizStatsV2,
   QuizSubmitRequest,
   QuizSubmitResponse,
   WeakTopic
@@ -321,4 +330,77 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   }
 
   return apiFetch<DashboardStats>("/api/dashboard/stats");
+}
+
+// ============================================================================
+// Phase 5a/5b v2 (requirements.md "Phase 5a/5b v2" Buoc B) - 15 bộ x 5 câu
+// mcq_4choice (Quiz) và 4 ngân hàng theo category, 111 câu (Essay). Không đi
+// qua NEXT_PUBLIC_USE_MOCK_DATA - luôn gọi backend thật, thay thế hoàn toàn
+// lib/mockDataV2.ts (đã xóa).
+// ============================================================================
+
+export async function getQuizSetsV2(): Promise<QuizSetSummaryV2[]> {
+  const { quiz_sets: quizSets } = await apiFetch<{ quiz_sets: QuizSetSummaryV2[] }>("/api/quiz/sets");
+  return quizSets;
+}
+
+export async function getQuizStatsV2(): Promise<QuizStatsV2> {
+  return apiFetch<QuizStatsV2>("/api/quiz/stats");
+}
+
+export async function getQuizV2(quizSetId: number): Promise<QuizQuestion[]> {
+  const { questions } = await apiFetch<QuizGenerateResponse>("/api/quiz/generate", {
+    method: "POST",
+    body: JSON.stringify({ quiz_set: quizSetId })
+  });
+  return questions;
+}
+
+export async function submitQuizV2(quizSetId: number, answers: QuizSubmitRequest["answers"]): Promise<QuizSubmitResponse> {
+  return apiFetch<QuizSubmitResponse>("/api/quiz/submit", {
+    method: "POST",
+    body: JSON.stringify({ quiz_set: quizSetId, answers })
+  });
+}
+
+function toEssayBankV2(summary: EssayBankSummary): EssayBankV2 {
+  const attemptedCount = summary.questions_practiced;
+  const kind = attemptedCount === 0 ? "untouched" : attemptedCount >= summary.total_questions ? "complete" : "started";
+
+  return {
+    category: summary.category,
+    title: ESSAY_BANK_TITLES[summary.category],
+    subtitle: ESSAY_BANK_SUBTITLES[summary.category],
+    description: ESSAY_BANK_DESCRIPTIONS[summary.category],
+    total_questions: summary.total_questions,
+    progress: { kind, attempted_count: attemptedCount }
+  };
+}
+
+export async function getEssayBanksV2(): Promise<EssayBankV2[]> {
+  const { banks } = await apiFetch<{ banks: EssayBankSummary[] }>("/api/essay/banks");
+  return banks.map(toEssayBankV2);
+}
+
+export async function getEssayBankQuestionV2(category: EssayBankCategory): Promise<EssayQuestionV2> {
+  const question = await apiFetch<EssayQuestionV2 & { category: EssayBankCategory }>("/api/essay/question", {
+    method: "POST",
+    body: JSON.stringify({ category })
+  });
+  return { ...question, bank_category: question.category };
+}
+
+export async function getPracticeQuestionV2(excludeQuestionId?: string): Promise<PracticeQuestionV2> {
+  const question = await apiFetch<EssayQuestionV2 & { category: EssayBankCategory }>("/api/essay/question", {
+    method: "POST",
+    body: JSON.stringify(excludeQuestionId ? { exclude_question_id: excludeQuestionId } : {})
+  });
+
+  return {
+    question_id: question.question_id,
+    bank_category: question.category,
+    bank_label: ESSAY_BANK_TITLES[question.category],
+    question_text: question.question_text,
+    legal_ref: question.dieu_number ? `Điều ${question.dieu_number} BLTTHS 2015` : "Không có Điều luật cụ thể"
+  };
 }

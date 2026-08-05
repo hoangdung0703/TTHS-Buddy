@@ -1,45 +1,58 @@
 "use client";
 
-// TODO: Phase 5a/5b v2 backend chưa xong, dùng mock tạm (xem requirements.md "Phase 5a/5b v2").
-// 1 câu/lượt trong PHẠM VI 1 ngân hàng (category) - hoàn toàn cục bộ, không gọi
-// POST /api/essay/question / POST /api/essay/submit thật.
+// 1 câu/lượt trong PHẠM VI 1 ngân hàng (category) - gọi POST /api/essay/question (kèm category)
+// và POST /api/essay/submit thật (xem requirements.md "Phase 5a/5b v2" Buoc B).
 import { CheckCircle2, XCircle } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { getEssayBankQuestionV2, submitEssay } from "@/lib/api";
 import { ESSAY_BANK_TITLES } from "@/lib/essayBankPresentation";
-import { getMockEssayBankQuestionsV2, gradeMockEssayBankV2, withMockDelayV2 } from "@/lib/mockDataV2";
-import type { EssayBankCategory, EssaySubmitResponse } from "@/lib/types";
+import type { EssayBankCategory, EssayQuestionV2, EssaySubmitResponse } from "@/lib/types";
 
 interface EssayBankRunnerProps {
   category: EssayBankCategory;
 }
 
 export function EssayBankRunner({ category }: EssayBankRunnerProps) {
-  const questions = getMockEssayBankQuestionsV2(category);
-  const [index, setIndex] = useState(0);
+  const [question, setQuestion] = useState<EssayQuestionV2 | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [answer, setAnswer] = useState("");
   const [result, setResult] = useState<EssaySubmitResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const question = questions[index % questions.length];
+  useEffect(() => {
+    loadQuestion();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category]);
+
+  function loadQuestion(): void {
+    setLoadError(false);
+    setQuestion(null);
+    setAnswer("");
+    setResult(null);
+    getEssayBankQuestionV2(category)
+      .then(setQuestion)
+      .catch(() => setLoadError(true));
+  }
 
   async function handleSubmit(): Promise<void> {
-    if (answer.trim().length === 0) return;
+    if (answer.trim().length === 0 || question === null) return;
     setIsSubmitting(true);
-    const response = await withMockDelayV2(gradeMockEssayBankV2(question.question_id, answer));
-    setResult(response);
-    setIsSubmitting(false);
+    try {
+      const response = await submitEssay({ question_id: question.question_id, user_answer: answer });
+      setResult(response);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function handleNext(): void {
-    setIndex((current) => current + 1);
-    setAnswer("");
-    setResult(null);
+    loadQuestion();
   }
 
   return (
@@ -51,33 +64,46 @@ export function EssayBankRunner({ category }: EssayBankRunnerProps) {
         <Badge variant="outline">{ESSAY_BANK_TITLES[category]}</Badge>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Câu hỏi tự luận</CardTitle>
-            <Badge variant="outline">Điều {question.dieu_number}</Badge>
-          </div>
-          <p className="pt-1 text-sm font-normal text-foreground">{question.question_text}</p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Textarea
-            value={answer}
-            onChange={(event) => setAnswer(event.target.value)}
-            placeholder="Nhập câu trả lời của bạn..."
-            disabled={result !== null}
-          />
+      {loadError ? (
+        <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>Không tải được câu hỏi cho ngân hàng này.</span>
+          <Button variant="outline" size="sm" onClick={loadQuestion}>
+            Thử lại
+          </Button>
+        </div>
+      ) : null}
 
-          {result === null ? (
-            <Button
-              className="w-full rounded-full"
-              disabled={answer.trim().length === 0 || isSubmitting}
-              onClick={() => void handleSubmit()}
-            >
-              {isSubmitting ? "Đang chấm bài..." : "Nộp bài"}
-            </Button>
-          ) : null}
-        </CardContent>
-      </Card>
+      {question === null && !loadError ? <div className="h-48 animate-pulse rounded-lg border border-border bg-muted/60" /> : null}
+
+      {question !== null ? (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Câu hỏi tự luận</CardTitle>
+              <Badge variant="outline">Điều {question.dieu_number}</Badge>
+            </div>
+            <p className="pt-1 text-sm font-normal text-foreground">{question.question_text}</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Textarea
+              value={answer}
+              onChange={(event) => setAnswer(event.target.value)}
+              placeholder="Nhập câu trả lời của bạn..."
+              disabled={result !== null}
+            />
+
+            {result === null ? (
+              <Button
+                className="w-full rounded-full"
+                disabled={answer.trim().length === 0 || isSubmitting}
+                onClick={() => void handleSubmit()}
+              >
+                {isSubmitting ? "Đang chấm bài..." : "Nộp bài"}
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {result !== null ? (
         <div className="space-y-4">

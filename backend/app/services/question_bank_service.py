@@ -1,10 +1,14 @@
 """Loads the question bank (ingestion/question_bank.json) shared by Phase 5a (MCQ) and Phase 5b
-(essay), and selects questions for an attempt with rotation logic:
-  - MCQ (select_quiz_questions): rotation is scoped to the single quiz_set the user chose -
-    avoid repeating the previous attempt's questions at that quiz_set, topic-balanced sampling.
-    Never rotates across the whole bank, since the user explicitly picks which set to practice.
-  - Essay (select_essay_question): no quiz_set concept exists for essay questions (Phase 5b),
-    so rotation is scoped to the whole 25-question essay pool instead.
+(essay), and selects questions for an attempt:
+  - MCQ (select_quiz_questions): each quiz_set is a FIXED 5-question set (15 sets total, reshuffled
+    once at parse time - see ingestion/parse_question_bank_v2.py, requirements.md "Phase 5a/5b v2"
+    Buoc B). The UI shows sets 01-15 with persisted per-set status, not a randomly-regenerated
+    subset each time, so an attempt is simply "all 5 questions of the chosen set" - no
+    pool-vs-attempt-size rotation is needed any more (the whole set IS the attempt).
+  - Essay (select_essay_question): 4 categories (ban_trac_nghiem/ly_thuyet/van_dung/tinh_huong -
+    111 questions total). Rotation is scoped to whichever category the caller picked (bank
+    practice), or the whole pool when no category is given (the "Toi hoi ban tra loi" minigame,
+    which explicitly draws from all 4 categories per requirements.md).
 """
 from __future__ import annotations
 
@@ -22,13 +26,14 @@ from app.services.quiz_service import is_valid_mcq_question
 logger = get_logger(__name__)
 
 QUIZ_ATTEMPTS_TABLE = "quiz_attempts"
-MCQ_QUESTION_TYPES = ("mcq_4choice", "mcq_true_false")
+MCQ_QUESTION_TYPES = ("mcq_4choice",)
 
-# Each quiz_set has 18 MCQ questions (15 mcq_4choice + 3 mcq_true_false). 10 per attempt leaves
-# enough of the set unseen to make rotation meaningful across repeated attempts, without being
-# so small that topic-balanced sampling has nothing to work with.
-QUESTIONS_PER_ATTEMPT = 10
-RECENT_ATTEMPTS_TO_AVOID = 1
+QUIZ_SET_COUNT = 15
+
+# Essay bank categories, in the order the UI displays them (see frontend mockDataV2.ts /
+# essayBankPresentation.ts - kept in sync manually since the order is a presentation decision,
+# not derivable from the data itself).
+ESSAY_CATEGORIES = ("ly_thuyet", "van_dung", "ban_trac_nghiem", "tinh_huong")
 
 
 @lru_cache(maxsize=1)
@@ -54,88 +59,71 @@ def get_mcq_questions_for_set(quiz_set: int, dieu_number: str | None = None,
     return questions
 
 
-def get_quiz_set_summaries() -> list[dict[str, Any]]:
+def _get_latest_attempt_per_set(supabase_client: Client, user_id: str) -> dict[int, dict[str, int]]:
+    """Returns {quiz_set: {"score": int, "total": int}} for the user's most recent attempt at
+    each set they've touched - the single source both get_quiz_set_summaries (per-set status)
+    and get_quiz_stats (overall %/sets-touched) are built from, so they can never disagree with
+    each other about which attempt is "the" latest one for a given set."""
+    try:
+        response = (
+            supabase_client.table(QUIZ_ATTEMPTS_TABLE)
+            .select("quiz_set, score, total, created_at")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+    except Exception:
+        logger.exception("Failed to read quiz_attempts for user_id=%s - treating all sets as untouched", user_id)
+        return {}
+
+    latest: dict[int, dict[str, int]] = {}
+    for row in response.data or []:
+        quiz_set = row["quiz_set"]
+        if quiz_set not in latest:  # rows are already ordered newest-first
+            latest[quiz_set] = {"score": row["score"], "total": row["total"]}
+    return latest
+
+
+def get_quiz_set_summaries(supabase_client: Client, user_id: str) -> list[dict[str, Any]]:
+    latest_by_set = _get_latest_attempt_per_set(supabase_client, user_id)
     summaries = []
-    for quiz_set in range(1, 6):
-        questions = get_mcq_questions_for_set(quiz_set)
-        topics: list[str] = []
-        for q in questions:
-            if q["topic_category"] and q["topic_category"] not in topics:
-                topics.append(q["topic_category"])
+    for quiz_set in range(1, QUIZ_SET_COUNT + 1):
+        total_questions = len(get_mcq_questions_for_set(quiz_set))
+        attempt = latest_by_set.get(quiz_set)
+        status = (
+            {"kind": "done", "correct_count": attempt["score"]}
+            if attempt is not None
+            else {"kind": "untouched", "correct_count": 0}
+        )
         summaries.append({
-            "quiz_set": quiz_set,
-            "total_questions": len(questions),
-            "main_topics": topics[:5],
+            "quiz_set_id": quiz_set,
+            "total_questions": total_questions,
+            "status": status,
         })
     return summaries
 
 
-def _get_recent_attempt_question_ids(supabase_client: Client, user_id: str, quiz_set: int) -> set[str]:
-    try:
-        response = (
-            supabase_client.table(QUIZ_ATTEMPTS_TABLE)
-            .select("question_ids")
-            .eq("user_id", user_id)
-            .eq("quiz_set", quiz_set)
-            .order("created_at", desc=True)
-            .limit(RECENT_ATTEMPTS_TO_AVOID)
-            .execute()
-        )
-    except Exception:
-        # Missing/unreachable history must degrade to "no rotation history yet", not break
-        # quiz generation - e.g. before migrations/0002_quiz_attempts.sql has been applied.
-        logger.exception("Failed to read quiz attempt history (user_id=%s, quiz_set=%d) - "
-                          "proceeding without rotation exclusion", user_id, quiz_set)
-        return set()
-
-    seen: set[str] = set()
-    for row in response.data or []:
-        seen.update(row["question_ids"])
-    return seen
+def get_quiz_stats(supabase_client: Client, user_id: str) -> dict[str, Any]:
+    latest_by_set = _get_latest_attempt_per_set(supabase_client, user_id)
+    correct_total = sum(a["score"] for a in latest_by_set.values())
+    questions_total = sum(a["total"] for a in latest_by_set.values())
+    return {
+        "average_score_percentage": round(100 * correct_total / questions_total) if questions_total > 0 else 0,
+        "correct_total": correct_total,
+        "questions_total": questions_total,
+        "quiz_sets_attempted": len(latest_by_set),
+        "total_quiz_sets": QUIZ_SET_COUNT,
+    }
 
 
-def _balanced_sample(questions: list[dict[str, Any]], count: int) -> list[dict[str, Any]]:
-    """Round-robins across topic_category buckets so no single topic dominates the attempt."""
-    buckets: dict[str | None, list[dict[str, Any]]] = {}
-    for q in questions:
-        buckets.setdefault(q["topic_category"], []).append(q)
-    for bucket in buckets.values():
-        random.shuffle(bucket)
-
-    selected: list[dict[str, Any]] = []
-    active_buckets = [b for b in buckets.values() if b]
-    while len(selected) < count and active_buckets:
-        for bucket in active_buckets:
-            if len(selected) == count:
-                break
-            selected.append(bucket.pop())
-        active_buckets = [b for b in active_buckets if b]
-
-    return selected
-
-
-def select_quiz_questions(supabase_client: Client, user_id: str, quiz_set: int,
-                           dieu_number: str | None = None,
-                           topic_category: str | None = None) -> list[dict[str, Any]]:
-    candidates = get_mcq_questions_for_set(quiz_set, dieu_number, topic_category)
-    if not candidates:
-        return []
-
-    recent_ids = _get_recent_attempt_question_ids(supabase_client, user_id, quiz_set)
-    fresh = [q for q in candidates if q["question_id"] not in recent_ids]
-
-    target_count = min(QUESTIONS_PER_ATTEMPT, len(candidates))
-    selected = _balanced_sample(fresh, target_count)
-
-    if len(selected) < target_count:
-        # Pool too small to fully avoid the last attempt's questions - top up with
-        # recently-seen ones instead of returning a short attempt.
-        already_selected_ids = {q["question_id"] for q in selected}
-        leftover = [q for q in candidates if q["question_id"] not in already_selected_ids]
-        selected += _balanced_sample(leftover, target_count - len(selected))
-
-    random.shuffle(selected)
-    return selected
+def select_quiz_questions(quiz_set: int) -> list[dict[str, Any]]:
+    """A quiz_set is a fixed 5-question set (see module docstring) - an "attempt" is simply all
+    of that set's questions, shuffled for presentation order. No rotation/exclusion logic is
+    needed any more: there is no larger pool to rotate against within a single set."""
+    candidates = get_mcq_questions_for_set(quiz_set)
+    shuffled = candidates[:]
+    random.shuffle(shuffled)
+    return shuffled
 
 
 def save_quiz_attempt(supabase_client: Client, user_id: str, quiz_set: int,
@@ -159,44 +147,82 @@ def save_quiz_attempt(supabase_client: Client, user_id: str, quiz_set: int,
 
 ESSAY_ATTEMPTS_TABLE = "essay_attempts"
 
-# 25 essay questions total, no quiz_set to scope rotation to - avoiding the last 5 distinct
-# questions the user was served still leaves 20 fresh candidates, which is enough for
-# meaningful rotation without letting the exclusion set grow so large that later attempts have
-# nothing fresh left to pick from.
+# 111 essay questions total (50 ban_trac_nghiem + 20 ly_thuyet + 26 van_dung + 15 tinh_huong).
+# Avoiding the last 5 distinct questions served (scoped to whichever pool is in play - a single
+# category for bank practice, or the whole 111-pool for the "Toi hoi ban tra loi" minigame)
+# leaves enough fresh candidates even for the smallest category (tinh_huong, 15 questions) to
+# make rotation meaningful without exhausting the pool.
 RECENT_ESSAY_QUESTIONS_TO_AVOID = 5
 
 
-def get_essay_questions() -> list[dict[str, Any]]:
-    return [q for q in load_question_bank() if q["question_type"] == "essay"]
+def get_essay_questions(category: str | None = None) -> list[dict[str, Any]]:
+    questions = [q for q in load_question_bank() if q["question_type"] == "essay"]
+    if category:
+        questions = [q for q in questions if q["category"] == category]
+    return questions
 
 
-def _get_recent_essay_question_ids(supabase_client: Client, user_id: str) -> set[str]:
+def _get_recent_essay_question_ids(supabase_client: Client, user_id: str, category: str | None) -> set[str]:
     try:
-        response = (
+        query = (
             supabase_client.table(ESSAY_ATTEMPTS_TABLE)
             .select("question_id")
             .eq("user_id", user_id)
-            .order("created_at", desc=True)
-            .limit(RECENT_ESSAY_QUESTIONS_TO_AVOID)
-            .execute()
         )
+        if category:
+            query = query.eq("category", category)
+        response = query.order("created_at", desc=True).limit(RECENT_ESSAY_QUESTIONS_TO_AVOID).execute()
     except Exception:
-        logger.exception("Failed to read essay attempt history (user_id=%s) - "
-                          "proceeding without rotation exclusion", user_id)
+        logger.exception("Failed to read essay attempt history (user_id=%s, category=%s) - "
+                          "proceeding without rotation exclusion", user_id, category)
         return set()
 
     return {row["question_id"] for row in response.data or []}
 
 
-def select_essay_question(supabase_client: Client, user_id: str) -> dict[str, Any] | None:
-    candidates = get_essay_questions()
+def select_essay_question(supabase_client: Client, user_id: str, category: str | None = None,
+                           exclude_question_id: str | None = None) -> dict[str, Any] | None:
+    candidates = get_essay_questions(category)
     if not candidates:
         return None
 
-    recent_ids = _get_recent_essay_question_ids(supabase_client, user_id)
+    recent_ids = _get_recent_essay_question_ids(supabase_client, user_id, category)
+    if exclude_question_id:
+        # "Cau khac" (skip): the currently-shown question must never repeat immediately, even if
+        # it wasn't part of the persisted rotation history (skipping is explicitly NOT an
+        # attempt - see requirements.md - so it's never written to essay_attempts at all; the
+        # only way to exclude it is the caller telling us which one it just saw).
+        recent_ids = recent_ids | {exclude_question_id}
+
     fresh = [q for q in candidates if q["question_id"] not in recent_ids]
     pool = fresh if fresh else candidates
     return random.choice(pool)
+
+
+def get_essay_banks_summary(supabase_client: Client, user_id: str) -> list[dict[str, Any]]:
+    try:
+        response = (
+            supabase_client.table(ESSAY_ATTEMPTS_TABLE)
+            .select("category, question_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        practiced_by_category: dict[str, set[str]] = {}
+        for row in response.data or []:
+            if row.get("category"):
+                practiced_by_category.setdefault(row["category"], set()).add(row["question_id"])
+    except Exception:
+        logger.exception("Failed to read essay_attempts for banks summary (user_id=%s)", user_id)
+        practiced_by_category = {}
+
+    return [
+        {
+            "category": category,
+            "total_questions": len(get_essay_questions(category)),
+            "questions_practiced": len(practiced_by_category.get(category, set())),
+        }
+        for category in ESSAY_CATEGORIES
+    ]
 
 
 def save_essay_attempt(supabase_client: Client, user_id: str, question: dict[str, Any],
@@ -205,6 +231,7 @@ def save_essay_attempt(supabase_client: Client, user_id: str, question: dict[str
         "user_id": user_id,
         "question_id": question["question_id"],
         "topic_category": question["topic_category"],
+        "category": question["category"],
         "user_answer": user_answer,
         "matched_points": grading_result.matched_points,
         "missing_points": grading_result.missing_points,
