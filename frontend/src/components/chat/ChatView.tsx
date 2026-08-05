@@ -211,7 +211,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
                     key={suggestion.id}
                     type="button"
                     onClick={() => void handleAsk(suggestion.text)}
-                    className="rounded-full border border-border bg-secondary px-3.5 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-accent"
+                    className="inline-flex min-h-11 items-center justify-center rounded-full border border-border bg-secondary px-3.5 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-accent"
                   >
                     {suggestion.text}
                   </button>
@@ -237,7 +237,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
                     <button
                       type="button"
                       onClick={() => void handleCopy(message.id, message.content)}
-                      className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      className="flex min-h-11 items-center gap-1 rounded-md px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     >
                       {copiedMessageId === message.id ? (
                         <>
@@ -293,7 +293,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
               type="button"
               onClick={() => void handleAsk(suggestion.text)}
               disabled={isSending}
-              className="shrink-0 rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-accent disabled:opacity-50"
             >
               {suggestion.text}
             </button>
@@ -318,7 +318,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
         <button
           type="submit"
           disabled={isSending || input.trim().length === 0}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
         >
           <SendHorizontal className="h-4 w-4" />
         </button>

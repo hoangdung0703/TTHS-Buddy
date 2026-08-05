@@ -85,7 +85,7 @@ export function ArticleModal({ citation, onClose }: ArticleModalProps) {
             type="button"
             onClick={onClose}
             aria-label="Đóng"
-            className="shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>

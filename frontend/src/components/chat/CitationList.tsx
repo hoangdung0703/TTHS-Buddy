@@ -15,7 +15,7 @@ function CitationPill({ citation, onOpen }: { citation: Citation; onOpen: (citat
     <button
       type="button"
       onClick={() => onOpen(citation)}
-      className="flex items-center gap-1 rounded-full border border-primary/20 bg-accent px-3 py-1.5 text-left text-xs font-medium text-accent-foreground transition-colors hover:bg-primary/15"
+      className="flex min-h-11 items-center gap-1 rounded-full border border-primary/20 bg-accent px-3 py-1.5 text-left text-xs font-medium text-accent-foreground transition-colors hover:bg-primary/15"
     >
       <Hash className="h-3 w-3" />
       Điều {citation.dieu_number} {citation.law_version}

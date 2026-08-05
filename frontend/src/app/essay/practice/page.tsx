@@ -152,7 +152,7 @@ export default function EssayPracticePage() {
                   onClick={() => void handleSubmit()}
                   disabled={answer.trim().length === 0 || isSubmitting}
                   className={cn(
-                    "flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-medium text-primary-foreground shadow-[0_3px_14px_rgba(30,36,96,0.22)] transition-colors",
+                    "flex min-h-11 items-center gap-2 rounded-full px-6 py-2.5 text-sm font-medium text-primary-foreground shadow-[0_3px_14px_rgba(30,36,96,0.22)] transition-colors",
                     answer.trim().length === 0 || isSubmitting ? "cursor-not-allowed bg-primary/20" : "bg-primary hover:opacity-90"
                   )}
                 >
@@ -163,7 +163,7 @@ export default function EssayPracticePage() {
                 <button
                   type="button"
                   onClick={handleSkip}
-                  className="flex items-center gap-2 rounded-full border border-primary/15 px-5 py-2.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+                  className="flex min-h-11 items-center gap-2 rounded-full border border-primary/15 px-5 py-2.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
                 >
                   <RefreshCw size={13} strokeWidth={1.8} />
                   Câu khác
@@ -244,7 +244,7 @@ export default function EssayPracticePage() {
               <button
                 type="button"
                 onClick={handleNextQuestion}
-                className="flex items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground shadow-[0_3px_14px_rgba(30,36,96,0.22)] transition-opacity hover:opacity-90"
+                className="flex min-h-11 items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground shadow-[0_3px_14px_rgba(30,36,96,0.22)] transition-opacity hover:opacity-90"
               >
                 <RefreshCw size={14} strokeWidth={1.8} />
                 Câu tiếp theo
@@ -252,7 +252,7 @@ export default function EssayPracticePage() {
 
               <Link
                 href="/essay"
-                className="flex items-center gap-2 rounded-full border border-primary/15 px-5 py-2.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+                className="flex min-h-11 items-center gap-2 rounded-full border border-primary/15 px-5 py-2.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
               >
                 Chọn ngân hàng khác
               </Link>

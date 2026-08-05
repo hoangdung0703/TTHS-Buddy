@@ -88,17 +88,14 @@ export function QuizSetRunner({ quizSetId }: QuizSetRunnerProps) {
         ? questions.map((question, index) => (
             <Card key={question.question_id}>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Câu {index + 1}</CardTitle>
-                  <Badge variant="outline">Điều {question.dieu_number}</Badge>
-                </div>
+                <CardTitle>Câu {index + 1}</CardTitle>
                 <p className="pt-1 text-sm font-normal text-foreground">{question.question_text}</p>
               </CardHeader>
               <CardContent className="space-y-2">
                 {question.mcq_options.map((option) => (
                   <label
                     key={option}
-                    className="flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-2 text-sm transition-colors hover:bg-accent/10"
+                    className="flex min-h-11 cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-3 text-sm transition-colors hover:bg-accent/10"
                   >
                     <input
                       type="radio"

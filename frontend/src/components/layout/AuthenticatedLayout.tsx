@@ -53,7 +53,7 @@ export function AuthenticatedLayout({ title, children }: AuthenticatedLayoutProp
               type="button"
               aria-label="Đóng menu điều hướng"
               onClick={() => setIsMobileNavOpen(false)}
-              className="absolute -right-11 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-card text-foreground shadow-md"
+              className="absolute -right-14 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-card text-foreground shadow-md"
             >
               <X className="h-4 w-4" />
             </button>

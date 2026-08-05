@@ -175,7 +175,7 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
               href={item.href}
               onClick={onNavigate}
               className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -194,7 +194,7 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
           href="/essay/practice"
           onClick={onNavigate}
           className={cn(
-            "ml-6 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+            "ml-6 flex min-h-11 items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
             pathname === "/essay/practice"
               ? "bg-primary text-primary-foreground"
               : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -209,7 +209,7 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
         <Link
           href="/chat"
           onClick={onNavigate}
-          className="flex w-full items-center justify-center gap-2 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
         >
           <Plus className="h-4 w-4" />
           Hội thoại mới
@@ -265,7 +265,7 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
                       startEditing(conversation);
                     }}
                     className={cn(
-                      "block w-full rounded-md py-2 pl-3 pr-16 text-left text-sm transition-colors",
+                      "block w-full rounded-md py-2 pl-3 pr-24 text-left text-sm transition-colors",
                       isActive ? "bg-accent" : "hover:bg-accent"
                     )}
                   >
@@ -277,7 +277,7 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
                 {!isEditing ? (
                   <div
                     className={cn(
-                      "absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5",
+                      "absolute right-0 top-1/2 flex -translate-y-1/2 items-center",
                       "opacity-0 transition-opacity max-md:opacity-100 group-hover:opacity-100"
                     )}
                   >
@@ -289,7 +289,7 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
                         startEditing(conversation);
                       }}
                       aria-label="Đổi tên hội thoại"
-                      className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+                      className="flex h-11 w-11 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -301,7 +301,7 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
                         void handleDelete(conversation);
                       }}
                       aria-label="Xóa hội thoại"
-                      className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-red-100 hover:text-red-600"
+                      className="flex h-11 w-11 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-red-100 hover:text-red-600"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

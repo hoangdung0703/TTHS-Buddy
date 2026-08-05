@@ -47,7 +47,7 @@ function QuizSetCard({ set }: { set: QuizSetSummaryV2 }) {
         )}
       </div>
 
-      <span className="rounded-full bg-primary px-3 py-1 text-center font-sans text-xs font-medium text-primary-foreground opacity-0 transition-opacity group-hover:opacity-100">
+      <span className="rounded-full bg-primary px-3 py-1 text-center font-sans text-xs font-medium text-primary-foreground opacity-0 transition-opacity max-md:opacity-100 group-hover:opacity-100">
         {isDone ? "Làm lại" : "Bắt đầu"}
       </span>
     </Link>

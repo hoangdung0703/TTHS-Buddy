@@ -47,7 +47,7 @@ export function TopBar({ title, userLabel, onMenuClick }: TopBarProps) {
           type="button"
           onClick={onMenuClick}
           aria-label="Mở menu điều hướng"
-          className="-ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent md:hidden"
+          className="-ml-1 flex h-11 w-11 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent md:hidden"
         >
           <Menu className="h-5 w-5" />
         </button>
@@ -60,7 +60,7 @@ export function TopBar({ title, userLabel, onMenuClick }: TopBarProps) {
           type="button"
           onClick={handleSignOut}
           title="Đăng xuất"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
         >
           {getInitials(userLabel)}
         </button>
