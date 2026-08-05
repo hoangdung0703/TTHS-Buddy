@@ -1,0 +1,50 @@
+# Render Blueprint for the TTHS Buddy backend.
+#
+# This is optional: you can also create the Web Service by hand in the Render Dashboard
+# (native Python runtime, no Docker) using the same Build/Start commands below. Either way,
+# Root Directory must stay at the repo root (NOT backend/) because backend/app/core/config.py
+# resolves PROJECT_ROOT three levels up from itself and reads ingestion/question_bank.json +
+# ingestion/chat_suggestions_seed.json at startup - those only exist alongside backend/, not
+# inside it.
+#
+# Worker count is fixed at 2 (not the usual 2xCPU+1 formula) to fit Render's free/Starter tier
+# 512MB RAM ceiling without OOM-killing the service - see requirements.md's capacity audit.
+#
+# Env vars are declared here with sync: false so Render prompts for real values in the
+# Dashboard instead of committing secrets to this file. See DEPLOYMENT.md for the full list
+# and where each value comes from.
+services:
+  - type: web
+    name: ttths-buddy-backend
+    runtime: python
+    plan: starter
+    region: singapore
+    rootDir: .
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker -w 2 --bind 0.0.0.0:$PORT --chdir backend app.main:app
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: ENVIRONMENT
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GEMINI_CHAT_MODEL
+        sync: false
+      - key: GEMINI_EMBEDDING_MODEL
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: QDRANT_COLLECTION
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false

@@ -52,6 +52,8 @@ frontend.md         Frontend design notes (design system, scope trade-offs vs th
 6. Run the ingestion pipeline (see below) once to populate Qdrant, or point at an already-
    populated collection.
 
+See `DEPLOYMENT.md` for deploying the frontend to Vercel and the backend to Render.
+
 ## Running the app
 
 Backend (from `backend/`):
