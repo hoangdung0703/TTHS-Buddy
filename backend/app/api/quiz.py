@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from app.core.rate_limit import DEFAULT_RATE_LIMIT, limiter
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
 from app.models.quiz import (
@@ -36,6 +37,7 @@ def _validate_quiz_set(quiz_set: int) -> None:
 
 
 @router.get("/sets", response_model=QuizSetsResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def get_quiz_sets(
     request: Request,
     current_user: AuthUser = Depends(require_supabase_user),
@@ -45,6 +47,7 @@ async def get_quiz_sets(
 
 
 @router.get("/stats", response_model=QuizStatsResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def get_quiz_statistics(
     request: Request,
     current_user: AuthUser = Depends(require_supabase_user),
@@ -53,8 +56,10 @@ async def get_quiz_statistics(
 
 
 @router.post("/generate", response_model=QuizGenerateResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def generate_quiz(
     body: QuizGenerateRequest,
+    request: Request,
     current_user: AuthUser = Depends(require_supabase_user),
 ) -> QuizGenerateResponse:
     _validate_quiz_set(body.quiz_set)
@@ -93,6 +98,7 @@ def _grade_one(question_bank_by_id: dict, quiz_set: int, answer: QuizAnswerIn) -
 
 
 @router.post("/submit", response_model=QuizSubmitResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def submit_quiz(
     body: QuizSubmitRequest,
     request: Request,

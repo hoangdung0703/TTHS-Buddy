@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from app.core.rate_limit import DEFAULT_RATE_LIMIT, limiter
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
 from app.models.legal import LegalArticleResponse
@@ -9,6 +10,7 @@ router = APIRouter(prefix="/api/legal", tags=["legal"])
 
 
 @router.get("/articles/{dieu_number}", response_model=LegalArticleResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def get_legal_article(
     dieu_number: str,
     request: Request,

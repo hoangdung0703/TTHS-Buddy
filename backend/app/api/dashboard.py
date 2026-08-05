@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Request
 
+from app.core.rate_limit import DEFAULT_RATE_LIMIT, limiter
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
 from app.models.dashboard import (
@@ -15,6 +16,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/keywords-yesterday", response_model=KeywordsYesterdayResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def keywords_yesterday(
     request: Request,
     current_user: AuthUser = Depends(require_supabase_user),
@@ -24,6 +26,7 @@ async def keywords_yesterday(
 
 
 @router.get("/weak-topics", response_model=WeakTopicsResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def weak_topics(
     request: Request,
     current_user: AuthUser = Depends(require_supabase_user),
@@ -33,6 +36,7 @@ async def weak_topics(
 
 
 @router.get("/stats", response_model=DashboardStats)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def stats(
     request: Request,
     current_user: AuthUser = Depends(require_supabase_user),

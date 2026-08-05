@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class EssayQuestionOut(BaseModel):
@@ -22,7 +22,10 @@ class EssayQuestionRequest(BaseModel):
 
 class EssaySubmitRequest(BaseModel):
     question_id: str
-    user_answer: str
+    # max_length: generous headroom for a thorough essay answer, tight enough to block
+    # spam-sized payloads that would otherwise cost a full LLM grading call each - see
+    # requirements.md security audit mục 2.2/4.
+    user_answer: str = Field(max_length=5000)
 
 
 class EssaySubmitResponse(BaseModel):

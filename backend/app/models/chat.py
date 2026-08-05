@@ -7,7 +7,10 @@ from pydantic import BaseModel, Field
 
 
 class ChatQueryRequest(BaseModel):
-    question: str
+    # max_length: generous headroom for a detailed situational question, tight enough to block
+    # spam-sized payloads that would otherwise cost a full embed + Gemini generate call each -
+    # see requirements.md security audit mục 2.2/4.
+    question: str = Field(max_length=2000)
     # Client-generated/held for the lifetime of one chat session; omitted (or a value never seen
     # before) starts a new conversation. See requirements.md Phase 4 Extension.
     conversation_id: uuid.UUID | None = None

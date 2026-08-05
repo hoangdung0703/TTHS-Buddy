@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.config import Settings, get_settings
+from app.core.rate_limit import DEFAULT_RATE_LIMIT, LLM_ROUTE_RATE_LIMIT, limiter
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
 from app.models.essay import (
@@ -23,6 +24,7 @@ router = APIRouter(prefix="/api/essay", tags=["essay"])
 
 
 @router.get("/banks", response_model=EssayBanksResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def get_essay_banks(
     request: Request,
     current_user: AuthUser = Depends(require_supabase_user),
@@ -32,6 +34,7 @@ async def get_essay_banks(
 
 
 @router.post("/question", response_model=EssayQuestionOut)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def get_essay_question(
     body: EssayQuestionRequest,
     request: Request,
@@ -52,6 +55,7 @@ async def get_essay_question(
 
 
 @router.post("/submit", response_model=EssaySubmitResponse)
+@limiter.limit(LLM_ROUTE_RATE_LIMIT)
 async def submit_essay(
     body: EssaySubmitRequest,
     request: Request,

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
+from app.core.rate_limit import DEFAULT_RATE_LIMIT, LLM_ROUTE_RATE_LIMIT, limiter
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
 from app.models.chat import (
@@ -33,11 +34,15 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
 @router.get("/suggestions", response_model=ChatSuggestionsResponse)
-async def get_chat_suggestions(current_user: AuthUser = Depends(require_supabase_user)) -> ChatSuggestionsResponse:
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def get_chat_suggestions(
+    request: Request, current_user: AuthUser = Depends(require_supabase_user)
+) -> ChatSuggestionsResponse:
     return ChatSuggestionsResponse(suggestions=[ChatSuggestion(**s) for s in load_static_suggestions()])
 
 
 @router.get("/conversations", response_model=ConversationListResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def get_conversations(
     request: Request, current_user: AuthUser = Depends(require_supabase_user)
 ) -> ConversationListResponse:
@@ -49,6 +54,7 @@ async def get_conversations(
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def get_conversation(
     conversation_id: uuid.UUID, request: Request, current_user: AuthUser = Depends(require_supabase_user)
 ) -> ConversationDetailResponse:
@@ -65,6 +71,7 @@ async def get_conversation(
 
 
 @router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def delete_conversation_route(
     conversation_id: uuid.UUID, request: Request, current_user: AuthUser = Depends(require_supabase_user)
 ) -> None:
@@ -77,6 +84,7 @@ async def delete_conversation_route(
 
 
 @router.patch("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def rename_conversation_route(
     conversation_id: uuid.UUID,
     body: ConversationRenameRequest,
@@ -99,6 +107,7 @@ def _sse_format(event: str, payload) -> str:  # noqa: ANN001 - payload is one of
 
 
 @router.post("/query")
+@limiter.limit(LLM_ROUTE_RATE_LIMIT)
 async def query_chat(
     body: ChatQueryRequest,
     request: Request,

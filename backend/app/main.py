@@ -19,7 +19,7 @@ from app.core.config import (
     verify_supabase_connection,
 )
 from app.core.logging import configure_logging, get_logger
-from app.core.middleware import add_cors_middleware, register_exception_handlers
+from app.core.middleware import add_cors_middleware, add_rate_limit_middleware, register_exception_handlers
 
 configure_logging(os.getenv("ENVIRONMENT", "development"))
 logger = get_logger(__name__)
@@ -58,6 +58,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="TTHS Buddy API", version="0.1.0", lifespan=lifespan)
     add_cors_middleware(app)
+    add_rate_limit_middleware(app)
     register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(protected_test_router)
