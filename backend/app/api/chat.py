@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
 
@@ -128,7 +129,12 @@ async def query_chat(
 
     conversation_id = body.conversation_id or uuid.uuid4()
     recent_turns = get_recent_turns(supabase_client, current_user.user_id, conversation_id)
-    rewritten_question = rewrite_question(body.question, recent_turns, settings)
+    # rewrite_question calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded to a
+    # thread so it doesn't block the single event loop for every other in-flight request, same
+    # pattern already used for the sync QdrantClient calls in rag_service.retrieve_context (see
+    # requirements.md security/capacity audit - this was the main cause of near-total
+    # serialization measured under concurrent chat load before this fix).
+    rewritten_question = await asyncio.to_thread(rewrite_question, body.question, recent_turns, settings)
 
     # Mutated in place by stream_answer_question as the stream progresses - holds the fields
     # (is_fallback, used_academic_reference, retrieved_chunks) that are intentionally never sent

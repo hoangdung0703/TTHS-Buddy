@@ -547,7 +547,10 @@ def _extract_cited_dieu_numbers(answer_text: str) -> set[str]:
 
 
 async def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient) -> RetrievalResult:
-    vector = embed_query(question, settings)
+    # embed_query calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded to a
+    # thread for the same reason the sync QdrantClient calls just below are: without this it
+    # blocks the single event loop for every other in-flight request during the round-trip.
+    vector = await asyncio.to_thread(embed_query, question, settings)
 
     # legal_text and academic_reference answer different kinds of questions (a legal rule vs a
     # concept/theory explanation) - a high legal_text score is not evidence academic_reference is

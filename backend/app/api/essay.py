@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.config import Settings, get_settings
@@ -68,7 +70,10 @@ async def submit_essay(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                              detail=f"Unknown essay question_id: {body.question_id}")
 
-    result = grade_essay_answer(question, body.user_answer, settings)
+    # grade_essay_answer calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded to
+    # a thread so it doesn't block the single event loop for every other in-flight request, same
+    # pattern as chat.py's rewrite_question/rag_service.py's embed_query.
+    result = await asyncio.to_thread(grade_essay_answer, question, body.user_answer, settings)
 
     save_essay_attempt(request.app.state.supabase_client, current_user.user_id, question, body.user_answer, result)
 
