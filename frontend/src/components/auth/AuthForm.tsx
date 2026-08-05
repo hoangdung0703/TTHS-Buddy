@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, type ReactElement, useEffect, useState } from "react";
 import { ArrowLeft, Eye, EyeOff, Scale } from "lucide-react";
 
 import { BackgroundOrbs } from "@/components/brand/BackgroundOrbs";
@@ -21,6 +21,29 @@ type AuthMode = "sign-in" | "sign-up";
 
 interface AuthFormProps {
   mode: AuthMode;
+}
+
+function GoogleIcon({ className }: { className?: string }): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path
+        d="M23.04 12.27c0-.79-.07-1.54-.2-2.27H12v4.3h6.19a5.28 5.28 0 0 1-2.29 3.47v2.88h3.7c2.17-1.99 3.42-4.93 3.42-8.38Z"
+        fill="#4285F4"
+      />
+      <path
+        d="M12 24c3.1 0 5.7-1.03 7.6-2.79l-3.7-2.88c-1.03.69-2.35 1.1-3.9 1.1-3 0-5.54-2.03-6.45-4.75H1.73v2.97A12 12 0 0 0 12 24Z"
+        fill="#34A853"
+      />
+      <path
+        d="M5.55 14.68A7.19 7.19 0 0 1 5.18 12c0-.93.16-1.83.37-2.68V6.35H1.73A12 12 0 0 0 0 12c0 1.94.46 3.77 1.73 5.65l3.82-2.97Z"
+        fill="#FBBC05"
+      />
+      <path
+        d="M12 4.77c1.68 0 3.19.58 4.38 1.71l3.29-3.29C17.7 1.19 15.1 0 12 0A12 12 0 0 0 1.73 6.35l3.82 2.97C6.46 6.6 9 4.77 12 4.77Z"
+        fill="#EA4335"
+      />
+    </svg>
+  );
 }
 
 export function AuthForm({ mode }: AuthFormProps) {
@@ -43,6 +66,30 @@ export function AuthForm({ mode }: AuthFormProps) {
   }, [router]);
 
   const isSignIn = mode === "sign-in";
+
+  async function handleGoogleSignIn(): Promise<void> {
+    setLoading(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const supabase = getSupabaseClient();
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/dashboard` },
+      });
+
+      if (oauthError !== null) {
+        setError(oauthError.message);
+        setLoading(false);
+      }
+      // On success the browser redirects to Google, so no further state update here.
+    } catch (oauthError) {
+      const errorMessage = oauthError instanceof Error ? oauthError.message : "Google sign-in failed";
+      setError(errorMessage);
+      setLoading(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -170,6 +217,23 @@ export function AuthForm({ mode }: AuthFormProps) {
               {loading ? "Đang xử lý..." : isSignIn ? "Đăng nhập" : "Tạo tài khoản miễn phí"}
             </Button>
           </form>
+
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs font-light uppercase tracking-wide text-muted-foreground/70">hoặc</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading}
+            onClick={() => void handleGoogleSignIn()}
+            className="h-auto w-full gap-2.5 rounded-full border-primary/[0.12] bg-card px-6 py-3.5 text-[0.93rem] font-medium text-foreground hover:bg-muted/50 focus-visible:ring-offset-card active:scale-[0.99]"
+          >
+            <GoogleIcon className="h-4 w-4 shrink-0" />
+            Tiếp tục với Google
+          </Button>
 
           {!isSignIn && (
             <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground/80">
