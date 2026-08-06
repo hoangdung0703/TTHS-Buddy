@@ -153,6 +153,10 @@ export interface KeywordYesterday {
 export interface WeakTopic {
   topic_category: string;
   score_percentage: number;
+  // Real essay bank category the user actually practiced this topic under (derived server-side
+  // from essay_attempts.category), null when only quiz history exists for this topic - see
+  // requirements.md "Feature — Redesign Dashboard Hero".
+  essay_bank_category: EssayBankCategory | null;
 }
 
 // Matches GET /api/dashboard/stats exactly as specified in requirements.md Phase 7 - backs the

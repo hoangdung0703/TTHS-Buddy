@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertCircle, Check, Copy, Scale, SendHorizontal } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { CitationList } from "@/components/chat/CitationList";
@@ -49,10 +50,36 @@ export function ChatView({ conversationId }: ChatViewProps) {
   // succeeded, reset after COPY_FEEDBACK_DURATION_MS so the icon/label reverts on its own.
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Guards the auto-send-from-?q= flow (requirements.md "Feature — Redesign Dashboard Hero",
+  // nút "Ôn tập") against double-firing (React StrictMode double-invokes effects in dev, and
+  // this component re-renders while the query is streaming in).
+  const autoSendHandledRef = useRef(false);
 
   useEffect(() => {
     void getChatSuggestions().then(setSuggestions);
   }, []);
+
+  // /chat?q=<topic question> (Dashboard "Chủ đề cần ôn lại" -> "Ôn tập"): only on the bare /chat
+  // route (conversationId === null, always a brand-new conversation - see ChatViewProps), auto
+  // fill + send the question through the normal handleAsk/SSE pipeline, then strip the param via
+  // router.replace so a refresh/back doesn't resend it.
+  useEffect(() => {
+    if (conversationId !== null || autoSendHandledRef.current) {
+      return;
+    }
+    const autoQuestion = searchParams.get("q");
+    if (autoQuestion === null || autoQuestion.trim().length === 0) {
+      return;
+    }
+    autoSendHandledRef.current = true;
+    void handleAsk(autoQuestion).finally(() => {
+      router.replace(pathname);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, searchParams]);
 
   // Re-runs whenever the URL's conversationId changes (including navigating directly from one
   // conversation to another via the Sidebar, which Next.js may reuse the same page component

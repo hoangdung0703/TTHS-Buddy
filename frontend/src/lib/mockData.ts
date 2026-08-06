@@ -315,9 +315,9 @@ export const MOCK_KEYWORDS_YESTERDAY: KeywordYesterday[] = [
 ];
 
 export const MOCK_WEAK_TOPICS: WeakTopic[] = [
-  { topic_category: "Biện pháp ngăn chặn", score_percentage: 42 },
-  { topic_category: "Thẩm quyền xét xử", score_percentage: 55 },
-  { topic_category: "Chứng cứ và chứng minh", score_percentage: 61 }
+  { topic_category: "Biện pháp ngăn chặn", score_percentage: 42, essay_bank_category: "van_dung" },
+  { topic_category: "Thẩm quyền xét xử", score_percentage: 55, essay_bank_category: "tinh_huong" },
+  { topic_category: "Chứng cứ và chứng minh", score_percentage: 61, essay_bank_category: "ly_thuyet" }
 ];
 
 export const MOCK_DASHBOARD_STATS: DashboardStats = {

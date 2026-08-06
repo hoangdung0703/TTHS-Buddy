@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertCircle, MessageSquare, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { EssayBankMiniTracker } from "@/components/essay/EssayBankMiniTracker";
@@ -10,9 +11,9 @@ import { ProgressRing } from "@/components/quiz/ProgressRing";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ProgressBar } from "@/components/ui/progress-bar";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import { getEssayBanksV2, getKeywordsYesterday, getQuizStatsV2, getWeakTopics } from "@/lib/api";
+import { ESSAY_BANK_TITLES } from "@/lib/essayBankPresentation";
 import type { EssayBankCategory, EssayBankV2, KeywordYesterday, QuizStatsV2, WeakTopic } from "@/lib/types";
 
 type LoadState = "loading" | "ready" | "error";
@@ -24,26 +25,47 @@ interface DashboardData {
   essayBanks: EssayBankV2[];
 }
 
-// topic_category (Phase 5a/5b gốc, từ get_weak_topics) chưa từng được gắn với 1 trong 4
-// category Essay v2 (Lý thuyết/Vận dụng/Bán trắc nghiệm/Tình huống) - đây vẫn là mapping
-// heuristic theo từ khóa, KHÔNG phải category thật của câu hỏi (xem requirements.md "Phase 7
-// v2" - phần này chưa nằm trong phạm vi Bước B, chỉ Khối 1/2 chuyển sang data thật).
-function mapWeakTopicToEssayBankCategory(topicCategory: string): EssayBankCategory {
-  const normalized = topicCategory.toLowerCase();
+// essay_attempts.category (Phase 5a/5b v2 Buoc B, xem backend get_weak_topics) giờ đã là bank
+// category THẬT do server suy ra từ lịch sử luyện tập tự luận của chính user, không còn phải
+// đoán từ text topic_category ở client nữa. Fallback này chỉ dùng cho 1 weak-topic tới hoàn toàn
+// từ quiz (chưa từng có lần luyện tự luận nào để suy ra bank thật).
+const FALLBACK_ESSAY_BANK_CATEGORY: EssayBankCategory = "ly_thuyet";
 
-  if (normalized.includes("tình huống") || normalized.includes("vụ án")) {
-    return "tinh_huong";
+function getEssayBankCategory(topic: WeakTopic): EssayBankCategory {
+  return topic.essay_bank_category ?? FALLBACK_ESSAY_BANK_CATEGORY;
+}
+
+function getLowestScoringTopic(weakTopics: WeakTopic[]): WeakTopic | null {
+  return weakTopics.reduce<WeakTopic | null>((lowest, topic) => {
+    if (lowest === null || topic.score_percentage < lowest.score_percentage) {
+      return topic;
+    }
+    return lowest;
+  }, null);
+}
+
+// Hero rotation (requirements.md "Feature — Redesign Dashboard Hero"): 3 variant xoay tuần tự
+// mỗi lần vào lại /dashboard hoặc refresh, lưu index thuần UI-state trong localStorage (không
+// phải dữ liệu nhạy cảm, không cần backend). User hoàn toàn mới (chưa có weak-topic) chỉ xoay
+// Variant 2/3 vì chưa có gì để gợi ý ở Variant 1.
+type HeroVariant = "essay" | "quiz" | "minigame";
+
+const HERO_VARIANT_STORAGE_KEY = "ttbuddy_dashboard_hero_variant_index";
+
+function getNextHeroVariantIndex(variantCount: number): number {
+  if (typeof window === "undefined") {
+    return 0;
   }
+  const stored = Number.parseInt(window.localStorage.getItem(HERO_VARIANT_STORAGE_KEY) ?? "", 10);
+  const previous = Number.isNaN(stored) ? -1 : stored;
+  const next = (previous + 1) % variantCount;
+  window.localStorage.setItem(HERO_VARIANT_STORAGE_KEY, String(next));
+  return next;
+}
 
-  if (normalized.includes("vận dụng") || normalized.includes("áp dụng") || normalized.includes("thực tiễn")) {
-    return "van_dung";
-  }
-
-  if (normalized.includes("đúng") || normalized.includes("sai") || normalized.includes("nhận định")) {
-    return "ban_trac_nghiem";
-  }
-
-  return "ly_thuyet";
+function pickHeroVariant(index: number, hasWeakTopic: boolean): HeroVariant {
+  const variants: HeroVariant[] = hasWeakTopic ? ["essay", "quiz", "minigame"] : ["quiz", "minigame"];
+  return variants[index] ?? variants[0];
 }
 
 function getGreeting(hour: number): string {
@@ -66,66 +88,142 @@ function getStudentDisplayName(email: string | null): string {
   return email.split("@")[0];
 }
 
-// Hero - "Gợi ý hành động" (requirements.md "Phase 7 v2"): weak-topics thật quyết định có
-// gợi ý cụ thể hay CTA chung, mapping topic -> essay bank là mock cho tới Bước 2.
-function DashboardHero({ weakTopics }: { weakTopics: WeakTopic[] }) {
-  const lowestTopic = weakTopics.reduce<WeakTopic | null>((lowest, topic) => {
-    if (lowest === null || topic.score_percentage < lowest.score_percentage) {
-      return topic;
-    }
-    return lowest;
-  }, null);
-
-  if (lowestTopic === null) {
-    return (
-      <Card className="border-primary/15 bg-primary/[0.04]">
-        <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">Bắt đầu học tập</p>
-            <p className="font-serif text-lg font-light text-foreground">
-              Chưa có dữ liệu để gợi ý chủ đề cần ôn - hãy làm quen với hệ thống trước.
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-3">
-            <Button asChild className="rounded-full">
-              <Link href="/quiz">Bắt đầu với 1 bộ trắc nghiệm</Link>
-            </Button>
-            <Button asChild variant="outline" className="rounded-full">
-              <Link href="/chat">
-                <MessageSquare className="mr-2 h-4 w-4" />
-                Hỏi trợ lý AI
-              </Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const suggestedCategory = mapWeakTopicToEssayBankCategory(lowestTopic.topic_category);
-
+function HeroShell({
+  eyebrow,
+  message,
+  cta
+}: {
+  eyebrow: string;
+  message: ReactNode;
+  cta: ReactNode;
+}) {
   return (
     <Card className="border-accent/25 bg-accent/[0.06]">
       <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-accent">Gợi ý hôm nay</p>
-          <p className="font-serif text-lg font-light text-foreground">
-            Chủ đề <span className="italic">{lowestTopic.topic_category}</span> đang ở{" "}
-            <span className="font-normal text-accent">{lowestTopic.score_percentage}%</span> - đây là chủ đề yếu nhất của bạn.
+          <p className="mb-1 inline-flex w-fit items-center rounded-full bg-accent px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-accent-foreground">
+            {eyebrow}
           </p>
+          <div className="font-serif text-lg font-light text-foreground">{message}</div>
         </div>
-        <Button asChild className="shrink-0 rounded-full">
-          <Link href={`/essay/${suggestedCategory}`}>Luyện tập ngay</Link>
-        </Button>
+        <div className="shrink-0">{cta}</div>
       </CardContent>
     </Card>
   );
+}
+
+// Variant 1 - Essay: gợi ý ngân hàng tự luận theo weak-topic yếu nhất, kèm tiến độ ngân hàng đó
+// (X/Y câu đã luyện, lấy từ đúng data source Khối 2 hiện có, không gọi API riêng).
+function EssayHero({ topic, essayBanks }: { topic: WeakTopic; essayBanks: EssayBankV2[] }) {
+  const category = getEssayBankCategory(topic);
+  const bank = essayBanks.find((b) => b.category === category) ?? null;
+  const attempted = bank?.progress.kind !== "untouched" ? (bank?.progress.attempted_count ?? 0) : 0;
+
+  return (
+    <HeroShell
+      eyebrow="Gợi ý hôm nay · Tự luận"
+      message={
+        <>
+          Chủ đề <span className="italic">{topic.topic_category}</span> đang ở{" "}
+          <span className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 font-sans text-sm font-semibold text-accent-foreground">
+            {topic.score_percentage}%
+          </span>{" "}
+          - đây là chủ đề yếu nhất của bạn.
+          {bank !== null ? (
+            <span className="mt-1 block text-sm font-sans font-normal text-muted-foreground">
+              Ngân hàng {ESSAY_BANK_TITLES[category]}: {attempted}/{bank.total_questions} câu đã luyện.
+            </span>
+          ) : null}
+        </>
+      }
+      cta={
+        <Button asChild className="rounded-full">
+          <Link href={`/essay/${category}`}>Luyện tập ngay</Link>
+        </Button>
+      }
+    />
+  );
+}
+
+// Variant 2 - MCQ: tiến độ trắc nghiệm tổng hợp, dùng chung state đã fetch cho Khối 1 (không gọi
+// API riêng).
+function QuizHero({ quizStats }: { quizStats: QuizStatsV2 }) {
+  return (
+    <HeroShell
+      eyebrow="Gợi ý hôm nay · Trắc nghiệm"
+      message={
+        <>
+          <div className="mb-1 flex items-center gap-3">
+            <ProgressRing correct={quizStats.correct_total} total={quizStats.questions_total} size={44} />
+            <span>
+              Đã làm{" "}
+              <span className="font-semibold">
+                {quizStats.quiz_sets_attempted}/{quizStats.total_quiz_sets}
+              </span>{" "}
+              bộ đề, tỉ lệ đúng <span className="font-semibold">{quizStats.average_score_percentage}%</span>.
+            </span>
+          </div>
+          Làm tiếp bộ đề tiếp theo để giữ phong độ.
+        </>
+      }
+      cta={
+        <Button asChild className="rounded-full">
+          <Link href="/quiz">Vào trắc nghiệm</Link>
+        </Button>
+      }
+    />
+  );
+}
+
+// Variant 3 - Minigame: gợi ý "Tôi hỏi bạn trả lời", không hiện tiến độ (minigame không track
+// hoàn thành theo thiết kế).
+function MinigameHero() {
+  return (
+    <HeroShell
+      eyebrow="Gợi ý hôm nay · Minigame"
+      message={
+        <>Thử sức với &ldquo;Tôi hỏi bạn trả lời&rdquo; - một câu hỏi tự luận ngẫu nhiên từ toàn bộ ngân hàng, không giới hạn chủ đề.</>
+      }
+      cta={
+        <Button asChild className="rounded-full">
+          <Link href="/essay/practice">Thử ngay</Link>
+        </Button>
+      }
+    />
+  );
+}
+
+function DashboardHero({
+  variant,
+  weakTopics,
+  quizStats,
+  essayBanks
+}: {
+  variant: HeroVariant;
+  weakTopics: WeakTopic[];
+  quizStats: QuizStatsV2;
+  essayBanks: EssayBankV2[];
+}) {
+  if (variant === "essay") {
+    const lowestTopic = getLowestScoringTopic(weakTopics);
+    if (lowestTopic !== null) {
+      return <EssayHero topic={lowestTopic} essayBanks={essayBanks} />;
+    }
+  }
+
+  if (variant === "quiz") {
+    return <QuizHero quizStats={quizStats} />;
+  }
+
+  return <MinigameHero />;
 }
 
 export default function DashboardPage() {
   const { email } = useAuthSession();
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [data, setData] = useState<DashboardData | null>(null);
+  const [heroVariant, setHeroVariant] = useState<HeroVariant | null>(null);
+  const heroVariantPicked = useRef(false);
 
   useEffect(() => {
     loadDashboard();
@@ -138,6 +236,13 @@ export default function DashboardPage() {
       .then(([keywords, weakTopics, quizStats, essayBanks]) => {
         setData({ keywords, weakTopics, quizStats, essayBanks });
         setLoadState("ready");
+
+        if (!heroVariantPicked.current) {
+          heroVariantPicked.current = true;
+          const variantCount = weakTopics.length > 0 ? 3 : 2;
+          const index = getNextHeroVariantIndex(variantCount);
+          setHeroVariant(pickHeroVariant(index, weakTopics.length > 0));
+        }
       })
       .catch(() => setLoadState("error"));
   }
@@ -189,9 +294,14 @@ export default function DashboardPage() {
           </div>
         ) : null}
 
-        {loadState === "ready" && data !== null ? (
+        {loadState === "ready" && data !== null && heroVariant !== null ? (
           <>
-            <DashboardHero weakTopics={data.weakTopics} />
+            <DashboardHero
+              variant={heroVariant}
+              weakTopics={data.weakTopics}
+              quizStats={data.quizStats}
+              essayBanks={data.essayBanks}
+            />
 
             <div className="grid gap-4 md:grid-cols-2">
               {/* Khối 1 - MCQ tổng hợp (data thật: GET /api/quiz/stats) */}
@@ -242,7 +352,7 @@ export default function DashboardPage() {
                     {data.keywords.map((keyword) => (
                       <Link key={`${keyword.dieu_number}-${keyword.keyword}`} href="/chat">
                         <Badge variant="outline" className="hover:bg-accent">
-                          {keyword.dieu_number} · {keyword.keyword}
+                          Điều {keyword.dieu_number} · {keyword.keyword}
                         </Badge>
                       </Link>
                     ))}
@@ -251,7 +361,9 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Khối 4 - Chủ đề cần ôn lại (data thật, thêm CTA vào ngân hàng tự luận tương ứng - mapping mock) */}
+            {/* Khối 4 - Chủ đề cần ôn lại (data thật). Nút "Ôn tập" mở /chat với câu hỏi tự động
+                về đúng chủ đề, phân biệt có chủ đích với Hero Variant 1 (cũng gợi ý weak-topic
+                nhưng dẫn vào luyện tập tự luận): Hero = "làm bài", đây = "hiểu lại khái niệm". */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -264,20 +376,14 @@ export default function DashboardPage() {
                   <p className="text-sm text-muted-foreground">Không có chủ đề nào cần ôn lại.</p>
                 ) : (
                   data.weakTopics.map((topic) => {
-                    const category = mapWeakTopicToEssayBankCategory(topic.topic_category);
+                    const chatQuery = `Giải thích cho tôi về: ${topic.topic_category}`;
 
                     return (
-                      <div key={topic.topic_category} className="space-y-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-foreground">{topic.topic_category}</p>
-                            <Badge variant={topic.score_percentage < 50 ? "danger" : "warning"}>{topic.score_percentage}%</Badge>
-                          </div>
-                          <Button asChild variant="outline" size="sm">
-                            <Link href={`/essay/${category}`}>Ôn tập</Link>
-                          </Button>
-                        </div>
-                        <ProgressBar percentage={topic.score_percentage} />
+                      <div key={topic.topic_category} className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-foreground">{topic.topic_category}</p>
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={`/chat?q=${encodeURIComponent(chatQuery)}`}>Ôn tập</Link>
+                        </Button>
                       </div>
                     );
                   })

@@ -4,7 +4,7 @@ introduced here - everything is computed on read from tables that already exist.
 """
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -93,11 +93,12 @@ def _accumulate_quiz_topic_scores(supabase_client: Client, user_id: str,
 
 
 def _accumulate_essay_topic_scores(supabase_client: Client, user_id: str,
-                                    correct: dict[str, int], total: dict[str, int]) -> None:
+                                    correct: dict[str, int], total: dict[str, int],
+                                    essay_bank_category_votes: dict[str, Counter]) -> None:
     try:
         response = (
             supabase_client.table(ESSAY_ATTEMPTS_TABLE)
-            .select("topic_category, matched_points, missing_points")
+            .select("topic_category, category, matched_points, missing_points")
             .eq("user_id", user_id)
             .execute()
         )
@@ -115,20 +116,33 @@ def _accumulate_essay_topic_scores(supabase_client: Client, user_id: str,
             continue
         total[topic] += matched + missing
         correct[topic] += matched
+        # "category" (ly_thuyet/van_dung/ban_trac_nghiem/tinh_huong) is the real essay bank the
+        # attempt was answered under (migration 0006) - a topic_category can appear in more than
+        # one bank in question_bank.json, so we take the bank the user actually practiced most
+        # under that topic, rather than guessing a bank from the topic_category text client-side.
+        if row.get("category"):
+            essay_bank_category_votes[topic][row["category"]] += 1
 
 
 def get_weak_topics(supabase_client: Client, user_id: str) -> list[dict[str, Any]]:
     correct: dict[str, int] = defaultdict(int)
     total: dict[str, int] = defaultdict(int)
+    essay_bank_category_votes: dict[str, Counter] = defaultdict(Counter)
 
     _accumulate_quiz_topic_scores(supabase_client, user_id, correct, total)
-    _accumulate_essay_topic_scores(supabase_client, user_id, correct, total)
+    _accumulate_essay_topic_scores(supabase_client, user_id, correct, total, essay_bank_category_votes)
 
     weak_topics = []
     for topic, topic_total in total.items():
         score_percentage = round(100 * correct[topic] / topic_total)
         if score_percentage < WEAK_TOPIC_THRESHOLD_PERCENT:
-            weak_topics.append({"topic_category": topic, "score_percentage": score_percentage})
+            votes = essay_bank_category_votes.get(topic)
+            essay_bank_category = votes.most_common(1)[0][0] if votes else None
+            weak_topics.append({
+                "topic_category": topic,
+                "score_percentage": score_percentage,
+                "essay_bank_category": essay_bank_category,
+            })
 
     weak_topics.sort(key=lambda t: t["score_percentage"])
     return weak_topics

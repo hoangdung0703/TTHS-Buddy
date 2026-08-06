@@ -16,6 +16,10 @@ class KeywordsYesterdayResponse(BaseModel):
 class WeakTopic(BaseModel):
     topic_category: str
     score_percentage: int
+    # Real essay bank category (ly_thuyet/van_dung/ban_trac_nghiem/tinh_huong) the user actually
+    # practiced this topic under, derived from essay_attempts.category - None when the topic only
+    # has quiz attempts (no essay history yet to derive a bank from).
+    essay_bank_category: str | None = None
 
 
 class WeakTopicsResponse(BaseModel):
