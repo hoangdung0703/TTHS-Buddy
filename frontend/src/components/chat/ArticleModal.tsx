@@ -3,6 +3,7 @@
 import { AlertCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { FormattedAnswer } from "@/components/chat/FormattedAnswer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiError, getLegalArticle } from "@/lib/api";
 import type { Citation, LegalArticle } from "@/lib/types";
@@ -110,9 +111,7 @@ export function ArticleModal({ citation, onClose }: ArticleModalProps) {
             </div>
           ) : null}
 
-          {!isLoading && article !== null ? (
-            <div className="whitespace-pre-line text-sm leading-relaxed text-foreground">{article.full_text}</div>
-          ) : null}
+          {!isLoading && article !== null ? <FormattedAnswer text={article.full_text} /> : null}
         </CardContent>
       </Card>
     </div>
