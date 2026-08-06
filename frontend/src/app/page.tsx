@@ -8,7 +8,7 @@ const features = [
   {
     icon: MessageSquareQuote,
     title: "Trợ lý AI có trích dẫn điều luật",
-    description: "Mọi câu trả lời đều kèm căn cứ điều luật cụ thể — không suy diễn, không bịa nguồn."
+    description: "Mọi câu trả lời đều kèm căn cứ điều luật cụ thể, không suy diễn, không bịa nguồn."
   },
   {
     icon: ListChecks,
@@ -51,7 +51,7 @@ export default function HomePage() {
       <main className="relative z-10">
         <section className="mx-auto grid max-w-6xl grid-cols-12 gap-8 px-8 pb-24 pt-20">
           <div className="col-span-12 md:col-span-8 md:col-start-2">
-            <p className="mb-8 text-sm font-medium uppercase tracking-[0.12em] text-accent">
+            <p className="mb-8 inline-flex items-center rounded-full bg-accent px-4 py-1.5 text-sm font-semibold uppercase tracking-[0.12em] text-accent-foreground">
               Tố tụng Hình sự · Trợ lý học tập AI
             </p>
             <h1 className="mb-8 font-serif text-[clamp(2.6rem,5vw,4.2rem)] font-light leading-[1.15] tracking-tight text-foreground">
@@ -62,7 +62,7 @@ export default function HomePage() {
               cụ thể, không phỏng đoán.
             </h1>
             <p className="mb-12 max-w-xl text-[1.1rem] font-light leading-[1.75] text-muted-foreground">
-              Trợ lý học tập chuyên về Luật Tố tụng Hình sự Việt Nam (BLTTHS 2015) — giải thích điều khoản có
+              Trợ lý học tập chuyên về Luật Tố tụng Hình sự Việt Nam (BLTTHS 2015): giải thích điều khoản có
               căn cứ, luyện đề, và theo dõi tiến độ học tập của bạn.
             </p>
             <Button
@@ -73,7 +73,7 @@ export default function HomePage() {
             </Button>
           </div>
 
-          <div className="col-span-12 mt-12 flex items-end justify-center pb-4 md:col-span-3 md:col-start-10 md:mt-0">
+          <div className="col-span-12 mt-12 flex items-center justify-center md:col-span-3 md:col-start-10 md:mt-0">
             <LawIllustration />
           </div>
         </section>
@@ -101,7 +101,7 @@ export default function HomePage() {
       </main>
 
       <footer className="relative z-10 mx-auto flex max-w-6xl flex-col gap-4 px-8 pb-10 pt-8 md:flex-row md:items-center md:justify-between">
-        <span className="font-serif text-base font-normal text-foreground/50">TTHS Buddy</span>
+        <span className="font-serif text-base font-normal text-muted-foreground">TTHS Buddy</span>
         <p className="text-xs leading-relaxed text-muted-foreground">
           Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp
         </p>
@@ -116,7 +116,7 @@ function LawIllustration() {
       viewBox="0 0 160 200"
       fill="none"
       aria-label="Minh họa sách luật và cân công lý"
-      className="w-full max-w-[140px] opacity-70"
+      className="w-full max-w-[220px] opacity-90"
     >
       <path d="M20 140 C20 140 78 130 80 130 C82 130 140 140 140 140" stroke="#1E2460" strokeWidth="1.2" strokeLinecap="round" />
       <path d="M20 140 C18 115 22 90 28 72 C40 72 72 78 80 80" stroke="#1E2460" strokeWidth="1.2" strokeLinecap="round" />
