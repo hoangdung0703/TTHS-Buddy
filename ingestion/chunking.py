@@ -48,6 +48,29 @@ KHOAN_PATTERN = re.compile(r"^(\d{1,2})\.\s+", re.MULTILINE)
 CHUONG_PATTERN = re.compile(r"^Chương\s+([IVXLCDM]+)\s*$", re.MULTILINE)
 MUC_PATTERN = re.compile(r"^Mục\s+([IVXLCDM]+|\d+)\.?[ \t]*", re.MULTILINE)
 
+# Phan ("Part") is the structural level ABOVE Chuong - only present in Bo luat TTHS and BLHS,
+# numbered with a Vietnamese ordinal word ("Phan thu nhat/hai/ba/tu/nam/sau/bay/tam/chin"), never
+# roman numerals. Same bare-heading-line anchor requirement as Chuong/Muc: confirmed by direct
+# inspection, body text also contains a false-positive-shaped line starting with "Phan" (BLTTHS:
+# "Phan ket luan cua ban cao trang ghi ro toi danh va dieu, khoan, diem cua...", a sentence, not
+# a heading) - the "thu <ordinal> $" (whole line, no trailing prose) requirement excludes it.
+PHAN_ORDINALS = "nhất|hai|ba|tư|năm|sáu|bảy|tám|chín"
+PHAN_PATTERN = re.compile(rf"^Phần\s+thứ\s+({PHAN_ORDINALS})\s*$", re.MULTILINE)
+
+# "Chuong XXVIII203 (duoc bai bo)" in Bo luat TTHS: a repealed Chuong's footnote superscript
+# landed fused directly onto its roman numeral with no separating space (same fusion pattern as
+# KNOWN_FOOTNOTE_FUSED_DIEU_TITLES below, just on a Chuong heading instead of a Dieu title).
+# CHUONG_PATTERN's bare "Chuong <roman>" anchor correctly does NOT match this line (by design -
+# a fused digit means the line isn't bare) - it never becomes a chuong_event and is never
+# metadata-assigned to a Dieu, which is correct, since this repealed chapter has no Dieu under
+# it to assign to anyway (the real next Chuong XXIX immediately follows and IS bare, so
+# chuong_number/chuong_title attribution for the Dieu after it is unaffected). It still needs to
+# be recognized as a body-boundary marker, though, or it (and the "Phan thu bay" Part heading
+# right before it) is left dangling at the end of the PRECEDING Dieu's chunk_text - see the
+# trailing-heading-bleed fix in chunk_legal_text. Confirmed by direct inspection: the only line
+# in the whole 6-document corpus matching this shape.
+REPEALED_CHUONG_FUSED_FOOTNOTE_PATTERN = re.compile(r"^Chương\s+[IVXLCDM]+\d+\s*\(được bãi bỏ\)\s*$", re.MULTILINE)
+
 # A Dieu longer than this is split into per-Khoan chunks instead of staying as one chunk.
 LONG_DIEU_CHAR_THRESHOLD = 2500
 
@@ -220,15 +243,25 @@ def _heading_title_span(text: str, match: re.Match, sorted_marker_positions: lis
 
 def _find_chuong_muc_events(
     text: str, dieu_starts: list[int]
-) -> tuple[list[tuple[int, str, str]], list[tuple[int, str, str]]]:
-    """Returns (chuong_events, muc_events), each a list of (start_offset, number, title) in
-    document order, restricted to `text` (the same appendix-truncated span Dieu detection
-    already uses - Chuong/Muc headings inside an appendix, if any, are not real document
-    structure either)."""
+) -> tuple[list[tuple[int, str, str]], list[tuple[int, str, str]], list[tuple[int, str, str]]]:
+    """Returns (chuong_events, muc_events, phan_events), each a list of (start_offset, number,
+    title) in document order, restricted to `text` (the same appendix-truncated span Dieu
+    detection already uses - structural headings inside an appendix, if any, are not real
+    document structure either).
+
+    phan_events (Part-level, above Chuong) is computed here alongside chuong/muc - not because
+    _assign_chuong_muc needs it (Phan isn't tracked into per-Dieu metadata, no current consumer
+    needs phan_number/phan_title surfaced), but because chunk_legal_text's trailing-heading-bleed
+    truncation needs ALL structural marker positions (Phan included) to correctly bound each
+    Dieu's body - see requirements.md bug report ("Dieu 412 chunk_text ends with 'Phan thu bay
+    THU TUC DAC BIET'", found once Chuong/Muc bleed was already fixed - the SAME root cause one
+    structural level up)."""
     chuong_matches = list(CHUONG_PATTERN.finditer(text))
     muc_matches = list(MUC_PATTERN.finditer(text))
+    phan_matches = list(PHAN_PATTERN.finditer(text))
     marker_positions = sorted(
-        [m.start() for m in chuong_matches] + [m.start() for m in muc_matches] + dieu_starts
+        [m.start() for m in chuong_matches] + [m.start() for m in muc_matches]
+        + [m.start() for m in phan_matches] + dieu_starts
     )
     chuong_events = [
         (m.start(), m.group(1), _heading_title_span(text, m, marker_positions)) for m in chuong_matches
@@ -236,7 +269,10 @@ def _find_chuong_muc_events(
     muc_events = [
         (m.start(), m.group(1), _heading_title_span(text, m, marker_positions)) for m in muc_matches
     ]
-    return chuong_events, muc_events
+    phan_events = [
+        (m.start(), m.group(1), _heading_title_span(text, m, marker_positions)) for m in phan_matches
+    ]
+    return chuong_events, muc_events, phan_events
 
 
 def _assign_chuong_muc(
@@ -552,8 +588,25 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
     matches = list(DIEU_PATTERN.finditer(dieu_search_text))
     matches = _filter_known_bogus_dieu_matches(source_document, matches)
     dieu_starts = [m.start() for m in matches]
-    chuong_events, muc_events = _find_chuong_muc_events(dieu_search_text, dieu_starts)
+    chuong_events, muc_events, phan_events = _find_chuong_muc_events(dieu_search_text, dieu_starts)
     chuong_muc_assignments = _assign_chuong_muc(dieu_starts, chuong_events, muc_events)
+    # Same heading positions _assign_chuong_muc uses to attribute metadata, reused here to bound
+    # each Dieu's own body: a Chuong/Muc/Phan heading between one Dieu and the next belongs to the
+    # NEXT section, not to this Dieu's trailing text - without this, body slicing below (which
+    # otherwise runs unconditionally to the next "Dieu N." match) sweeps the next heading, its
+    # title, and anything after it (a repealed chapter's own heading, page footnotes sitting at
+    # the bottom of that page in the linearized PDF text, etc.) into THIS Dieu's chunk_text - see
+    # requirements.md bug report ("Dieu 108 chunk_text ends with 'Chuong VII ... Muc I ...'",
+    # later "Dieu 412 chunk_text ends with 'Phan thu bay THU TUC DAC BIET'" - same root cause one
+    # structural level up), confirmed on 99+10 Dieu across the 6 legal_text documents by direct
+    # corpus scan.
+    repealed_chuong_positions = [
+        m.start() for m in REPEALED_CHUONG_FUSED_FOOTNOTE_PATTERN.finditer(dieu_search_text)
+    ]
+    heading_positions = sorted(
+        [p for p, _, _ in chuong_events] + [p for p, _, _ in muc_events]
+        + [p for p, _, _ in phan_events] + repealed_chuong_positions
+    )
     chunks: list[dict[str, Any]] = []
 
     for i, match in enumerate(matches):
@@ -566,6 +619,9 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
         dieu_title = _strip_known_footnote_fused_prefix(source_document, dieu_number, dieu_title)
         start = match.start()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(dieu_search_text)
+        next_heading = next((p for p in heading_positions if start < p < end), None)
+        if next_heading is not None:
+            end = next_heading
         end = _truncate_known_trailing_boilerplate(source_document, dieu_number, full_text, start, end)
         raw_body = full_text[start:end]
         body = raw_body.strip()
