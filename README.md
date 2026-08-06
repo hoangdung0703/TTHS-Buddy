@@ -155,3 +155,5 @@ invalid/missing token returns 401.
 | GET | `/api/dashboard/stats` | `{total_quiz_attempts, average_score, dieu_studied_count}` |
 
 See `requirements.md` for full request/response shapes and the design rationale behind each route.
+
+<!-- Redeploy trigger: 2026-08-07, GitHub repo reconnected to Vercel after a misconfigured-repo incident. -->
