@@ -12,12 +12,15 @@ export const ESSAY_BANK_ICON: Record<EssayBankCategory, typeof BookOpen> = {
   tinh_huong: Briefcase
 };
 
-// Xen kẽ navy/gold cho các card, giống bố cục Figma gốc (mục đích trang trí, không mang ý nghĩa dữ liệu).
+// Cùng 1 tông navy cho cả 4 category (đồng bộ hoá sau audit design-taste - luân phiên navy/gold
+// trước đây chỉ trang trí, không mang ý nghĩa dữ liệu, nhưng đọc như 2 nhóm tách biệt không chủ
+// đích). Gold vẫn giữ nguyên ở nơi khác đã có ý nghĩa riêng (badge "Hoàn thành" = trạng thái, không
+// phải phân loại category) - không đụng tới đây.
 export const ESSAY_BANK_ACCENT: Record<EssayBankCategory, "navy" | "gold"> = {
   ly_thuyet: "navy",
-  van_dung: "gold",
+  van_dung: "navy",
   ban_trac_nghiem: "navy",
-  tinh_huong: "gold"
+  tinh_huong: "navy"
 };
 
 export const ESSAY_BANK_TITLES: Record<EssayBankCategory, string> = {

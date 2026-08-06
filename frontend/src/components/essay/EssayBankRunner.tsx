@@ -138,7 +138,7 @@ export function EssayBankRunner({ category }: EssayBankRunnerProps) {
                 <ul className="space-y-2 text-sm">
                   {result.missing_points.map((point) => (
                     <li key={point} className="flex items-start gap-2">
-                      <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
                       {point}
                     </li>
                   ))}

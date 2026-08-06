@@ -27,7 +27,7 @@ function QuizSetCard({ set }: { set: QuizSetSummaryV2 }) {
         <span
           className={cn(
             "font-sans text-xs font-semibold uppercase tracking-wider",
-            isDone ? "text-accent" : "text-primary"
+            isDone ? "rounded-full bg-accent px-2 py-0.5 text-accent-foreground" : "text-primary"
           )}
         >
           {label}
@@ -37,13 +37,15 @@ function QuizSetCard({ set }: { set: QuizSetSummaryV2 }) {
 
       <div className="min-h-[1.1rem] font-sans text-xs">
         {isDone ? (
-          <span className={status.correct_count === set.total_questions ? "text-accent" : "text-muted-foreground"}>
-            {status.correct_count === set.total_questions
-              ? `Hoàn thành · ${set.total_questions}/${set.total_questions} đúng`
-              : `Đã hoàn thành · ${status.correct_count}/${set.total_questions} đúng`}
-          </span>
+          status.correct_count === set.total_questions ? (
+            <span className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-[0.7rem] font-medium text-accent-foreground">
+              Hoàn thành · {set.total_questions}/{set.total_questions} đúng
+            </span>
+          ) : (
+            <span className="text-muted-foreground">Đã hoàn thành · {status.correct_count}/{set.total_questions} đúng</span>
+          )
         ) : (
-          <span className="text-muted-foreground/60">Chưa làm</span>
+          <span className="text-muted-foreground">Chưa làm</span>
         )}
       </div>
 
@@ -72,7 +74,7 @@ function ProgressSummary({ sets }: { sets: QuizSetSummaryV2[] }) {
     <div className="mb-10 flex flex-wrap gap-x-8 gap-y-2 rounded-xl border border-border bg-primary/[0.04] px-5 py-3.5">
       <Stat label="Bộ đề hoàn thành" value={`${done} / ${sets.length}`} />
       <div className="w-px self-stretch bg-border" />
-      <Stat label="Tổng số câu đúng" value={totalAttempted > 0 ? `${totalCorrect} / ${totalAttempted}` : "—"} />
+      <Stat label="Tổng số câu đúng" value={totalAttempted > 0 ? `${totalCorrect} / ${totalAttempted}` : "-"} />
     </div>
   );
 }
@@ -99,7 +101,7 @@ export default function QuizPage() {
         <div className="mb-6">
           <h1 className="mb-1.5 font-serif text-3xl font-light tracking-tight text-foreground">Trắc nghiệm</h1>
           <p className="text-sm font-light text-muted-foreground">
-            {sets ? `Chọn 1 trong ${sets.length} bộ đề — mỗi bộ ${sets[0]?.total_questions ?? 5} câu` : "Đang tải danh sách bộ đề..."}
+            {sets ? `Chọn 1 trong ${sets.length} bộ đề, mỗi bộ ${sets[0]?.total_questions ?? 5} câu` : "Đang tải danh sách bộ đề..."}
           </p>
         </div>
 
@@ -132,7 +134,7 @@ export default function QuizPage() {
           </>
         ) : null}
 
-        <p className="mt-10 text-center text-xs text-muted-foreground/60">
+        <p className="mt-10 text-center text-xs text-muted-foreground">
           Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp
         </p>
       </div>

@@ -118,11 +118,13 @@ export default function EssayPracticePage() {
           <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_4px_24px_rgba(30,36,96,0.07)]">
             <div className="border-b border-border/70 p-6 sm:p-8">
               <div className="mb-5 flex items-center justify-between">
-                <span className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-accent">Tôi hỏi · Bạn trả lời</span>
+                <span className="inline-flex items-center rounded-full bg-accent px-2.5 py-0.5 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-accent-foreground">
+                  Tôi hỏi · Bạn trả lời
+                </span>
                 <Badge variant="outline">{question.bank_label}</Badge>
               </div>
 
-              <p className="mb-3 font-serif text-xl font-light leading-snug tracking-tight text-foreground sm:text-2xl">
+              <p className="mb-3 text-xl font-normal leading-snug tracking-tight text-foreground sm:text-2xl">
                 {question.question_text}
               </p>
 
@@ -141,7 +143,7 @@ export default function EssayPracticePage() {
                   rows={7}
                   className="w-full resize-y rounded-xl border border-primary/[0.12] bg-primary/[0.025] p-4 pb-10 text-sm leading-relaxed text-foreground outline-none transition-colors focus:border-primary/40"
                 />
-                <span className="pointer-events-none absolute bottom-2.5 right-3.5 text-xs text-muted-foreground/50">
+                <span className="pointer-events-none absolute bottom-2.5 right-3.5 text-xs text-muted-foreground">
                   {answer.length} ký tự
                 </span>
               </div>
@@ -170,7 +172,7 @@ export default function EssayPracticePage() {
                 </button>
               </div>
 
-              <p className="mt-3 text-xs text-muted-foreground/60">Hãy tự viết trước khi xem đáp án — đó là cách học hiệu quả nhất.</p>
+              <p className="mt-3 text-xs text-muted-foreground">Hãy tự viết trước khi xem đáp án, đó là cách học hiệu quả nhất.</p>
             </div>
           </div>
         )}
@@ -179,8 +181,8 @@ export default function EssayPracticePage() {
           <div className="flex flex-col gap-5">
             <div className="rounded-2xl border border-border bg-card p-5">
               <div className="flex items-start justify-between gap-4">
-                <p className="flex-1 font-serif text-base italic leading-relaxed text-foreground/80">{question.question_text}</p>
-                <span className="whitespace-nowrap pt-0.5 text-[0.68rem] font-semibold uppercase tracking-wider text-accent">
+                <p className="flex-1 text-base leading-relaxed text-foreground/80">{question.question_text}</p>
+                <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent px-2.5 py-0.5 text-[0.68rem] font-semibold uppercase tracking-wider text-accent-foreground">
                   Câu hỏi
                 </span>
               </div>
@@ -215,9 +217,9 @@ export default function EssayPracticePage() {
                       </li>
                     ))}
                     {result.missing_points.map((point) => (
-                      <li key={point} className="flex items-start gap-2.5 rounded-md border border-accent/20 bg-accent/[0.08] p-2.5">
-                        <Minus size={13} strokeWidth={2.5} className="mt-0.5 shrink-0 text-accent" />
-                        <span className="text-sm font-medium text-accent">{point}</span>
+                      <li key={point} className="flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 p-2.5">
+                        <Minus size={13} strokeWidth={2.5} className="mt-0.5 shrink-0 text-amber-700" />
+                        <span className="text-sm font-medium text-amber-800">{point}</span>
                       </li>
                     ))}
                     {result.matched_points.length === 0 && result.missing_points.length === 0 && (
@@ -234,7 +236,7 @@ export default function EssayPracticePage() {
                     <Check size={11} strokeWidth={2.5} className="text-primary" /> Đã đề cập
                   </span>
                   <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Minus size={11} strokeWidth={2.5} className="text-accent" /> Cần bổ sung
+                    <Minus size={11} strokeWidth={2.5} className="text-amber-700" /> Cần bổ sung
                   </span>
                 </div>
               </div>
@@ -260,7 +262,7 @@ export default function EssayPracticePage() {
           </div>
         )}
 
-        <p className="mt-10 text-center text-xs text-muted-foreground/45">
+        <p className="mt-10 text-center text-xs text-muted-foreground">
           Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp
         </p>
       </div>

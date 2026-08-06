@@ -191,7 +191,7 @@ export function AuthForm({ mode }: AuthFormProps) {
                 <button
                   type="button"
                   onClick={() => setShowPassword((value) => !value)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
                   aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
                 >
                   {showPassword ? <EyeOff size={15} strokeWidth={1.6} /> : <Eye size={15} strokeWidth={1.6} />}
@@ -220,7 +220,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
           <div className="my-6 flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
-            <span className="text-xs font-light uppercase tracking-wide text-muted-foreground/70">hoặc</span>
+            <span className="text-xs font-light uppercase tracking-wide text-muted-foreground">hoặc</span>
             <div className="h-px flex-1 bg-border" />
           </div>
 
@@ -236,7 +236,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           </Button>
 
           {!isSignIn && (
-            <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground/80">
+            <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground">
               Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp.
             </p>
           )}

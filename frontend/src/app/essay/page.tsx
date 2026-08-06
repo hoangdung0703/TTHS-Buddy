@@ -36,7 +36,7 @@ function EssayBankCard({ bank }: { bank: EssayBankV2 }) {
           <Icon size={22} strokeWidth={1.4} />
         </div>
         {isComplete && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/[0.12] px-2.5 py-0.5 text-[0.7rem] font-semibold uppercase tracking-wide text-accent">
+          <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-0.5 text-[0.7rem] font-semibold uppercase tracking-wide text-accent-foreground">
             <Check size={10} strokeWidth={2.5} />
             Hoàn thành
           </span>
@@ -49,7 +49,14 @@ function EssayBankCard({ bank }: { bank: EssayBankV2 }) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <p className={cn("text-xs font-semibold uppercase tracking-wide opacity-80", accent === "gold" ? "text-accent" : "text-primary")}>
+        <p
+          className={cn(
+            "text-xs font-semibold uppercase tracking-wide",
+            accent === "gold"
+              ? "inline-flex w-fit items-center rounded-full bg-accent px-2 py-0.5 text-accent-foreground"
+              : "text-primary opacity-80"
+          )}
+        >
           {bank.subtitle}
         </p>
         <h2 className="font-serif text-xl font-light tracking-tight text-foreground">{bank.title}</h2>
@@ -60,11 +67,18 @@ function EssayBankCard({ bank }: { bank: EssayBankV2 }) {
         <div className="flex items-center justify-between">
           <span className="font-serif text-sm text-foreground">{bank.total_questions} câu</span>
           {bank.progress.kind !== "untouched" ? (
-            <span className={cn("text-xs", isComplete ? "text-accent" : "text-muted-foreground")}>
+            <span
+              className={cn(
+                "text-xs",
+                isComplete
+                  ? "inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-accent-foreground"
+                  : "text-muted-foreground"
+              )}
+            >
               {bank.progress.attempted_count} / {bank.total_questions} đã làm
             </span>
           ) : (
-            <span className="text-xs text-muted-foreground/50">Chưa bắt đầu</span>
+            <span className="text-xs text-muted-foreground">Chưa bắt đầu</span>
           )}
         </div>
         <div className="h-[3px] overflow-hidden rounded-full bg-primary/[0.08]">
@@ -115,7 +129,7 @@ export default function EssayPage() {
         <div className="mb-10 flex flex-wrap items-end justify-between gap-6">
           <div>
             <h1 className="mb-1.5 font-serif text-3xl font-light tracking-tight text-foreground">Tự luận</h1>
-            <p className="text-sm font-light text-muted-foreground">Chọn ngân hàng câu hỏi để luyện tập — mỗi lượt 1 câu</p>
+            <p className="text-sm font-light text-muted-foreground">Chọn ngân hàng câu hỏi để luyện tập, mỗi lượt 1 câu</p>
           </div>
 
           {banks !== null ? (
@@ -172,12 +186,12 @@ export default function EssayPage() {
           <span className="flex flex-col">
             <span className="font-serif text-base text-foreground">Tôi hỏi · Bạn trả lời</span>
             <span className="text-xs text-muted-foreground">
-              Minigame luyện tập nhanh — lấy ngẫu nhiên 1 câu từ toàn bộ ngân hàng tự luận
+              Minigame luyện tập nhanh, lấy ngẫu nhiên 1 câu từ toàn bộ ngân hàng tự luận
             </span>
           </span>
         </Link>
 
-        <p className="mt-10 text-center text-xs text-muted-foreground/55">
+        <p className="mt-10 text-center text-xs text-muted-foreground">
           Chỉ dành cho mục đích học tập · Không thay thế tư vấn pháp lý chuyên nghiệp
         </p>
       </div>

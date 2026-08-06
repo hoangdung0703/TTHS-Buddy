@@ -200,7 +200,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
                 Bắt đầu hỏi đáp về Luật Tố tụng Hình sự
               </p>
               <p className="max-w-md text-sm text-muted-foreground">
-                Hỏi trực tiếp về 1 Điều luật, hoặc hỏi phân tích sâu — mọi câu trả lời đều có trích dẫn.
+                Hỏi trực tiếp về 1 Điều luật, hoặc hỏi phân tích sâu, mọi câu trả lời đều có trích dẫn.
               </p>
             </div>
 
