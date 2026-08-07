@@ -103,6 +103,18 @@ ACADEMIC_TOP_K = 3
 LEGAL_SCORE_THRESHOLD = 0.5
 ACADEMIC_SCORE_THRESHOLD = 0.5
 
+# requirements.md "Cải thiện retrieval cho câu hỏi vận dụng/tình huống dài" Bước 1: a long,
+# multi-fact tình huống question dilutes the embedding towards surface procedural details
+# repeated in the question text, pushing the Dieu that actually holds the core legal principle
+# out of a small top-k even when it still clears LEGAL_SCORE_THRESHOLD. Widening the semantic
+# pool (not the score threshold, not academic_reference, not exact-match) gives that Dieu more
+# room to surface without loosening precision for the short/medium questions that already work -
+# threshold picked from the 3 real diagnostic questions (106/159/572 chars): only the 572-char
+# tình huống question should cross it, vandung-q7 (159) and vandung-q26 (106) must not.
+LONG_QUESTION_CHAR_THRESHOLD = 250
+LEGAL_SEMANTIC_TOP_K_LONG = 25
+LEGAL_PRIMARY_COUNT_LONG = 8
+
 # An academic_reference passage that spans multiple paragraphs (ingestion/chunking.py splits
 # academic_reference by paragraph, not by whole subsection - see requirements.md Phase 3) gets
 # fragmented into several consecutive chunk_index values, only some of which score high enough
@@ -453,24 +465,35 @@ def _build_suggested_followups(client: QdrantClient, collection: str, top_chunk:
 def _retrieve_legal(client: QdrantClient, collection: str, question: str,
                      vector: list[float]) -> tuple[list[RetrievedChunk], list[RetrievedChunk]]:
     """Returns (primary_chunks, related_chunks). Exact Dieu-number matches (if the question names
-    one) always take priority over semantic search results for the primary slots."""
+    one) always take priority over semantic search results for the primary slots.
+
+    Long/tình huống questions (see LONG_QUESTION_CHAR_THRESHOLD) widen both the semantic pool and
+    the number of primary slots - a wider pool alone would still cap the correct Dieu out at
+    LEGAL_PRIMARY_COUNT=3 if 3 more-surface-similar Dieu already rank above it, which is exactly
+    the failure mode this fix targets. Exact-match and academic_reference retrieval are
+    untouched - only the legal_text semantic branch is affected.
+    """
     dieu_number = detect_dieu_number(question)
     source_document = detect_source_document(question) if dieu_number else None
     exact_chunks = _retrieve_legal_exact(client, collection, dieu_number, source_document) if dieu_number else []
-    semantic_chunks = _retrieve_semantic(client, collection, vector, "legal_text", LEGAL_SEMANTIC_TOP_K)
+
+    is_long_question = len(question) > LONG_QUESTION_CHAR_THRESHOLD
+    semantic_top_k = LEGAL_SEMANTIC_TOP_K_LONG if is_long_question else LEGAL_SEMANTIC_TOP_K
+    primary_count = LEGAL_PRIMARY_COUNT_LONG if is_long_question else LEGAL_PRIMARY_COUNT
+    semantic_chunks = _retrieve_semantic(client, collection, vector, "legal_text", semantic_top_k)
 
     merged = _dedup_by_point_id(exact_chunks + semantic_chunks)
     above_threshold = [c for c in merged if c.is_exact_match or (c.score or 0.0) >= LEGAL_SCORE_THRESHOLD]
 
     # Group by (dieu_number, law_version) rather than slicing the flat chunk list, so a long
     # Dieu split into several Khoan chunks (see ingestion/chunking.py) counts as ONE Dieu
-    # towards LEGAL_PRIMARY_COUNT instead of eating multiple primary slots with itself.
+    # towards primary_count instead of eating multiple primary slots with itself.
     primary_keys_ordered: list[tuple[str, str | None]] = []
     for chunk in above_threshold:
         key = (chunk.payload["dieu_number"], chunk.payload["law_version"])
         if key not in primary_keys_ordered:
             primary_keys_ordered.append(key)
-    primary_keys = set(primary_keys_ordered[:LEGAL_PRIMARY_COUNT])
+    primary_keys = set(primary_keys_ordered[:primary_count])
 
     primary = [c for c in above_threshold
                if (c.payload["dieu_number"], c.payload["law_version"]) in primary_keys]

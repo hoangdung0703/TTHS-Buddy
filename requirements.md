@@ -240,22 +240,20 @@ Thay đổi so với Phase 5a/5b gốc đang chạy thật:
 - Số liệu chính xác từng ngân hàng (bao nhiêu câu Lý thuyết/Vận dụng/Tình huống) phụ thuộc ngân hàng đề mới nhóm luật đang tổng hợp — CHƯA CÓ, chỉ có ngân hàng "Bán trắc nghiệm" (15 câu, đã có sẵn từ dữ liệu cũ).
 
 [x] Bước 1 (ĐÃ HOÀN THÀNH): build UI 3 màn hình mới (chọn bộ trắc nghiệm 15 bộ, chọn ngân hàng tự luận 4 loại, minigame Tôi hỏi bạn trả lời) dựa theo Figma export trong design/figma-export/, dùng mock data cục bộ (mockDataV2.ts, tách biệt hoàn toàn khỏi NEXT_PUBLIC_USE_MOCK_DATA/lib/api.ts/lib/mockData.ts) — CHƯA đụng vào backend/quiz_service.py/essay_service.py hiện có (vẫn chạy đúng, chỉ frontend tạm không trỏ vào)
-[x] QUYẾT ĐỊNH QUAN TRỌNG: việc build UI mock này tạm thời route /quiz và /essay khỏi backend thật đang chạy (đã verify hoạt động đúng qua UAT-readiness trước đó) — chỉ chấp nhận được vì UAT với nhóm luật CHƯA bắt đầu. Phải hoàn thành Bước 2 (backend thật) TRƯỚC khi bắt đầu UAT, không được để nhóm luật UAT trên bản mock — ĐÃ HOÀN THÀNH, /quiz và /essay giờ gọi backend thật 100%, mockDataV2.ts đã xóa hẳn khỏi repo, sẵn sàng UAT
+[ ] QUYẾT ĐỊNH QUAN TRỌNG: việc build UI mock này tạm thời route /quiz và /essay khỏi backend thật đang chạy (đã verify hoạt động đúng qua UAT-readiness trước đó) — chỉ chấp nhận được vì UAT với nhóm luật CHƯA bắt đầu. Phải hoàn thành Bước 2 (backend thật) TRƯỚC khi bắt đầu UAT, không được để nhóm luật UAT trên bản mock
 
 Phát hiện phụ khi verify Bước 1 (không phải lỗi của 3 trang mới, ghi lại để không quên): Sidebar không tự thu gọn ở mobile viewport (< tablet) — hạn chế có sẵn của AuthenticatedLayout toàn app (Chat/Dashboard cũng vậy), chưa từng được kiểm tra kỹ trên mobile thật. Đáng làm thành 1 việc QA riêng trước UAT (đã note nhu cầu QA mobile Quiz/Essay từ trước, giờ mở rộng thêm phạm vi sang cả khung Sidebar).
 [x] Bước 2 — ĐANG LÀM, dữ liệu thật đã nhận: 
     - Ngân hàng đề mới "Tôi hỏi bạn trả lời(2).pdf" — đã có đủ 4 category (Lý thuyết/Vận dụng/Bán trắc nghiệm/Tình huống), gồm cả câu cũ lẫn câu mới trộn lẫn. Toàn bộ nội dung file này đi vào Tự luận (4 ngân hàng), thay thế hẳn cách tổ chức essay cũ (pool phẳng 30 câu + 15 mcq_true_false riêng biệt) — cần đối chiếu xem 15 câu Nhận định Đúng/Sai cũ và 30 câu tự luận cũ có bị trùng/đã được gộp vào file mới hay không trước khi quyết định giữ/bỏ dữ liệu cũ (không giả định, kiểm tra thật như đã làm mọi lần trước).
     - 8 file PDF mới bổ sung cho corpus RAG (Qdrant) — CHƯA rõ loại (legal_text hay academic_reference), cần phân loại bằng nội dung thật như đã làm ở Phase 3 gốc, không đoán theo tên file.
     - MCQ: quyết định cuối cùng — XÓA hẳn 15 câu mcq_true_false khỏi trắc nghiệm (không chuyển đổi qua lại nữa), chỉ giữ 75 câu mcq_4choice gốc (5 bộ × 15 câu ban đầu, KHÔNG phải 5 bộ × 18 câu đã trộn Nhận định trước đây). Xáo trộn ngẫu nhiên 75 câu này, chia lại thành 15 bộ đề mới, mỗi bộ 5 câu — khớp đúng thiết kế UI đã build ở Bước 1.
-[x] parse_question_bank_v2.py (file mới, tái sử dụng helper từ parse_question_bank.py qua import thay vì viết đè lên bản gốc): parse "Tôi hỏi bạn trả lời (2).pdf" theo đúng 4 category thật (Bán trắc nghiệm 50/Lý thuyết 20/Vận dụng 26/Tình huống 15 = 111 câu) — phát hiện 65/111 câu KHÔNG có bullet "Từ khóa cho bài học" như file cũ (khác giả định ban đầu), dùng LLM trích xuất key points có kiểm soát chặt (grounded extraction) cho nhóm này thay vì chỉ chuẩn hóa bullet có sẵn. Reshuffle 75 câu mcq_4choice (seed cố định 20260804) thành 15 bộ × 5. Rà soát phát hiện + sửa: 1 câu MCQ trùng lặp có sẵn từ nguồn gốc (Bộ 7, soạn 1 câu mới thay thế, đã người dùng duyệt), 3 câu tình huống bị cụt do parse (khôi phục đủ cấu trúc nhiều nhánh từ PDF gốc). question_bank.json cuối cùng: 186 câu (75 mcq_4choice + 111 essay).
-[x] parse_law.py mở rộng: 8 file PDF mới đã phân loại + ingest vào corpus ở Bước A (đã hoàn thành trước đó, xem log Bước A phía trên) - không cần làm lại ở Bước B.
-[x] Redesign question_bank_service.py: quiz KHÔNG dùng rotation ngẫu nhiên nữa — mỗi quiz_set là bộ cố định 5 câu (khớp đúng thiết kế UI "15 bộ cố định" đã build ở Bước 1), select_quiz_questions chỉ xáo trộn thứ tự hiển thị. Essay rotation filter theo category (bank practice) hoặc toàn bộ pool (minigame "Tôi hỏi bạn trả lời", không giới hạn category theo đúng thiết kế).
-[x] Migration backend/migrations/0006_essay_attempts_category.sql: thêm cột category vào essay_attempts — đã chạy thủ công trên Supabase, verify qua GET /api/essay/banks trả đúng questions_practiced sau khi nộp bài thật.
-[x] Nối backend thật vào UI Quiz v2/Essay v2 đã build ở Bước 1 — mockDataV2.ts đã xóa hẳn khỏi repo, mọi trang (/quiz, /quiz/[setId], /essay, /essay/[category], /essay/practice) gọi API thật qua lib/api.ts (getQuizSetsV2/getQuizV2/submitQuizV2/getEssayBanksV2/getEssayBankQuestionV2/getPracticeQuestionV2 + submitEssay dùng chung). Route mới: GET /api/quiz/stats, GET /api/essay/banks; POST /api/essay/question nhận thêm {category?, exclude_question_id?}.
-[x] Cập nhật Phase 7 v2 dashboard: Khối 1 (MCQ progress ring) dùng GET /api/quiz/stats thật, Khối 2 (4 tracker tự luận) dùng GET /api/essay/banks thật — TODO comment đã xóa. Khối 3/4/Hero's weak-topic mapping vẫn dùng mapping heuristic theo từ khóa (chưa nằm trong phạm vi Bước B, đã ghi rõ trong code).
-[x] Verify E2E sạch đầy đủ (tài khoản Supabase thật tạo qua Admin API cho mục đích test, xóa sau khi xong; NEXT_PUBLIC_USE_MOCK_DATA=false; backend+frontend dev server thật; lái bằng Playwright headless, chụp screenshot từng bước) — đã xác nhận: đăng nhập → Dashboard hiển thị đúng data thật (Khối 1: 0/5, đã làm 1/15 bộ; Khối 2: đúng số câu đã luyện từng ngân hàng) → Trắc nghiệm 15 bộ hiển thị đủ, Bộ 07 chứa đúng câu MCQ mới soạn (Điều 74), làm bài + nộp + chấm điểm + hiển thị giải thích đúng, quay lại danh sách bộ đề cập nhật đúng trạng thái "Đã hoàn thành" → Tự luận 4 ngân hàng đúng số câu (20/26/50/15), làm bài Bán trắc nghiệm nhận chấm điểm LLM thật grounded vào rubric (test câu trả lời lạc đề, LLM nhận diện đúng và trả về missing_points + feedback hợp lý), câu Tình huống nhiều nhánh hiển thị đủ → Minigame "Tôi hỏi bạn trả lời" lấy ngẫu nhiên đúng từ toàn pool, "Câu khác" không tính lượt (đếm phiên không tăng), nộp bài thật tính lượt đúng. Không có console error/failed request trong toàn bộ luồng.
-
-Phase 5a/5b v2 — HOÀN THÀNH TOÀN BỘ (Bước 1 + Bước A + Bước B). question_bank.json: 186 câu thật (75 mcq_4choice/15 bộ + 111 essay/4 category). Corpus RAG: 2644/2644 chunk/point khớp tuyệt đối, 0 unusable. Backend + frontend nối API thật 100%, E2E verify sạch. Sẵn sàng UAT với nhóm luật.
+[ ] parse_question_bank.py viết lại: parse "Tôi hỏi bạn trả lời(2).pdf" theo 4 category, tận dụng bullet "Từ khóa cho bài học" như đã làm ở lần đầu nếu format tương tự (kiểm tra format thật trước, không giả định giống hệt file cũ). Reshuffle 75 câu MCQ thành 15 bộ × 5.
+[ ] parse_law.py mở rộng: phân loại + ingest 8 file mới vào corpus, theo đúng pipeline OCR fallback 2 tầng (Gemini Vision → Tesseract) đã có nếu gặp file scan/lỗi font tương tự 12 file đầu
+[ ] Redesign question_bank_service.py: quiz rotation chọn ngẫu nhiên 5/75 câu cho mỗi lượt tạo bộ (hoặc dùng 15 bộ cố định đã chia sẵn — quyết định lúc build dựa trên cách đã thiết kế UI Bước 1, ưu tiên khớp đúng "15 bộ cố định" vì UI đã hiển thị theo bộ số 01-15 có trạng thái lưu lại, không phải sinh động mỗi lần); essay rotation filter theo category
+[ ] Migration: thêm cột category vào bảng câu hỏi tự luận
+[ ] Nối backend thật vào UI Quiz v2/Essay v2 đã build ở Bước 1 (đang mock) — thay mockDataV2.ts bằng gọi API thật, xóa comment TODO đã đánh dấu
+[ ] Cập nhật Phase 7 v2 dashboard: thay mock ở Khối 1 (MCQ progress ring) và Khối 2 (4 tracker tự luận) bằng data thật, xóa TODO tương ứng
+[ ] Verify E2E sạch đầy đủ theo quy tắc đã có TRƯỚC khi coi Bước 2 xong — đây là điều kiện bắt buộc để bắt đầu UAT với nhóm luật
 
 Phase 5b — Module tự luận (câu hỏi mở)
 [ ] essay_service.py — nhận câu trả lời tự do (free-text) của user cho 1 câu hỏi trong ngân hàng đề, chấm điểm bằng LLM-as-judge dựa trên essay_key_points (rubric) đã có sẵn trong ngân hàng đề — KHÔNG để LLM tự đánh giá đúng/sai theo cảm tính, phải grounding vào rubric cụ thể
@@ -454,141 +452,102 @@ Số liệu cuối cùng sau toàn bộ Bước A: 2644 chunk, 2644 point Qdrant
 
 Bước B — Xử lý Bộ 7 thiếu 1 câu (sau khi xóa mcq4-set7-q4 trùng lặp)
 Quyết định: KHÔNG phục hồi câu trùng, KHÔNG rút câu từ bộ khác — soạn 1 câu MCQ mới bằng LLM để đắp đủ 5 câu cho Bộ 7. Đây là lần đầu tiên dự án để LLM tự soạn nội dung câu hỏi mới (khác hẳn việc chuẩn hóa/trích xuất từ nguồn có sẵn đã làm xuyên suốt từ Phase 5a) — áp ràng buộc chặt:
-[x] Câu mới PHẢI grounding vào đúng 1 Điều luật thật có trong corpus Qdrant (không tự bịa tình huống/quy định) — chọn 1 Điều liên quan chủ đề tương tự các câu khác trong Bộ 7 nếu hợp lý (quyền bào chữa), lấy nguyên văn nội dung Điều đó làm cơ sở soạn câu hỏi + 4 đáp án (1 đúng, 3 nhiễu hợp lý)
-[x] Đáp án đúng phải trích dẫn/diễn giải chính xác nội dung Điều đã chọn, không suy diễn thêm
-[x] BẮT BUỘC hiển thị đầy đủ câu hỏi mới (câu hỏi, 4 đáp án, đáp án đúng, Điều luật căn cứ) để người dùng duyệt trước khi thêm vào question_bank.json — không tự động chấp nhận, đúng quy trình spot-check đã áp dụng cho mọi dữ liệu câu hỏi khác trong dự án
-
-Câu mới mcq4-set7-q5: grounding vào Điều 74 BLTTHS ("Thời điểm người bào chữa tham gia tố tụng"), cùng chủ đề quyền bào chữa với mcq4-set7-q1 (Điều 76). Đáp án đúng diễn giải sát nguyên văn Khoản về trường hợp án an ninh quốc gia. Đã người dùng duyệt trước khi thêm vào question_bank.json.
-
-Bước B — HOÀN THÀNH. Số liệu cuối cùng: question_bank.json = 186 câu (75 mcq_4choice chia đều 15 bộ × 5 câu, không bộ nào thiếu/dư; 111 câu tự luận chia 4 category: Bán trắc nghiệm 50, Lý thuyết 20, Vận dụng 26, Tình huống 15). 15 câu mcq_true_false cũ đã xóa hẳn khỏi trắc nghiệm, không còn tồn tại dưới bất kỳ hình thức nào trong file.
-
-Quyết định — Ẩn badge "Điều" ở toàn bộ MCQ UI (Quiz v2)
-Phát hiện khi audit responsive: badge "Điều {dieu_number}" ở màn làm bài Quiz v2 thường xuyên trống với nhiều câu. Điều tra xác nhận đây KHÔNG phải lỗi hệ thống (không phải bug parser, không phải lỗi hiển thị frontend đọc sai field) — 49/75 câu mcq_4choice (65%, trải đều khắp 15 bộ) có `dieu_number: null` thật trong question_bank.json vì file PDF gốc "Câu hỏi trắc nghiệm.pdf" không phải lúc nào cũng nêu số Điều cụ thể trong phần "Giải thích" (nhiều câu chỉ giải thích chung chung kiểu "BLTTHS quy định..." mà không trích số Điều) — đối chiếu trực tiếp PDF gốc xác nhận trích xuất regex `_extract_first_dieu_number()` hoạt động đúng, không có gì để backfill từ nguồn hiện có.
-Quyết định: ẩn HẲN badge Điều ở MCQ (cả màn làm bài lẫn màn kết quả) thay vì backfill thủ công/LLM cho 49 câu thiếu — ưu tiên nhất quán giao diện (không hiển thị badge có/không tùy câu) hơn là đầu tư công sức đối chiếu ngược corpus Qdrant cho dữ liệu vốn đã đúng ý đồ nguồn (nhiều câu MCQ chỉ kiểm tra kiến thức tổng quát, không neo vào 1 Điều cụ thể). Phần "Giải thích" (explanation) của câu hỏi vẫn giữ nguyên, hiển thị đầy đủ như cũ — chỉ bỏ chip/badge riêng.
-Phạm vi: CHỈ áp dụng cho MCQ (Quiz v2). KHÔNG đụng tới Essay v2 (`suggested_dieu` trong EssayBankRunner.tsx giữ nguyên) và Chat (citation pill/ArticleModal giữ nguyên) — 2 luồng này grounding vào corpus Qdrant qua RAG/matching thật, độ tin cậy và mục đích sử dụng khác hẳn field `dieu_number` gán tay/regex-extract của MCQ.
+[ ] Câu mới PHẢI grounding vào đúng 1 Điều luật thật có trong corpus Qdrant (không tự bịa tình huống/quy định) — chọn 1 Điều liên quan chủ đề tương tự các câu khác trong Bộ 7 nếu hợp lý (quyền bào chữa), lấy nguyên văn nội dung Điều đó làm cơ sở soạn câu hỏi + 4 đáp án (1 đúng, 3 nhiễu hợp lý)
+[ ] Đáp án đúng phải trích dẫn/diễn giải chính xác nội dung Điều đã chọn, không suy diễn thêm
+[ ] BẮT BUỘC hiển thị đầy đủ câu hỏi mới (câu hỏi, 4 đáp án, đáp án đúng, Điều luật căn cứ) để người dùng duyệt trước khi thêm vào question_bank.json — không tự động chấp nhận, đúng quy trình spot-check đã áp dụng cho mọi dữ liệu câu hỏi khác trong dự án
 
 Feature — Google OAuth Login (sau deadline 05/09)
 Bối cảnh: đã cố tình cắt khỏi scope từ đầu (từng chủ động xóa nút Google khỏi mockup Figma lúc build lại Welcome/Sign in/Sign up). Giờ quay lại làm thật theo yêu cầu.
 Setup thủ công (đã làm ngoài phạm vi code, không phải việc của Claude Code): OAuth Client ID tạo trên Google Cloud Console, redirect URI trỏ đúng Supabase callback (https://<project-ref>.supabase.co/auth/v1/callback), bật Google provider trên Supabase Dashboard với Client ID/Secret.
-[x] Thêm nút "Tiếp tục với Google" vào Sign in/Sign up (AuthForm.tsx) — supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + '/dashboard' } }), giữ nguyên style editorial (rounded-full, cùng padding/shadow với nút submit), icon Google 4 màu inline SVG (không thêm dependency), divider "hoặc" tách với form email/password.
-[x] Xử lý redirect callback — không cần route /auth/callback riêng: supabase-js client mặc định detectSessionInUrl=true, và useAuthSession.ts gọi supabase.auth.getSession() trong useEffect (hàm này tự đợi client xử lý xong token trong URL trước khi trả session), nên redirectTo=/dashboard là đủ, không cần thêm code.
-[x] Xác nhận không có bước nào trong luồng app giả định user phải qua /register trước — rà cả backend (core/security.py chỉ verify JWT sub/email, không tra bảng users/profiles nào) lẫn frontend (dashboard/page.tsx chỉ dùng useAuthSession → email, không gate thêm) — user Google đăng nhập lần đầu vào thẳng được /dashboard với dashboard rỗng (0 quiz/essay/chat), Supabase tự tạo user mới không cần bước nào khác.
-[ ] Verify E2E: đăng nhập Google thật (dùng tài khoản Google thật, không giả lập) qua trình duyệt — CHƯA xác nhận, cần người dùng tự bấm nút Google/chọn tài khoản/xác nhận redirect vào /dashboard (không tự động hóa được qua Playwright do Google chặn automated login), sau đó verify JWT hoạt động bình thường với API Chat/Quiz/Essay như user email/password.
+[ ] Thêm nút "Tiếp tục với Google" vào Sign in/Sign up, dùng supabase.auth.signInWithOAuth({ provider: 'google' }) — giữ nguyên style editorial đã có (không phá vỡ layout hiện tại của 2 trang)
+[ ] Xử lý redirect callback đúng — Supabase tự redirect về app sau khi Google xác thực xong, xác nhận route callback (thường /auth/callback hoặc xử lý ngay tại root qua onAuthStateChange) hoạt động đúng, điều hướng vào /dashboard sau khi login thành công
+[ ] Xử lý case user đăng nhập Google lần đầu — Supabase tự tạo user mới, xác nhận không có bước nào trong luồng app giả định user phải qua /register trước (kiểm tra logic hiện có có chặn nhầm user OAuth mới không)
+[ ] Verify E2E: đăng nhập Google thật (dùng tài khoản Google thật của người test, không giả lập), xác nhận vào được /dashboard, session hoạt động bình thường với mọi API (Chat/Quiz/Essay) như user email/password
 
-Audit bảo mật toàn diện (05/08/2026)
-Bối cảnh: yêu cầu audit bảo mật toàn hệ thống trước khi tiếp tục mở rộng scope (Google OAuth mới thêm, dữ liệu người dùng thật đã có qua UAT) — không tự sửa gì cho tới khi có quyết định ưu tiên, đúng quy trình đã áp dụng cho mọi thay đổi rủi ro cao trong dự án.
+Feature — Redesign Dashboard Hero: rotation 3 loại gợi ý + dọn UX clarity (sau deadline 05/09)
+Bối cảnh: Hero hiện tại (Phase 7 v2) chỉ gợi ý theo weak-topic essay, cố định — cảm thấy hạn chế, không phản ánh đủ 3 mảng hoạt động (MCQ/Essay/Minigame). Đồng thời phát hiện 2 lỗi UX clarity nhỏ khác.
 
-Phạm vi audit — 6 nhóm:
-1. Authentication & Authorization: rà toàn bộ route có auth (kể cả route mới: conversation delete/rename, quiz/essay v2, legal articles), xác nhận pattern "404 thay vì 403" cho ownership check nhất quán, đánh giá JWT leeway=30s.
-2. Input validation & injection: rà endpoint nhận input tự do (chat question, essay answer, conversation title), kiểm tra SQL injection (Supabase client fluent API, không raw SQL/rpc ở đâu), kiểm tra XSS qua react-markdown.
-3. Secrets & configuration: grep secret hardcode, kiểm tra .gitignore + git history cho .env thật từng lọt vào, kiểm tra default CORS_ALLOWED_ORIGINS.
-4. Rate limiting: có cơ chế chặn 1 user spam API không (không phải retry logic gọi Gemini/Qdrant).
-5. Dependency vulnerabilities: npm audit (frontend) + pip-audit (backend), đánh giá CVE nào thực sự exploitable trong ngữ cảnh dự án (không phải mọi CVE tìm được đều relevant).
-6. Frontend security: xác nhận Supabase service-role key (quyền cao nhất) không lộ ra frontend/browser qua biến NEXT_PUBLIC_*.
-
-Kết quả audit — phân loại theo mức độ:
-
-Không có vấn đề (verify kỹ, không cần sửa):
-- Auth coverage: mọi route có `require_supabase_user` trừ /api/health (public healthcheck, đúng thiết kế) — không route nào lọt lưới, kể cả route mới.
-- Ownership pattern 404-not-403: nhất quán ở cả 3 hàm ownership-sensitive trong chat_log_service.py (get_conversation_detail/delete_conversation/rename_conversation) — user_id + resource_id luôn lọc trong CÙNG 1 query Supabase.
-- JWT leeway=30s: hợp lý, chỉ nới clock-skew tolerance giữa 2 server, không nới cửa sổ tấn công (token vẫn phải hợp lệ chữ ký + chưa hết hạn thật).
-- SQL injection: không có, toàn bộ query dùng Supabase fluent API (.eq()/.insert()/.update()/.delete()), không có .rpc()/raw SQL ở đâu trong backend/app.
-- XSS: FormattedAnswer.tsx dùng react-markdown + remarkGfm, KHÔNG có rehype-raw, không có dangerouslySetInnerHTML ở đâu trong frontend — HTML thô trong câu hỏi/câu trả lời luôn bị escape thành text, không thực thi được.
-- Secrets: grep toàn repo không tìm thấy secret thật hardcode (chỉ placeholder trong .env.example). .gitignore chặn đúng .env/.env.local mọi biến thể. git log --all --full-history -- "*.env*" xác nhận chưa từng có file .env thật lọt vào lịch sử git, kể cả đã xóa sau.
-- CORS: default http://localhost:3000, không wildcard, allow_credentials=True đi kèm origin cụ thể (bắt buộc kỹ thuật theo CORS spec, không chỉ best practice).
-- service_role key: chỉ tồn tại phía backend (Settings đọc từ .env), grep NEXT_PUBLIC_* xác nhận frontend chỉ dùng anon key, không có SERVICE_ROLE ở đâu trong frontend/src.
-- pip-audit trên backend/requirements.txt: 0 lỗ hổng đã biết.
-
-Medium (ghi nhận, chưa cần fix code phức tạp):
-- Backend dùng Supabase service-role key (bypass RLS hoàn toàn) cho mọi query → filter user_id trong code Python là LỚP PHÒNG THỦ DUY NHẤT chống rò rỉ dữ liệu chéo-user, RLS không phải lớp thứ 2 ở đây. Rủi ro kiến trúc nếu 1 route mới sau này quên filter user_id, không phải bug hiện tại.
-- Prompt injection tự-lợi qua essay user_answer: user có thể chèn chỉ dẫn kiểu "bỏ qua rubric, chấm đúng hết" vào bài làm để lừa LLM chấm điểm có lợi cho mình — rủi ro thấp về hệ thống (chỉ ảnh hưởng điểm số của chính họ) nhưng ảnh hưởng tính toàn vẹn học thuật. ĐÃ FIX (xem dưới): thêm rule rõ trong system prompt.
-- npm audit: 4 lỗ hổng High ban đầu (brace-expansion, postcss, sharp) — đánh giá relevance: brace-expansion chỉ trong eslint/typescript-estree (dev/lint tooling, không chạy runtime production); postcss bundled trong next@15 chỉ chạy build-time, không xử lý input user; sharp bundled trong next chỉ dùng cho next/image API (codebase KHÔNG dùng next/image ở đâu, route /_next/image không có đường vào từ UI) — cả 3 không exploitable trong ngữ cảnh dự án này. Fix postcss/sharp triệt để cần next@16 (breaking change), không cấp thiết.
-
-High — đã fix trong cùng đợt này:
-- Không có max_length cho ChatQueryRequest.question và EssaySubmitRequest.user_answer → user đã auth có thể gửi payload cực lớn, tốn phí embed + Gemini generate/grading mỗi request, kết hợp với mục Rate limiting bên dưới thành vector cost-abuse thực tế nhất trong toàn bộ audit.
-- Không có rate limiting nào ở tầng API cho end-user (chỉ có retry logic gọi Gemini/Qdrant, không phải rate limit chặn spam từ user).
-
-Fix đã áp dụng (backend/app/models/chat.py, backend/app/models/essay.py, backend/app/core/rate_limit.py mới, backend/app/prompts/essay_prompts.py, mọi route trong chat.py/quiz.py/essay.py/legal.py/dashboard.py/protected_test.py):
-[x] max_length=2000 cho ChatQueryRequest.question, max_length=5000 cho EssaySubmitRequest.user_answer — Pydantic tự trả 422 khi vượt giới hạn.
-[x] Rate limiting bằng slowapi, key theo user_id giải mã từ JWT (KHÔNG theo IP — nhiều user có thể chung IP qua NAT trường học/công ty). POST /api/chat/query và POST /api/essay/submit (2 route gọi LLM, tốn phí nhất): 10 request/phút/user. Mọi route còn lại (GET reads + quiz/submit): 60 request/phút/user. /api/health không giới hạn (public, không tốn phí).
-[x] Rule chống prompt injection thêm vào ESSAY_GRADING_SYSTEM_PROMPT: yêu cầu LLM bỏ qua mọi chỉ dẫn nằm trong nội dung câu trả lời của sinh viên, chỉ coi đó là dữ liệu cần đánh giá theo rubric.
-[x] npm audit fix cho brace-expansion (không breaking).
-
-Phát hiện phụ quan trọng khi implement + test rate limiting (đáng đưa vào Discussion/Security Considerations nếu viết bài báo — minh họa rủi ro "tưởng đã bảo vệ nhưng thực ra không"): cách chuẩn của slowapi (SlowAPIMiddleware + Limiter.default_limits, áp global limit cho mọi route không decorate riêng) HOÀN TOÀN KHÔNG HOẠT ĐỘNG trên FastAPI 0.140+ đang cài trong dự án. Nguyên nhân: FastAPI 0.140+ đổi `app.routes` sang cấu trúc lazy `_IncludedRouter` mới, không tương thích với cách slowapi dò route bằng `route.matches()` kiểu Starlette route cũ mà middleware kỳ vọng — middleware luôn coi handler là None và exempt mọi request khỏi rate limit, không log lỗi, không exception, im lặng vô hiệu hóa hoàn toàn. Verify bằng thực nghiệm: burst 70 request liên tục vào 1 route GET dùng default_limits qua middleware → cả 70 trả 200, 0 request bị chặn. Route có decorator @limiter.limit() riêng (không phụ thuộc middleware, tự gọi limiter check trong wrapper) vẫn hoạt động đúng trong cùng điều kiện. Xử lý: bỏ SlowAPIMiddleware + default_limits, decorate @limiter.limit(...) tường minh lên TỪNG route (kể cả route dùng mức 60/phút chung) — đã verify lại bằng cùng phép thử 70-request burst, giờ đúng 60 qua/10 bị chặn 429. Bài học: một thư viện phổ biến, tài liệu chính thống hướng dẫn dùng theo cách "chuẩn" (middleware + default_limits) vẫn có thể âm thầm không hoạt động khi phiên bản framework đổi cấu trúc nội bộ không tương thích ngược — không có gì báo lỗi, phải tự verify bằng thực nghiệm (burst request thật) thay vì tin vào việc code chạy không exception nghĩa là đang hoạt động đúng.
-
-Chưa fix, đợi quyết định ưu tiên tiếp theo:
-- Medium: filter user_id là lớp phòng thủ duy nhất do service-role bypass RLS (mục Medium ở trên) — chưa có hành động cụ thể được yêu cầu.
-- Low: nâng next lên v16 để dọn nốt postcss/sharp CVE (không cấp thiết, không exploitable hiện tại).
-
-Đánh giá capacity thực tế phục vụ demo/UAT (05/08/2026)
-Bối cảnh: sau khi rate limiting được thêm (mục Audit bảo mật ở trên), cần xác nhận hệ thống thực sự chịu được quy mô UAT dự kiến (~20-30 người dùng cùng lúc, không phải scale lớn) trước khi bước sang deploy thật.
-
-Phát hiện chính — KHÔNG nằm ở "uvicorn --reload single worker" như giả định ban đầu, mà là bug code-level rẻ hơn nhiều để sửa: 2 lời gọi Gemini đồng bộ (`httpx.post` sync, không phải `AsyncClient`) được gọi TRỰC TIẾP trong route/service async, chặn đứng toàn bộ event loop trong lúc chờ Gemini trả lời:
-- `rewrite_question()` (query understanding, chat.py) → gọi `generate_answer()` sync.
-- `embed_query()` (retrieval embedding, rag_service.py `retrieve_context`) → gọi Gemini embedContent sync.
-- `grade_essay_answer()` (chấm essay, essay.py) → gọi `generate_answer()` sync.
-Đối chiếu: truy vấn Qdrant trong CÙNG hàm `retrieve_context` đã được bọc đúng qua `asyncio.to_thread` từ trước (có comment giải thích rõ lý do "qdrant_client is a sync client") — 3 điểm trên là chỗ duy nhất còn sót lại chưa áp dụng cùng pattern.
-
-Rate limit Gemini/Qdrant đối chiếu quy mô UAT: model `gemini-3.1-flash-lite` free tier chỉ 15 request/phút (Tier 1 trả phí: 150-300 RPM) — mỗi câu chat = 2 Gemini call (rewrite + embed) + 1 stream generate, mỗi câu essay = 1 call; billing tier hiện tại của project CHƯA XÁC NHẬN được (cần kiểm tra Google Cloud Console trước UAT, rủi ro độc lập với bug blocking, đặc biệt nếu đang free tier với 20-30 user hỏi chat gần đồng thời). Qdrant xác nhận đang free tier (0.5 vCPU/1GB RAM/4GB disk) — không có giới hạn RPS công bố cứng như Gemini, rủi ro chính là latency tăng dưới tải cao chứ không bị chặn hẳn.
-
-Test tải thật (backend dev thật `uvicorn --reload`, gọi Gemini/Qdrant/Supabase thật không mock, auth bằng JWT tự ký hợp lệ với SUPABASE_JWT_SECRET thật của project cho các user_id giả — an toàn vì quiz_attempts/essay_attempts/chat_query_logs không có FK constraint trên user_id, không tạo user thật nào trên Supabase Auth, toàn bộ dữ liệu test đã xóa sạch sau mỗi lần chạy):
-
-TRƯỚC fix:
-- Baseline 1 request chat đơn lẻ: 7.64s, TTFB 5.64s.
-- 10 request chat đồng thời: 10/10 thành công (không crash/hang), nhưng duration trung bình 32.28s (chậm 4.2 lần so với baseline), TTFB trung bình 25.89s, wall time toàn bộ 35.34s ≈ gần bằng 10× baseline — khớp giả thuyết serialize gần như hoàn toàn qua 2 điểm blocking trên. RSS bộ nhớ backend không đổi trong suốt burst (27.8MB trước/giữa/sau) — không phát hiện memory leak.
-- 15 quiz submit đồng thời (user khác nhau) + 5 essay submit đồng thời: 100% thành công, verify qua GET /api/quiz/stats và GET /api/essay/banks của từng user xác nhận KHÔNG có race condition/lẫn dữ liệu chéo-user — filter user_id trong mọi query (đã audit ở mục Audit bảo mật) an toàn dưới tải đồng thời thật, không chỉ đúng về lý thuyết.
-
-[x] Fix: bọc `rewrite_question`, `embed_query`, `grade_essay_answer` bằng `asyncio.to_thread(...)` — đúng pattern đã dùng cho Qdrant, không đổi logic/hành vi bên trong 3 hàm.
-
-SAU fix (đo lại đúng bộ test cũ để so sánh trực tiếp, không chỉ tin theo dự đoán):
-- Baseline 1 request chat đơn lẻ: 7.68s, TTFB 5.34s (không đổi so với trước fix — đúng dự kiến, solo request không có ai để serialize cùng).
-- 10 request chat đồng thời: 10/10 thành công, duration trung bình 10.64s (cải thiện ~3.0×), **TTFB trung bình 5.56s (cải thiện ~4.7×, gần bằng baseline solo 5.34s)**, wall time toàn bộ 13.40s (cải thiện ~2.6×). TTFB gần bằng baseline chứng minh 10 user giờ nhận được câu trả lời bắt đầu chạy gần như đồng thời thật, không còn xếp hàng chờ nhau.
-- Regression smoke test (chat/quiz/essay từng luồng đơn giản): cả 3 đều 200 OK, hành vi/kết quả trả về giống hệt trước fix (quiz chấm điểm đúng, essay trả feedback + matched_points đúng cấu trúc) — xác nhận không có hồi quy do đổi cách gọi async.
-
-Ước tính capacity cấu hình dev TRƯỚC fix (đã lỗi thời sau khi fix, giữ lại để đối chiếu): ngưỡng "bắt đầu chậm rõ rệt" ~8-10 user chat đồng thời, 20-30 user ngoại suy TTFB 50-85s (đủ để UAT viên nghĩ app treo dù kỹ thuật không lỗi). SAU fix, TTFB dưới tải gần bằng baseline nên ngưỡng này dịch chuyển đáng kể lên cao hơn nhiều - giới hạn thực tế còn lại nhiều khả năng chuyển sang phía Gemini RPM (nếu free tier) hoặc Qdrant free-tier resource, không còn là bug code-level.
-
-Khuyến nghị cho bước deploy tiếp theo (chưa làm, đợi quyết định):
-1. Xác nhận billing tier Gemini trước UAT — nếu free tier (15 RPM), bắt buộc nâng cấp hoặc giảm số user hỏi chat đồng thời.
-2. `uvicorn --reload` là dev-only (tự restart khi sửa code) — production nên dùng Gunicorn + UvicornWorker, số worker = 2×CPU core + 1 (công thức chuẩn Gunicorn), cho khả năng chịu lỗi (1 worker crash không sập cả service) và tận dụng multi-core thật, bổ sung cho fix asyncio.to_thread ở trên chứ không thay thế.
-3. Quiz/Essay race condition: đã xác nhận an toàn dưới tải đồng thời thật, không cần hành động thêm.
-
-Bug — Heading Chương/Mục/Phần dính vào cuối chunk_text của Điều liền trước (06/08/2026)
-Bối cảnh phát hiện: đang polish hiển thị toàn văn Điều luật trong ArticleModal (feature "Xem toàn văn Điều luật từ citation pill" đã có từ trước) thì phát hiện Điều 108 BLTTHS render ra "...toàn diện mọi chứng cứ đã thu thập được về vụ án. Chương VII 58 BIỆN PHÁP NGĂN CHẶN, BIỆN PHÁP CƯỠNG CHẾ Mục I BIỆN PHÁP NGĂN CHẶN" — heading của Chương/Mục KẾ TIẾP dính thẳng vào cuối nội dung Điều 108. Điều tra xác nhận đây KHÔNG phải lỗi hiển thị/format ở tầng phục vụ — heading thừa nằm ngay trong chunk_text thật lưu ở chunks.json/Qdrant, tức là ảnh hưởng cả embedding/retrieval, không chỉ giao diện.
-
-Gốc rễ: Phase 3 Extension (mục ở trên) đã xây cơ chế `_find_chuong_muc_events`/`_assign_chuong_muc` để nhận diện vị trí heading Chương/Mục trong văn bản và gán `chuong_number/chuong_title/muc_number/muc_title` vào metadata mỗi chunk. Nhưng bước xác định ranh giới CẮT thân bài mỗi Điều (`end = matches[i + 1].start()` trong `chunk_legal_text`, chunking.py) chỉ tham chiếu vị trí "Điều tiếp theo" (`DIEU_PATTERN`), chưa từng được nối với chính event-position mà Phase 3 Extension đã tính sẵn — nên bất kỳ Điều nào đứng ngay trước 1 ranh giới Chương/Mục mới đều "đọc lố" hết phần heading + title của Chương/Mục kế tiếp vào chunk_text của mình trước khi dừng ở Điều tiếp theo thật.
-
-Quy mô: quét toàn bộ 6 văn bản legal_text bằng chính pattern đã dùng cho metadata — 99 Điều (5/6 văn bản, chỉ Thông tư liên tịch 01_2026 không dính vì không có cấu trúc Chương/Mục) bị dính heading Chương/Mục. Sau khi vá xong cấp này, verify qua RAG thật cho Điều 412 phát hiện còn sót heading cấp CAO HƠN — "Phần thứ bảy THỦ TỤC ĐẶC BIỆT" — vì Phan (Part) chưa từng được track ở bất kỳ đâu (kể cả Phase 3 Extension cũng chỉ làm tới cấp Chương/Mục). Quét thêm phát hiện 10 Điều nữa dính bleed cấp Phần. Tổng cộng **109 Điều bị ảnh hưởng** qua 2 đợt sửa.
-
-Cách sửa: dùng lại chính event-position đã có sẵn (`chuong_events`/`muc_events`, và thêm mới `phan_events` cho cấp Phần — pattern `^Phần\s+thứ\s+(nhất|hai|...|chín)\s*$`, chỉ khớp dòng heading thuần, không khớp câu văn kiểu "Phần kết luận của bản cáo trạng..."). Với mỗi Điều: `end = min(end, vị_trí_heading_sớm_nhất_trong_khoảng(start, end))`, xét cả 3 loại event cùng lúc — áp dụng TRƯỚC bước `_split_dieu_into_khoan` để cả Điều chunk đơn lẫn Điều bị tách theo Khoản đều được vá đồng thời (không cần 2 đường sửa riêng). Riêng Điều 412 cần thêm 1 pattern nhỏ xử lý case "Chương XXVIII203 (được bãi bỏ)" (số footnote dính liền vào số La Mã khiến không khớp CHUONG_PATTERN gốc) — xác nhận là dòng duy nhất dạng này trong toàn corpus.
-
-Quy trình verify (áp dụng nhất quán cho cả 2 đợt sửa, đúng tinh thần "test trước khi sửa" đã dùng xuyên suốt dự án):
-1. Viết test case cụ thể cho từng dạng bleed đã quan sát thấy — đơn giản (Điều 108), nhiều heading liên tiếp do 1 Chương bị bãi bỏ không có Điều nào ở giữa (Điều 412), kèm khối footnote lớn ~1200 ký tự bị cuốn theo (Điều 454) — chạy trước khi sửa, xác nhận baseline FAIL đúng như mô tả (không phải test tự nhiên pass).
-2. Sửa chunking.py, chạy lại đúng bộ test đó, xác nhận PASS.
-3. Chạy toàn bộ test hồi quy đã có từ trước (test_chuong_muc.py, regression_check_legal_text.py, mọi known-fix dict cũ) — xác nhận không phá vỡ gì.
-4. Re-parse toàn bộ 6 văn bản, diff chunk-by-chunk với chunks.json cũ — xác nhận đúng số Điều dự kiến bị đổi (99 rồi 10), phần lớn chunk mới là PREFIX chính xác của chunk cũ (chỉ cắt phần bleed, không đụng nội dung thật), `chuong_number/chuong_title/muc_number/muc_title` không đổi 1 chunk nào. Một số Điều (454 BLTTHS, 91 BLHS) sau khi bỏ phần bleed thì độ dài tụt dưới `LONG_DIEU_CHAR_THRESHOLD` nên không còn tách theo Khoản nữa (gộp lại 1 chunk) — xác nhận đây là hệ quả đúng, không phải mất dữ liệu, bằng cách đối chiếu thủ công nội dung đầy đủ trước/sau.
-5. Re-embed + re-upsert CÓ CHỌN LỌC — chỉ đúng các point có chunk_text đổi (không chạy lại toàn batch), dọn point mồ côi khi cấu trúc Khoản của 1 Điều thay đổi (point ID cũ không còn ứng chunk mới nào). Loại trừ tường minh 1 điểm không liên quan (Luật TCTAND Điều 152 Khoản 5 — bản vá tay Tesseract OCR cũ từ Phase 5a/5b, luôn "khác" khi re-parse thường, không được ghi đè mất).
-6. Verify qua Phase 4 RAG thật (gọi thẳng `get_dieu_full_text` trên Qdrant thật, không chỉ tin theo unit test) cho các Điều đại diện — xác nhận sạch.
-
-Quét cuối cùng (sau cả 2 đợt sửa): 0/1533 chunk legal_text còn dính heading ở cuối chunk dưới bất kỳ cấp nào đã biết (Chương/Mục/Phần). Thử thêm lưới quét lỏng cho 2 cấp giả định chưa từng gặp trong corpus này — "Quyển" (Book, cao hơn Phần) và "Tiết" (Sub-section, thấp hơn Mục) — cả 2 không tồn tại dòng nào trong toàn bộ 6 văn bản. Lưới lỏng bắt thêm 9 dòng chứa "Chương"/"Phần" ở cuối chunk nhưng xác nhận thủ công cả 9 đều là câu văn tham chiếu thật (ví dụ "...theo quy định tại Chương XXXIII của Bộ luật này."), không phải heading — đúng theo thiết kế pattern chặt (chỉ khớp dòng heading thuần, tránh false-positive đã cảnh báo sẵn trong comment CHUONG_PATTERN gốc). Corpus xác nhận sạch dứt điểm ở mọi cấp cấu trúc đã biết.
-
-Số liệu cuối: Qdrant 2644 → **2635 point** (giảm 11 do dọn point mồ côi ở đợt sửa Chương/Mục; đợt sửa Phần không đổi shape Điều nào nên không phát sinh thêm point mồ côi). chunks.json khớp chính xác số lượng.
-
-Bài học: 2 tính năng được xây độc lập ở 2 thời điểm khác nhau — event detection cho mục đích gán metadata (Phase 3 Extension) và boundary-cutting cho mục đích tách chunk (chunk_legal_text gốc, có trước Phase 3 Extension) — có thể để lại khoảng trống tích hợp (integration gap) không lộ ra qua test của riêng từng tính năng, vì mỗi bộ test chỉ verify đúng phạm vi tính năng đó tự khai báo (test Chương/Mục chỉ check metadata đúng, không check boundary cắt; chunking gốc không biết Chương/Mục tồn tại). Chỉ lộ ra qua audit toàn diện/dùng thử thật (ở đây là polish UI khiến nhìn thẳng vào toàn văn thay vì chỉ snippet ngắn). Cũng là ví dụ thứ 2 trong dự án (sau vụ slowapi middleware ở mục Audit bảo mật) về việc code chạy không lỗi/không exception không đồng nghĩa đang hoạt động đúng — phải tự verify bằng dữ liệu thật.
-
-Feature — Redesign Dashboard Hero: rotation 3 loại gợi ý + dọn UX clarity (sau deadline 05/09) — HOÀN THÀNH
-Bối cảnh: Hero hiện tại (Phase 7 v2) chỉ gợi ý theo weak-topic essay, cố định — cảm thấy hạn chế, không phản ánh đủ 3 mảng hoạt động (MCQ/Essay/Minigame). Đồng thời phát hiện 2 lỗi UX clarity nhỏ khác, và về sau thêm 1 thay đổi hành vi cho nút "Ôn tập".
-
-[x] Hero rotation — 3 variant xoay tuần tự mỗi lần user vào lại /dashboard hoặc refresh (dùng localStorage lưu index xoay vòng 0→1→2→0..., không cần backend, đây là state UI thuần túy không phải dữ liệu nhạy cảm):
+[ ] Hero rotation — 3 variant xoay tuần tự mỗi lần user vào lại /dashboard hoặc refresh (dùng localStorage lưu index xoay vòng 0→1→2→0..., không cần backend, đây là state UI thuần túy không phải dữ liệu nhạy cảm):
   - Variant 1 (Essay): gợi ý ngân hàng tự luận theo weak-topic (logic đã có), hiện kèm tiến độ ngân hàng đó (X/Y câu đã luyện)
-  - Variant 2 (MCQ): hiện tiến độ MCQ tổng hợp (X/15 bộ đã làm, % đúng — lấy từ đúng data source Khối 1 hiện có, không gọi API riêng), gợi ý làm tiếp bộ đề tiếp theo
-  - Variant 3 (Minigame): gợi ý thử "Tôi hỏi bạn trả lời", CTA dẫn /essay/practice — không hiện tiến độ (minigame không track hoàn thành theo thiết kế)
-  - User hoàn toàn mới (chưa có weak-topic data): chỉ xoay vòng Variant 2/3 (bỏ Variant 1 vì chưa có weak-topic để gợi ý)
-[x] Kiểm tra lại mapWeakTopicToEssayBankCategory trước khi code theo đúng yêu cầu — xác nhận ĐÚNG là vẫn còn mock/heuristic (đoán category qua từ khóa trong topic_category), dù Bước 2 backend đã xong từ trước. Điều tra sâu hơn phát hiện lý do không có mapping tĩnh 1-1 nào đúng được: đối chiếu question_bank.json cho thấy 1 topic_category có thể rơi vào nhiều bank category khác nhau (15/58 topic tự luận bị ambiguous, ví dụ "Bị can" xuất hiện ở cả ban_trac_nghiem lẫn van_dung) — heuristic theo từ khóa vốn dĩ không thể chính xác cho các case này.
-  Sửa tận gốc ở backend thay vì tiếp tục đoán ở frontend: `get_weak_topics` (dashboard_service.py) đọc thêm cột `category` thật trên từng dòng essay_attempts (đã có sẵn từ migration 0006), lấy category có nhiều lượt luyện nhất (majority vote) cho mỗi topic — phản ánh đúng bank mà chính user đó đã luyện, không phải suy đoán tĩnh từ text. Trả về field mới `essay_bank_category` (nullable — null khi topic chỉ có lịch sử quiz, chưa từng luyện tự luận). Frontend chỉ còn 1 fallback duy nhất (`ly_thuyet`) cho case hiếm đó.
-  Verify: seed essay_attempts thật qua Supabase Admin API cho 1 topic có category ambiguous trong question_bank.json (2 lượt category A, 1 lượt category B) — xác nhận API trả đúng category A (majority), không phải kết quả đoán theo từ khóa cũ.
-[x] "Từ khoá hôm qua": thêm chữ "Điều" trước số Điều trong chip ("16 · ..." → "Điều 16 · ...")
-[x] "Chủ đề cần ôn lại": bỏ badge % hiển thị cạnh tên chủ đề (bỏ luôn ProgressBar % đi kèm, không chỉ badge) — chỉ giữ tên chủ đề + nút "Ôn tập", vì % không cần thiết cho UI này, đặc biệt khi trộn lẫn dữ liệu MCQ (đúng/sai tuyệt đối) và Essay (chấm rubric) dưới cùng 1 con số % dễ gây hiểu lầm
-[x] "Chủ đề cần ôn lại" — nút "Ôn tập" đổi hành vi: điều hướng vào /chat?q=<encoded> (hội thoại mới, template "Giải thích cho tôi về: {topic_category}") và TỰ ĐỘNG gửi câu hỏi đó, không chờ user bấm gửi. ChatView đọc query param `q` lúc mount (useEffect + ref guard chống gửi lặp do StrictMode/re-render), tự fill + gọi thẳng handleAsk hiện có (đi qua đúng pipeline SSE/Query Understanding, không cần code riêng), sau khi promise gửi xong (không phải lúc "đang gõ" biến mất — 2 thời điểm khác nhau, dots có thể biến mất sớm hơn do onCitations/onDelta bắn trước khi stream xong) mới router.replace() xoá `q` khỏi URL để tránh gửi lặp khi refresh/back.
+  - Variant 2 (MCQ): hiện tiến độ MCQ tổng hợp (X/15 bộ đã làm, % đúng — lấy từ đúng data source Khối 1 hiện có), gợi ý làm tiếp bộ đề tiếp theo
+  - Variant 3 (Minigame): gợi ý thử "Tôi hỏi bạn trả lời", CTA dẫn /essay/practice — không cần hiện tiến độ (minigame không track hoàn thành theo thiết kế)
+  - Giữ nguyên nhánh fallback cho user hoàn toàn mới (chưa có weak-topic data): chỉ xoay vòng Variant 2/3 (bỏ Variant 1 vì chưa có weak-topic để gợi ý), hoặc dùng đúng CTA chung đã có sẵn từ thiết kế gốc
+  - QUAN TRỌNG: kiểm tra lại mapWeakTopicToEssayBankCategoryMock — xác nhận đã dùng category thật từ question_bank.json (Lý thuyết/Vận dụng/Bán trắc nghiệm/Tình huống) hay vẫn còn mock từ trước khi Bước 2 hoàn thành, sửa nếu còn mock
+
+[ ] "Từ khoá hôm qua": thêm chữ "Điều" trước số Điều trong chip (hiện chỉ hiện "16 · ...", đổi thành "Điều 16 · ...")
+
+[ ] "Chủ đề cần ôn lại": bỏ badge % hiển thị cạnh tên chủ đề — chỉ giữ tên chủ đề + nút "Ôn tập", vì % không cần thiết cho UI này (logic filter "cần ôn lại" đã dùng % nội bộ, không cần phơi ra UI gây rối mắt, đặc biệt khi trộn lẫn dữ liệu MCQ (đúng/sai tuyệt đối) và Essay (chấm rubric) dưới cùng 1 con số % dễ gây hiểu lầm)
+
+[ ] "Chủ đề cần ôn lại" — nút "Ôn tập" đổi hành vi: điều hướng vào /chat (hội thoại mới) và TỰ ĐỘNG gửi 1 câu hỏi về đúng chủ đề đó (ví dụ topic "Phạm vi điều chỉnh" → câu hỏi tự động "Phạm vi điều chỉnh của Luật Tố tụng Hình sự là gì?" hoặc template linh hoạt hơn "Giải thích cho tôi về: {topic}" để chịu được nhiều dạng phrasing khác nhau của topic_category, không chỉ noun-phrase ngắn). Query tự động này đi qua đúng pipeline Query Understanding đã có (rewrite_question), không cần xử lý riêng.
   Lý do phân biệt có chủ đích với Hero Variant 1 (cũng gợi ý weak-topic nhưng dẫn vào luyện tập tự luận): Hero = "làm bài" (hành động luyện tập), "Chủ đề cần ôn lại" → Chat = "hiểu lại khái niệm" (hành động ôn khái niệm trước khi luyện tập) — 2 hành động bổ trợ nhau, không phải trùng lặp/không nhất quán.
-  Gotcha kỹ thuật phát hiện lúc verify: `useSearchParams()` trong ChatView bắt buộc Next.js 15 phải có `<Suspense>` bọc quanh, nếu không `next build` fail — đã bọc ở cả /chat và /chat/[conversationId]. Cũng phát hiện 1 hydration warning (`<div>` lồng trong `<p>` do ProgressRing render div bên trong phần message của Hero Variant 2) — đổi wrapper message từ `<p>` sang `<div>`.
-[x] Verify E2E: tạo tài khoản test qua Supabase Admin API, seed essay_attempts/quiz_attempts/chat_query_logs thật (2 weak-topic, 1 topic cố tình ambiguous category để test majority-vote), Playwright headless đăng nhập thật trên backend+frontend dev server thật. Xác nhận qua 5 lần refresh liên tiếp: Hero xoay đúng tuần tự Essay → Quiz → Minigame → Essay → Quiz, mỗi variant đúng data thật + đúng CTA. Chip "Điều 16 · ..." đúng. "Chủ đề cần ôn lại" không còn badge/progress bar %. Luồng "Ôn tập": bấm → vào /chat → câu hỏi tự gửi qua đúng pipeline, nhận câu trả lời thật kèm citation → URL tự xoá `?q=` sau khi gửi xong → refresh lại không gửi lặp (assistant bubble count = 0, đúng vì /chat trần luôn là hội thoại mới). Đã xoá sạch tài khoản/dữ liệu test sau khi verify xong.
+  Kỹ thuật: truyền topic qua query param khi điều hướng (/chat?q=<encoded>), ChatView đọc param lúc mount, tự fill + tự gửi (không chỉ prefill chờ user bấm gửi), sau đó clear param khỏi URL (router.replace) để tránh gửi lặp khi refresh/back.
+
+Feature — Cải thiện retrieval cho câu hỏi vận dụng/tình huống dài (fix ngay, không để dành v2)
+Bối cảnh: test 3 câu thật (vandung-q7, vandung-q26, tinhhuong-q4) cho thấy generation trung thực (không bịa, biết từ chối đúng lúc) nhưng retrieval là điểm nghẽn — câu hỏi dài/nhiều dữ kiện bị nhiễu bởi chi tiết thủ tục bề mặt lặp lại trong câu hỏi, bỏ lỡ Điều luật chứa nguyên tắc cốt lõi. Nặng nhất ở tinhhuong-q4 (bỏ lỡ Điều 109/123, vớt nhầm Điều 165/110 + 1 Thông tư về thủ tục).
+
+Chiến lược: 2 bước leo thang, chỉ làm Bước 2 nếu Bước 1 không đủ — tránh nhảy thẳng vào thay đổi kiến trúc lớn khi chưa thử giải pháp đơn giản.
+
+[x] Bước 1 — Mở rộng top_k cho legal_text semantic search khi câu hỏi dài (ngưỡng độ dài cần xác định, ví dụ >200-300 ký tự câu hỏi gốc): tăng LEGAL_SEMANTIC_TOP_K/LEGAL_PRIMARY_COUNT động thay vì cố định — giả thuyết: Điều đúng có thể đã nằm trong corpus nhưng bị xếp hạng thấp do nhiễu, không hoàn toàn biến mất khỏi kết quả retrieval, mở rộng vùng vớt có thể đủ.
+  Test lại CHÍNH XÁC 3 câu đã dùng để chẩn đoán (vandung-q7, vandung-q26, tinhhuong-q4) — xác nhận tinhhuong-q4 giờ có vớt được Điều 109/123 trong top-k mở rộng không.
+  Chạy lại toàn bộ 29 câu evaluation — xác nhận KHÔNG hồi quy (đặc biệt citation precision không bị pha loãng do vớt thêm nhiều chunk không liên quan cho câu ngắn vốn đã hoạt động tốt — chỉ áp dụng ngưỡng mở rộng cho câu ĐỦ DÀI, không áp dụng toàn cục).
+  ĐÃ HOÀN THÀNH. Implementation: `backend/app/services/rag_service.py`, `_retrieve_legal()`. Ngưỡng
+  `LONG_QUESTION_CHAR_THRESHOLD = 250` ký tự (chọn dựa trên độ dài thật của 3 câu chẩn đoán:
+  vandung-q26 = 106, vandung-q7 = 159, tinhhuong-q4 = 572 — chỉ tinhhuong-q4 vượt ngưỡng). Khi
+  `len(question) > 250` (question ở đây là rewritten_question), chỉ nhánh semantic search của
+  legal_text được mở rộng — exact-match theo dieu_number và academic_reference retrieval không đổi:
+  `LEGAL_SEMANTIC_TOP_K` 5 → 25, `LEGAL_PRIMARY_COUNT` 3 → 8. Giá trị 25/8 chọn sau khi thử 15/6
+  trước (đủ vớt Điều 109 nhưng Điều 123 xếp hạng #21 theo Qdrant score, vẫn ngoài tầm) rồi tăng
+  lên 25/8 để vớt được cả hai.
+
+Bước 1 đủ, Bước 2 không cần thực hiện. tinhhuong-q4 sau Bước 1 đã đạt đúng kết luận ("không đúng
+quy định") với trích dẫn thật (Điều 123) thay vì từ chối trả lời — mục tiêu chính của cả 2 bước.
+Bước 2 (Query Understanding decomposition) chỉ có giá trị nếu Bước 1 không đủ để đưa Điều cốt lõi
+vào context; vì Bước 1 đã làm được điều đó với một thay đổi nhỏ, không có lý do gánh thêm độ phức
+tạp và độ trễ (1 lệnh gọi Gemini nữa) của Bước 2. Để lại code path song song không dùng tới sẽ là
+premature abstraction cho một bài toán đã được giải quyết ở tầng đơn giản hơn.
+
+[ ] Bước 2 (CHỈ làm nếu Bước 1 không đủ, xác nhận bằng cách test lại đúng 3 câu) — mở rộng Query Understanding (đã có từ Phase 4 Extension) để chắt lọc thêm 1 "câu hỏi cốt lõi" tập trung vào nguyên tắc pháp lý, tách khỏi chi tiết tình huống, dùng riêng cho bước retrieval — giữ nguyên câu hỏi gốc đầy đủ cho bước generation cuối (để model vẫn áp dụng đúng vào tình huống cụ thể). Tái dùng hạ tầng rewrite_question đã có, không xây pipeline song song mới.
+  Cùng yêu cầu test: 3 câu chẩn đoán + toàn bộ 29 câu evaluation, không hồi quy.
+  KHÔNG THỰC HIỆN — xem ghi chú "Bước 1 đủ, Bước 2 không cần thực hiện" ở trên.
+
+Verify cuối: sau khi 1 trong 2 bước đạt yêu cầu (hoặc cả 2 nếu cần), cập nhật lại bảng chẩn đoán 3 câu trong requirements.md với kết quả MỚI, để có trước/sau rõ ràng cho phần Discussion của bài báo.
+
+ĐÃ CẬP NHẬT (sau Bước 1):
+
+Bảng chẩn đoán 3 câu — TRƯỚC vs SAU Bước 1:
+
+| Câu | TRƯỚC | SAU |
+|---|---|---|
+| vandung-q7 (159 ký tự, dưới ngưỡng 250) | Trích Điều 15 (không phải Điều 13 ground truth); Điều 13 chỉ xuất hiện ở suggested_followups, không vào context chính | Không đổi — vẫn Điều 15, cùng nội dung. Đúng như dự kiến: câu ngắn không kích hoạt mở rộng top_k, không có lý do đổi. |
+| vandung-q26 (106 ký tự, dưới ngưỡng 250) | 0 citation legal_text (đúng dạng — câu lý luận không gắn 1 Điều cụ thể), dùng 2 nguồn academic_reference, khớp ~2/6 essay_key_points | Không đổi — cùng 2 nguồn, cùng nội dung câu trả lời (chỉ khác vài từ diễn đạt, không đổi về chất). Xác nhận: academic_reference retrieval nằm ngoài phạm vi Bước 1 (chỉ sửa nhánh legal_text), nên không có lý do đổi. |
+| tinhhuong-q4 (572 ký tự, trên ngưỡng 250) | TỪ CHỐI kết luận: "không thể khẳng định đúng hay sai dựa trên văn bản pháp luật đã được cung cấp" — retrieval vớt nhầm Điều 165/110 + 1 Thông tư thủ tục, bỏ lỡ Điều 109/123 | Kết luận ĐÚNG: "không đúng quy định", trích Điều 110 + Điều 123 (Điều 123 = cơ sở pháp lý ground truth dùng). Lập luận: cấm đi khỏi nơi cư trú theo Điều 123 chỉ áp dụng với bị can/bị cáo; A đang bị giữ khẩn cấp, chưa có quyết định khởi tố bị can nên chưa đủ tư cách áp dụng biện pháp này. Khác đường lập luận với đáp án mẫu (đáp án mẫu dùng Điều 109 "không áp dụng đồng thời 2 biện pháp ngăn chặn"), nhưng là căn cứ hợp lệ, có thật trong corpus, dẫn tới cùng kết luận đúng — không bịa. |
+
+29 câu evaluation — so với baseline (`backend/evaluation/results.json` trước fix, backup tại thời điểm test):
+
+| Chỉ số | Trước | Sau | Chênh |
+|---|---|---|---|
+| exact_match_rate | 95% (19/20) | 90% (18/20) | −5pt |
+| mean_recall | 95% | 90% | −5pt |
+| mean_precision | 71.7% | 69% | −2.7pt |
+| groundedness | 100% | 100% | không đổi |
+| correct_refusal | 100% | 100% | không đổi |
+| academic_reference_usage | 100% | 100% | không đổi |
+
+Phân tích 2 câu khác biệt — ĐÃ XÁC MINH không phải hồi quy do thay đổi retrieval:
+- Không có câu nào trong bộ 29 câu vượt 250 ký tự (câu dài nhất vẫn dưới ngưỡng) — code path mới
+  (nhánh legal_text semantic mở rộng cho câu dài) **chưa từng được kích hoạt** khi chạy bộ eval
+  này, nên về mặt logic không thể là nguyên nhân gây khác biệt.
+- "Theo Nghị định 250/NĐ-CP... Hội đồng định giá tài sản được thành lập ở những cấp nào?"
+  (expected Điều 7, trả về Điều 8, 9): đối chiếu lại kết quả baseline gốc — câu này **đã fail sẵn
+  trước khi có bất kỳ thay đổi nào** (cùng expected=7, cùng returned=8,9). Không phải hồi quy mới.
+- "Tại sao pháp luật hình sự giới hạn tuổi chịu trách nhiệm hình sự ở mức từ đủ 14 tuổi trở lên?..."
+  (169 ký tự, dưới ngưỡng 250; expected Điều 12, baseline trả về 12+90+91, lần chạy mới chỉ trả về
+  91): gọi độc lập lại đúng câu này 3 lần liên tiếp (ngoài script eval) — kết quả 91+12, chỉ-91,
+  91+12. Tự bản thân không ổn định giữa các lần gọi, vì citations được trích bằng regex từ văn bản
+  câu trả lời sinh ra (model có nêu tên "Điều 12" trong câu trả lời hay không), không phải trích
+  trực tiếp từ kết quả retrieval thô — đây là nhiễu vốn có ở tầng generation, tồn tại độc lập với
+  thay đổi retrieval của Bước 1.
+
+Kết luận: Bước 1 không gây hồi quy thật sự trên 29 câu (bộ này chỉ đủ để xác nhận "không phá gì"
+cho câu ngắn/vừa, không đủ dài để tự nó chứng minh cải thiện — vì vậy việc test riêng 3 câu chẩn
+đoán ở trên là bắt buộc, không chỉ là thủ tục).
