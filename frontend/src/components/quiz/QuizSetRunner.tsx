@@ -135,24 +135,35 @@ export function QuizSetRunner({ quizSetId }: QuizSetRunnerProps) {
           {questions.map((question, index) => {
             const questionResult = result.results.find((item) => item.question_id === question.question_id);
 
+            const isCorrect = questionResult?.is_correct ?? false;
+
             return (
-              <Card key={question.question_id}>
+              <Card
+                key={question.question_id}
+                className={
+                  isCorrect
+                    ? "border-l-4 border-l-emerald-800 bg-emerald-50"
+                    : "border-l-4 border-l-red-700 bg-red-50"
+                }
+              >
                 <CardHeader>
                   <div className="flex items-center gap-2">
-                    {questionResult?.is_correct ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    {isCorrect ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-800" />
                     ) : (
-                      <XCircle className="h-4 w-4 text-red-500" />
+                      <XCircle className="h-4 w-4 text-red-700" />
                     )}
                     <CardTitle>Câu {index + 1}</CardTitle>
                   </div>
                   <p className="pt-1 text-sm font-normal text-foreground">{question.question_text}</p>
                 </CardHeader>
                 <CardContent className="space-y-1 text-sm">
-                  <p className="text-muted-foreground">
-                    Bạn chọn: <span className="text-foreground">{selectedOptions[question.question_id]}</span>
+                  <p className={isCorrect ? "text-muted-foreground" : "text-red-700"}>
+                    Bạn chọn: <span className={isCorrect ? "text-foreground" : "font-medium text-red-700"}>{selectedOptions[question.question_id]}</span>
                   </p>
-                  {!questionResult?.is_correct ? <p className="text-emerald-700">Đáp án đúng: {questionResult?.mcq_correct}</p> : null}
+                  {!isCorrect ? (
+                    <p className="font-medium text-emerald-800">Đáp án đúng: {questionResult?.mcq_correct}</p>
+                  ) : null}
                   {questionResult?.explanation ? <p className="text-muted-foreground">{questionResult.explanation}</p> : null}
                 </CardContent>
               </Card>
