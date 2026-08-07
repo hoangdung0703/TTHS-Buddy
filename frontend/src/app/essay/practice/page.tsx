@@ -216,7 +216,7 @@ export default function EssayPracticePage() {
                         <span className="text-sm text-foreground">{point}</span>
                       </li>
                     ))}
-                    {result.missing_points.map((point) => (
+                    {(result.missing_points_display ?? result.missing_points).map((point) => (
                       <li key={point} className="flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 p-2.5">
                         <Minus size={13} strokeWidth={2.5} className="mt-0.5 shrink-0 text-amber-700" />
                         <span className="text-sm font-medium text-amber-800">{point}</span>

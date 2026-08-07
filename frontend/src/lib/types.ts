@@ -142,6 +142,9 @@ export interface EssaySubmitResponse {
   missing_points: string[];
   feedback: string;
   suggested_dieu: string[];
+  // Display-only, natural-language merge of missing_points. Null/undefined when the LLM didn't
+  // return a usable value - render missing_points as separate bullets instead.
+  missing_points_display?: string[] | null;
 }
 
 export interface KeywordYesterday {

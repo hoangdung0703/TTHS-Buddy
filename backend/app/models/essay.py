@@ -33,6 +33,10 @@ class EssaySubmitResponse(BaseModel):
     missing_points: list[str]
     feedback: str
     suggested_dieu: list[str]
+    # Display-only, natural-language merge of missing_points (requirements.md "Gộp câu tự nhiên
+    # cho danh sách Ý còn thiếu/sai"). Does not affect scoring - null when the LLM didn't return
+    # a usable value (frontend falls back to rendering missing_points as separate bullets).
+    missing_points_display: list[str] | None = None
 
 
 class EssayBankSummary(BaseModel):

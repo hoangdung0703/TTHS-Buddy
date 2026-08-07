@@ -136,7 +136,7 @@ export function EssayBankRunner({ category }: EssayBankRunnerProps) {
                 <p className="text-sm text-muted-foreground">Không thiếu ý nào.</p>
               ) : (
                 <ul className="space-y-2 text-sm">
-                  {result.missing_points.map((point) => (
+                  {(result.missing_points_display ?? result.missing_points).map((point) => (
                     <li key={point} className="flex items-start gap-2">
                       <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
                       {point}

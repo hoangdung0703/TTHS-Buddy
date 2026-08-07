@@ -80,4 +80,5 @@ async def submit_essay(
     return EssaySubmitResponse(
         matched_points=result.matched_points, missing_points=result.missing_points,
         feedback=result.feedback, suggested_dieu=result.suggested_dieu,
+        missing_points_display=result.missing_points_display,
     )

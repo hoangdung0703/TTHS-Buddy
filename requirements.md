@@ -583,3 +583,38 @@ CoT-only isolation, fallback cuối) đều cho kết quả giống hệt nhau (
 câu nào vượt ngưỡng 250 ký tự nên chưa từng thực sự kích hoạt code path câu dài (retrieval mở rộng,
 model routing, CoT, hay fallback) - bộ eval này chỉ xác nhận "không phá gì" cho câu ngắn/vừa, việc kiểm
 chứng cải thiện thực chất luôn phải dựa vào test riêng các câu tình huống dài.
+
+Feature — Gộp câu tự nhiên cho danh sách "Ý còn thiếu/sai" trong kết quả chấm tự luận (fix theo UAT feedback)
+Bối cảnh: hiện tại mỗi essay_key_points bị thiếu hiển thị thành 1 bullet riêng, kể cả khi nhiều ý cùng chủ ngữ/cấu trúc (ví dụ 3 bullet "Cơ quan điều tra có nhiệm vụ..." lặp lại chủ ngữ) — đọc rời rạc, không tự nhiên như văn viết thật.
+
+RÀNG BUỘC BẮT BUỘC (không được vi phạm nguyên tắc đã chốt ở Phase 5b): việc gộp câu CHỈ là lớp hiển thị, KHÔNG được đổi cơ chế chấm điểm gốc (matched/missing vẫn trả về theo POSITIONS như cũ, không đổi). Bước gộp câu chỉ được phép NỐI/DIỄN ĐẠT LẠI đúng nội dung đã có trong các ý bị thiếu đã xác định — không thêm thông tin mới, không bớt ý, không đổi nghĩa.
+
+[x] Thêm 1 bước hậu xử lý (tận dụng chung lời gọi LLM chấm điểm hiện có, thêm field mới trong response thay vì gọi riêng) — sinh thêm "missing_points_display": gộp các essay_key_points bị thiếu có cùng chủ ngữ/chủ đề thành 1-2 câu tự nhiên, giữ nguyên nội dung, không suy diễn thêm. Nếu các ý không cùng chủ ngữ/không gộp tự nhiên được, giữ nguyên dạng bullet riêng như cũ (không ép gộp gượng gạo).
+[x] Test bằng chính ví dụ đã nêu (lythuyet-q11 — Điều 163, 3 ý "Cơ quan điều tra có nhiệm vụ...") — xác nhận gộp đúng thành câu tự nhiên, không mất/thêm ý.
+[x] Test thêm vài câu khác có key_points KHÔNG cùng chủ ngữ (ví dụ câu có 4-5 ý về các khía cạnh khác nhau) — xác nhận hệ thống không ép gộp gượng gạo, giữ nguyên bullet riêng khi không hợp lý để gộp.
+[x] Xác nhận scoring/matched-missing logic hoàn toàn không đổi — chỉ thêm field hiển thị mới, không sửa cơ chế chấm điểm.
+
+ĐÃ HOÀN THÀNH. Implementation:
+- `backend/app/prompts/essay_prompts.py`: thêm rule 8 vào `ESSAY_GRADING_SYSTEM_PROMPT`, yêu cầu model trả thêm field "missing_points_display" cùng lời gọi chấm điểm hiện có (không gọi LLM riêng). Rule 1-7 gốc (kể cả cách xác định matched/missing theo vị trí/positions) giữ nguyên không đổi.
+- `backend/app/models/essay.py`: `EssaySubmitResponse.missing_points_display: list[str] | None = None`.
+- `backend/app/services/essay_service.py`: `_validate_missing_points_display()` kiểm tra kiểu dữ liệu (list[str] không rỗng phần tử), quy tắc rỗng-khi-không-có-missing/không-rỗng-khi-có-missing; giá trị không hợp lệ rơi về `None`. Logic tính `matched`/`missing` từ `results` theo vị trí trong `_parse_grading_response()` giữ nguyên 100%, chỉ thêm field mới song song.
+- `backend/app/api/essay.py`: truyền `missing_points_display` qua `EssaySubmitResponse`.
+- Frontend (`EssayBankRunner.tsx`, `app/essay/practice/page.tsx`, `lib/types.ts`): render `result.missing_points_display ?? result.missing_points` — tự động fallback về bullet gốc khi model không trả field hợp lệ.
+
+Test thật qua Gemini (không mock), lythuyet-q11 (Điều 163), câu trả lời lạc đề → cả 3 ý missing: gộp
+đúng thành "Cơ quan điều tra có nhiệm vụ phát hiện tội phạm, thu thập chứng cứ và làm rõ tội phạm." -
+không mất/thêm ý so với 3 essay_key_points gốc.
+
+Test regression scoring: câu trả lời partial-correct (chỉ đúng ý 1 và 3 trong 3 ý của lythuyet-q11) →
+`matched`/`missing` xác định đúng theo vị trí y hệt cơ chế cũ (ý 1, 3 matched; ý 2 missing), chỉ thêm
+`missing_points_display: ["Cơ quan điều tra còn có nhiệm vụ thu thập chứng cứ."]` - xác nhận scoring
+logic không đổi.
+
+Test câu KHÔNG cùng chủ ngữ: lythuyet-q20 (8 ý về "khám xét" nhưng khác chủ đề con: khi nào tiến hành /
+đối tượng bị thu giữ / căn cứ liên quan) - model không ép gộp thành 1 câu, tách thành 3 nhóm tự nhiên
+theo đúng chủ đề con. Tương tự lythuyet-q9 (4 "phương pháp" điều chỉnh khác nhau) - tách 2 câu 2 nhóm,
+không gộp gượng gạo thành 1 câu 4 ý. Ngược lại lythuyet-q1 (6 ý cùng chủ ngữ "Ngành luật này điều
+chỉnh...") - gộp gọn thành 1 câu tự nhiên, đủ cả 5 quá trình tố tụng.
+
+Fallback an toàn: test response giả (field thiếu, sai kiểu, rỗng-khi-có-missing) đều rơi về `None` -
+frontend tự render lại `missing_points` gốc, không crash.
