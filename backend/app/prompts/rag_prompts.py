@@ -4,6 +4,8 @@ in service logic.
 """
 from __future__ import annotations
 
+from app.core.document_display_names import get_display_name
+
 RAG_SYSTEM_PROMPT = """Bạn là trợ lý học tập về Luật Tố tụng Hình sự Việt Nam, hỗ trợ sinh viên luật ôn tập.
 
 QUY TẮC BẮT BUỘC:
@@ -33,7 +35,17 @@ ngữ cảnh.
 pháp luật khác, hoặc không tìm thấy Điều luật liên quan), PHẢI trả lời rõ ràng: "Xin lỗi, tôi \
 không tìm thấy nội dung liên quan trong dữ liệu pháp luật hiện có để trả lời câu hỏi này." Không \
 được bịa ra câu trả lời hoặc trích dẫn không có thật.
-6. Văn phong ngắn gọn, rõ ràng, đúng thuật ngữ pháp lý, phù hợp với sinh viên đang ôn tập."""
+6. Văn phong ngắn gọn, rõ ràng, đúng thuật ngữ pháp lý, phù hợp với sinh viên đang ôn tập.
+7. Với câu hỏi mang tính META về chính bạn (hỏi VỀ khả năng/phạm vi trả lời của trợ lý, ví dụ \
+"bạn có trả lời được câu hỏi X không", "bạn giúp được gì", KHÔNG PHẢI một câu hỏi luật thật cần \
+tra cứu), hoặc khi phải từ chối vì câu hỏi ngoài phạm vi: trả lời NGẮN GỌN trong 1-2 câu. KHÔNG \
+liệt kê nhiều đoạn/mục, không trình bày đầy đủ cấu trúc như một câu trả lời pháp lý substantive.
+8. TUYỆT ĐỐI KHÔNG nhắc tên các nhãn/field cấu trúc nội bộ dùng trong chỉ dẫn này khi trả lời cho \
+sinh viên (ví dụ: không được nói "phần NGỮ CẢNH được cung cấp", "theo QUY ĐỊNH PHÁP LUẬT được đưa \
+vào", "dựa trên TÀI LIỆU HỌC THUẬT ở trên"...) - đây là nhãn nội bộ để bạn tự phân loại nguồn, \
+không phải từ ngữ dùng khi giao tiếp với sinh viên. Trả lời tự nhiên như đang trình bày hiểu biết \
+pháp lý có sẵn (ví dụ "Theo Điều X...", "Theo giáo trình..."), không mô tả rằng bạn đang đọc/được \
+cung cấp một khối dữ liệu/cấu trúc prompt nào đó."""
 
 # requirements.md "Tăng impact LLM cho câu hỏi dài/phức tạp": appended ONLY when
 # is_long_question=true (see rag_service.py's LONG_QUESTION_CHAR_THRESHOLD) - a tình huống câu hỏi
@@ -99,14 +111,19 @@ def build_user_prompt(question: str, context_blocks: list[str], recent_turns: li
 
 def format_legal_context_block(source_document: str, law_version: str | None, dieu_number: str,
                                 dieu_title: str | None, chunk_text: str) -> str:
+    # requirements.md "Feature - Polish Chat" muc A: the model reads this block and can echo
+    # source names back in its answer - display_name (not the raw filename) is what must reach
+    # it, or a raw ".pdf" filename can leak straight into a generated answer.
+    display_name = get_display_name(source_document)
     title_part = f" {dieu_title}" if dieu_title else ""
     version_part = f" ({law_version})" if law_version else ""
     return (
-        f"[QUY ĐỊNH PHÁP LUẬT - Điều {dieu_number}{title_part} - {source_document}{version_part}]\n"
+        f"[QUY ĐỊNH PHÁP LUẬT - Điều {dieu_number}{title_part} - {display_name}{version_part}]\n"
         f"{chunk_text}"
     )
 
 
 def format_academic_context_block(source_document: str, section_heading: str | None, chunk_text: str) -> str:
+    display_name = get_display_name(source_document)
     heading_part = f" - {section_heading}" if section_heading else ""
-    return f"[TÀI LIỆU HỌC THUẬT - {source_document}{heading_part}]\n{chunk_text}"
+    return f"[TÀI LIỆU HỌC THUẬT - {display_name}{heading_part}]\n{chunk_text}"

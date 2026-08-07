@@ -22,6 +22,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
 
 from app.core.config import Settings
+from app.core.document_display_names import get_display_name
 from app.core.logging import get_logger
 from app.models.chat import (
     ChatStreamAnswerDeltaEvent,
@@ -267,7 +268,7 @@ def count_chuong_and_dieu(client: QdrantClient, collection: str,
 
 def build_aggregate_structure_answer(source_document: str, law_version: str | None,
                                       chuong_count: int, dieu_count: int) -> str:
-    display_name = law_version or source_document.removesuffix(".pdf")
+    display_name = law_version or get_display_name(source_document)
     if chuong_count > 0:
         body = f"Theo dữ liệu đã được nạp vào hệ thống, {display_name} gồm {chuong_count} chương và {dieu_count} điều."
     else:

@@ -730,6 +730,44 @@ def _split_into_paragraphs(text: str) -> list[tuple[str | None, str]]:
     return paragraphs
 
 
+# requirements.md "Feature - Polish Chat" muc D: academic_reference source articles (journal
+# papers, giao trinh chapters) end with a "TAI LIEU THAM KHAO" (works-cited) section listing
+# authors/works OUTSIDE this corpus - grounding-worthless back matter, same category as legal_text
+# boilerplate like "Noi nhan" (see KNOWN_TRAILING_BOILERPLATE_MARKERS above), but the model was
+# citing entries from it as if they were retrievable sources, misrepresenting the corpus's actual
+# scope. Confirmed by a full-corpus scan (grep for "tai lieu tham khao", case-insensitive, across
+# every academic_reference chunk_text/section_heading) - not guessed from a single reported case.
+# This one IS a general, not-per-document pattern (unlike Noi nhan, which was a one-off font-
+# corruption artifact) - the heading is a standard Vietnamese academic convention, so it's matched
+# by a regex applied to every academic_reference document, not hardcoded per file.
+ACADEMIC_REFERENCE_LIST_HEADING_PATTERN = re.compile(r"^(danh mục\s+)?tài liệu tham khảo\s*:?\s*$", re.IGNORECASE)
+
+# Some source PDFs' "Tai lieu tham khao" heading doesn't stand alone on its own line the way
+# _is_heading_line expects (mixed-case, e.g. "Tài liệu tham khảo" not "TÀI LIỆU THAM KHẢO" -
+# _is_heading_line's HEADING_PATTERN only recognizes the all-caps/numbered shapes), so
+# _split_into_paragraphs never breaks it into its own heading-tagged group - it stays fused mid-
+# paragraph, onto the END of a chunk that also has real, keepable article content before the
+# marker. ACADEMIC_REFERENCE_LIST_HEADING_PATTERN above can't catch these (there is no separate
+# heading to check), so each needs the chunk_text itself truncated at the marker, same mechanism
+# as KNOWN_TRAILING_BOILERPLATE_MARKERS for legal_text. Confirmed by the same full-corpus scan
+# referenced above - these are the only 2 chunks across the whole corpus where the marker landed
+# embedded like this rather than on a clean heading line.
+KNOWN_ACADEMIC_TRAILING_REFERENCE_MARKERS: dict[tuple[str, int], str] = {
+    ("Bảo vệ quyền con người bằng TTHS.pdf", 44): "Tài liệu tham khảo",
+    ("Nguồn bào chữa trong LTTHS.pdf", 13): "Tài liệu tham khảo:",
+}
+
+# Chunk 45 of "Bao ve quyen con nguoi bang TTHS.pdf" is the reference list's own CONTINUATION (no
+# heading change to catch, since the list started mid-chunk-44 above) immediately followed by a
+# duplicate English-language abstract of the same article already summarized in Vietnamese earlier
+# in this document - zero grounding value, confirmed by direct reading, not a chunk that ever had
+# usable content truncated away from it (contrast with the truncation case above, which keeps the
+# real content before the marker). Dropped wholesale rather than truncated.
+KNOWN_ACADEMIC_CHUNKS_TO_DROP: set[tuple[str, int]] = {
+    ("Bảo vệ quyền con người bằng TTHS.pdf", 45),
+}
+
+
 def chunk_academic_reference(pages: list[PageExtraction], source_document: str) -> list[dict[str, Any]]:
     full_text, offsets = _build_document_text(pages)
     paragraphs = _split_into_paragraphs(full_text)
@@ -745,6 +783,32 @@ def chunk_academic_reference(pages: list[PageExtraction], source_document: str) 
         nonlocal chunk_index, buffer_text
         if not buffer_text.strip():
             return
+
+        current_index = chunk_index
+        chunk_index += 1
+
+        if (source_document, current_index) in KNOWN_ACADEMIC_CHUNKS_TO_DROP:
+            buffer_text = ""
+            return
+
+        marker = KNOWN_ACADEMIC_TRAILING_REFERENCE_MARKERS.get((source_document, current_index))
+        if marker is not None:
+            marker_pos = buffer_text.find(marker)
+            assert marker_pos != -1, (
+                f"Known academic trailing-reference-list fix for {source_document} chunk "
+                f"{current_index} - marker {marker!r} no longer found - source PDF may have been "
+                f"re-extracted differently; update KNOWN_ACADEMIC_TRAILING_REFERENCE_MARKERS."
+            )
+            end_offset = buffer_start_offset + marker_pos
+            buffer_text = buffer_text[:marker_pos]
+            if not buffer_text.strip():
+                buffer_text = ""
+                return
+
+        if buffer_heading and ACADEMIC_REFERENCE_LIST_HEADING_PATTERN.match(buffer_heading):
+            buffer_text = ""
+            return
+
         method, quality = _aggregate_quality(offsets, buffer_start_offset, end_offset)
         chunks.append({
             "source_type": "academic_reference",
@@ -753,13 +817,12 @@ def chunk_academic_reference(pages: list[PageExtraction], source_document: str) 
             "dieu_number": None,
             "dieu_title": None,
             "khoan_number": None,
-            "chunk_index": chunk_index,
+            "chunk_index": current_index,
             "section_heading": buffer_heading,
             "chunk_text": buffer_text.strip(),
             "extraction_method": method,
             "extraction_quality": quality
         })
-        chunk_index += 1
         buffer_text = ""
 
     for heading, paragraph in paragraphs:

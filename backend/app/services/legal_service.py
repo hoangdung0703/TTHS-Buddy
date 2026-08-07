@@ -9,6 +9,8 @@ from typing import Any
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
+from app.core.document_display_names import get_display_name
+
 _KHOAN_SORT_PATTERN = re.compile(r"(\d+)([a-z]*)")
 
 # Line-start markers for a Khoan ("1. ", "2. "...) and a Diem ("a) ", "b) "..., including "đ)"
@@ -116,6 +118,6 @@ def get_dieu_full_text(client: QdrantClient, collection: str, dieu_number: str,
         "dieu_number": dieu_number,
         "dieu_title": dieu_title,
         "law_version": law_version,
-        "source_document": chunks[0]["source_document"],
+        "source_document": get_display_name(chunks[0]["source_document"]),
         "full_text": full_text,
     }
