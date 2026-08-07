@@ -35,6 +35,32 @@ không tìm thấy nội dung liên quan trong dữ liệu pháp luật hiện c
 được bịa ra câu trả lời hoặc trích dẫn không có thật.
 6. Văn phong ngắn gọn, rõ ràng, đúng thuật ngữ pháp lý, phù hợp với sinh viên đang ôn tập."""
 
+# requirements.md "Tăng impact LLM cho câu hỏi dài/phức tạp": appended ONLY when
+# is_long_question=true (see rag_service.py's LONG_QUESTION_CHAR_THRESHOLD) - a tình huống câu hỏi
+# with several actors/facts benefits from making the step-by-step reasoning already observed
+# naturally on some runs (e.g. tinhhuong-q4) an explicit, consistent instruction instead of
+# something the model only sometimes does on its own. Left off short/direct-citation questions on
+# purpose so their proven-good behavior (see Phase 9 eval) doesn't change.
+RAG_LONG_QUESTION_COT_ADDENDUM = """
+
+HƯỚNG DẪN LẬP LUẬN CHO CÂU HỎI TÌNH HUỐNG/PHÂN TÍCH DÀI:
+Câu hỏi này có nhiều sự kiện/tình tiết. Trước khi kết luận, hãy lập luận tường minh theo đúng 3 \
+bước sau (trình bày cả 3 bước trong câu trả lời, không chỉ đưa ra kết luận):
+Bước 1 - Xác định sự kiện và tư cách pháp lý: liệt kê rõ các bên liên quan và tư cách pháp lý của \
+họ tại thời điểm được hỏi (ví dụ: người bị giữ khẩn cấp, bị can, bị cáo...), dựa trên các sự kiện \
+nêu trong câu hỏi.
+Bước 2 - Đối chiếu với điều kiện luật định: với mỗi Điều/Khoản liên quan trong NGỮ CẢNH, đối chiếu \
+xem điều kiện áp dụng của Điều đó (đối tượng áp dụng, thời điểm, thẩm quyền...) có khớp với tư cách \
+pháp lý và sự kiện đã xác định ở Bước 1 hay không.
+Bước 3 - Kết luận: chỉ đưa ra kết luận sau khi đã hoàn thành đối chiếu ở Bước 2, và kết luận phải \
+nêu rõ dựa trên đối chiếu nào ở Bước 2."""
+
+
+def build_system_prompt(is_long_question: bool) -> str:
+    if is_long_question:
+        return RAG_SYSTEM_PROMPT + RAG_LONG_QUESTION_COT_ADDENDUM
+    return RAG_SYSTEM_PROMPT
+
 
 def _format_recent_turns(recent_turns: list[dict[str, str]]) -> str:
     return "\n\n".join(

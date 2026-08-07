@@ -33,7 +33,7 @@ from app.models.chat import (
     SuggestedFollowup,
 )
 from app.prompts.rag_prompts import (
-    RAG_SYSTEM_PROMPT,
+    build_system_prompt,
     build_user_prompt,
     format_academic_context_block,
     format_legal_context_block,
@@ -114,6 +114,13 @@ ACADEMIC_SCORE_THRESHOLD = 0.5
 LONG_QUESTION_CHAR_THRESHOLD = 250
 LEGAL_SEMANTIC_TOP_K_LONG = 25
 LEGAL_PRIMARY_COUNT_LONG = 8
+
+# requirements.md "Tăng impact LLM..." fallback step: settings.resolved_complex_chat_model
+# (preview-tier, high latency variance - 5s-68s observed) gets this long to produce a first token
+# before stream_generate_answer gives up and falls back to the fast/reliable gemini_chat_model -
+# picked from the middle of the requested 15-20s range, low enough to cap worst-case latency,
+# high enough not to abandon a pro-preview response that was already about to arrive.
+LONG_QUESTION_FIRST_TOKEN_TIMEOUT_SECONDS = 18.0
 
 # An academic_reference passage that spans multiple paragraphs (ingestion/chunking.py splits
 # academic_reference by paragraph, not by whole subsection - see requirements.md Phase 3) gets
@@ -681,8 +688,25 @@ async def stream_answer_question(
 
     user_prompt = build_user_prompt(question, retrieval.context_blocks, recent_turns)
 
+    # requirements.md "Tăng impact LLM cho câu hỏi dài/phức tạp": long/tình huống questions (same
+    # threshold as Bước 1's retrieval widening, LONG_QUESTION_CHAR_THRESHOLD) get a stronger model
+    # and an explicit chain-of-thought instruction for the final generation call only - retrieval
+    # above is unaffected by this flag. fallback_model/first_token_timeout are only set for long
+    # questions - if resolved_complex_chat_model is slow/unavailable, stream_generate_answer falls
+    # back to gemini_chat_model (still with the CoT system_prompt) rather than making the student
+    # wait indefinitely on a preview-tier model - see gemini_client.py's docstring for the exact
+    # fallback contract.
+    is_long_question = len(question) > LONG_QUESTION_CHAR_THRESHOLD
+    system_prompt = build_system_prompt(is_long_question)
+    generation_model = settings.resolved_complex_chat_model if is_long_question else settings.gemini_chat_model
+    fallback_model = settings.gemini_chat_model if is_long_question else None
+    first_token_timeout = LONG_QUESTION_FIRST_TOKEN_TIMEOUT_SECONDS if is_long_question else None
+
     answer_parts: list[str] = []
-    async for text_chunk in stream_generate_answer(RAG_SYSTEM_PROMPT, user_prompt, settings):
+    async for text_chunk in stream_generate_answer(
+        system_prompt, user_prompt, settings, model=generation_model,
+        fallback_model=fallback_model, first_token_timeout=first_token_timeout
+    ):
         answer_parts.append(text_chunk)
         yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=text_chunk))
 

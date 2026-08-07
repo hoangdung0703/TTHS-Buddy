@@ -487,67 +487,99 @@ Bối cảnh: test 3 câu thật (vandung-q7, vandung-q26, tinhhuong-q4) cho th�
 
 Chiến lược: 2 bước leo thang, chỉ làm Bước 2 nếu Bước 1 không đủ — tránh nhảy thẳng vào thay đổi kiến trúc lớn khi chưa thử giải pháp đơn giản.
 
-[x] Bước 1 — Mở rộng top_k cho legal_text semantic search khi câu hỏi dài (ngưỡng độ dài cần xác định, ví dụ >200-300 ký tự câu hỏi gốc): tăng LEGAL_SEMANTIC_TOP_K/LEGAL_PRIMARY_COUNT động thay vì cố định — giả thuyết: Điều đúng có thể đã nằm trong corpus nhưng bị xếp hạng thấp do nhiễu, không hoàn toàn biến mất khỏi kết quả retrieval, mở rộng vùng vớt có thể đủ.
+[ ] Bước 1 — Mở rộng top_k cho legal_text semantic search khi câu hỏi dài (ngưỡng độ dài cần xác định, ví dụ >200-300 ký tự câu hỏi gốc): tăng LEGAL_SEMANTIC_TOP_K/LEGAL_PRIMARY_COUNT động thay vì cố định — giả thuyết: Điều đúng có thể đã nằm trong corpus nhưng bị xếp hạng thấp do nhiễu, không hoàn toàn biến mất khỏi kết quả retrieval, mở rộng vùng vớt có thể đủ.
   Test lại CHÍNH XÁC 3 câu đã dùng để chẩn đoán (vandung-q7, vandung-q26, tinhhuong-q4) — xác nhận tinhhuong-q4 giờ có vớt được Điều 109/123 trong top-k mở rộng không.
   Chạy lại toàn bộ 29 câu evaluation — xác nhận KHÔNG hồi quy (đặc biệt citation precision không bị pha loãng do vớt thêm nhiều chunk không liên quan cho câu ngắn vốn đã hoạt động tốt — chỉ áp dụng ngưỡng mở rộng cho câu ĐỦ DÀI, không áp dụng toàn cục).
-  ĐÃ HOÀN THÀNH. Implementation: `backend/app/services/rag_service.py`, `_retrieve_legal()`. Ngưỡng
-  `LONG_QUESTION_CHAR_THRESHOLD = 250` ký tự (chọn dựa trên độ dài thật của 3 câu chẩn đoán:
-  vandung-q26 = 106, vandung-q7 = 159, tinhhuong-q4 = 572 — chỉ tinhhuong-q4 vượt ngưỡng). Khi
-  `len(question) > 250` (question ở đây là rewritten_question), chỉ nhánh semantic search của
-  legal_text được mở rộng — exact-match theo dieu_number và academic_reference retrieval không đổi:
-  `LEGAL_SEMANTIC_TOP_K` 5 → 25, `LEGAL_PRIMARY_COUNT` 3 → 8. Giá trị 25/8 chọn sau khi thử 15/6
-  trước (đủ vớt Điều 109 nhưng Điều 123 xếp hạng #21 theo Qdrant score, vẫn ngoài tầm) rồi tăng
-  lên 25/8 để vớt được cả hai.
-
-Bước 1 đủ, Bước 2 không cần thực hiện. tinhhuong-q4 sau Bước 1 đã đạt đúng kết luận ("không đúng
-quy định") với trích dẫn thật (Điều 123) thay vì từ chối trả lời — mục tiêu chính của cả 2 bước.
-Bước 2 (Query Understanding decomposition) chỉ có giá trị nếu Bước 1 không đủ để đưa Điều cốt lõi
-vào context; vì Bước 1 đã làm được điều đó với một thay đổi nhỏ, không có lý do gánh thêm độ phức
-tạp và độ trễ (1 lệnh gọi Gemini nữa) của Bước 2. Để lại code path song song không dùng tới sẽ là
-premature abstraction cho một bài toán đã được giải quyết ở tầng đơn giản hơn.
 
 [ ] Bước 2 (CHỈ làm nếu Bước 1 không đủ, xác nhận bằng cách test lại đúng 3 câu) — mở rộng Query Understanding (đã có từ Phase 4 Extension) để chắt lọc thêm 1 "câu hỏi cốt lõi" tập trung vào nguyên tắc pháp lý, tách khỏi chi tiết tình huống, dùng riêng cho bước retrieval — giữ nguyên câu hỏi gốc đầy đủ cho bước generation cuối (để model vẫn áp dụng đúng vào tình huống cụ thể). Tái dùng hạ tầng rewrite_question đã có, không xây pipeline song song mới.
   Cùng yêu cầu test: 3 câu chẩn đoán + toàn bộ 29 câu evaluation, không hồi quy.
-  KHÔNG THỰC HIỆN — xem ghi chú "Bước 1 đủ, Bước 2 không cần thực hiện" ở trên.
 
 Verify cuối: sau khi 1 trong 2 bước đạt yêu cầu (hoặc cả 2 nếu cần), cập nhật lại bảng chẩn đoán 3 câu trong requirements.md với kết quả MỚI, để có trước/sau rõ ràng cho phần Discussion của bài báo.
 
-ĐÃ CẬP NHẬT (sau Bước 1):
+Feature — Tăng "impact" LLM cho câu hỏi dài/phức tạp (tiếp nối Bước 1 retrieval, tận dụng ngân sách Gemini còn dư)
+Bối cảnh: Bước 1 (mở rộng top_k) đã giải quyết retrieval cho câu hỏi dài. Giờ cải thiện thêm ở tầng generation cho đúng nhóm câu hỏi này — tái dùng cờ is_long_question đã có (>250 ký tự), không cần logic phát hiện mới.
 
-Bảng chẩn đoán 3 câu — TRƯỚC vs SAU Bước 1:
+[x] Model routing động: câu hỏi dài (is_long_question=true) chuyển sang gọi model Gemini mạnh hơn cho bước generation cuối (không đụng model dùng cho embedding/query understanding — chỉ generation cuối). Câu ngắn/tra cứu trực tiếp giữ nguyên model rẻ hiện tại (đã kiểm chứng tốt qua evaluation). Thêm biến môi trường mới (ví dụ GEMINI_CHAT_MODEL_COMPLEX), mặc định fallback về GEMINI_CHAT_MODEL hiện tại nếu không set (backward compatible, không phá vỡ gì nếu chưa cấu hình).
 
-| Câu | TRƯỚC | SAU |
+[x] Chain-of-thought có cấu trúc cho câu hỏi dài: thêm đoạn hướng dẫn vào system prompt (CHỈ áp dụng khi is_long_question=true, không đổi prompt cho câu ngắn) — khuyến khích model lập luận tường minh theo bước: (1) xác định các sự kiện/tư cách pháp lý của các bên trong tình huống, (2) đối chiếu từng sự kiện với điều kiện luật định trong context, (3) mới đưa ra kết luận. Mục đích: làm hành vi lập luận từng bước đã quan sát tự nhiên ở tinhhuong-q4 trở nên nhất quán, không phụ thuộc may rủi.
+
+ĐÃ HOÀN THÀNH. Implementation:
+- `backend/app/core/config.py`: `gemini_chat_model_complex: str | None` (alias `GEMINI_CHAT_MODEL_COMPLEX`), property `resolved_complex_chat_model` fallback về `gemini_chat_model`.
+- `backend/app/prompts/rag_prompts.py`: `RAG_LONG_QUESTION_COT_ADDENDUM` + `build_system_prompt(is_long_question)`.
+- `backend/app/services/rag_service.py`, `stream_answer_question()`: chọn `system_prompt`/`generation_model` theo `is_long_question` (cùng ngưỡng 250 ký tự của Bước 1).
+
+Model chọn: `gemini-3.1-pro-preview`. Đã search danh sách model thật qua Gemini API (không đoán theo
+tên cũ) — `gemini-2.5-pro` và `gemini-3-pro-preview` đều đã bị deprecate (404 "no longer
+available"). **`gemini-3.1-pro-preview` là lựa chọn Pro-tier duy nhất còn hoạt động tại thời điểm
+implement — hiện KHÔNG có bản GA (non-preview) nào của dòng Pro khả dụng qua API key này.** Dùng
+model preview là quyết định buộc phải chấp nhận (không có lựa chọn GA thay thế), không phải sơ suất
+chọn nhầm — hệ quả trực tiếp là độ trễ cao và dao động lớn (503 "high demand" khá thường xuyên), xử
+lý ở mục fallback bên dưới.
+
+Test cô lập biến số (yêu cầu bổ sung giữa chừng, trước khi chốt): so sánh CoT-only+flash-lite riêng
+(tắt model routing) với CoT+pro-preview trên 4 câu tình huống — kết luận CoT một mình (không đổi
+model) hầu như không cải thiện gì so với baseline gốc, cả nội dung, trích dẫn, lẫn xu hướng "hedge"
+gần như giống hệt nhau. Chỉ pro-preview mới cho tính quyết đoán (kết luận dứt khoát khớp văn phong
+ground truth) và khả năng nắm bắt điểm mấu chốt pháp lý tinh vi (ví dụ: chỉ pro-preview nhận ra
+"gián đoạn thời gian phá vỡ tính quả tang" ở tinhhuong-q9 - cả 2 bản flash-lite đều bỏ lỡ hoàn toàn
+insight này). Kết luận: pro-preview thực sự cần thiết, không phải chỉ do cấu trúc CoT.
+
+[x] Fallback tự động pro-preview → flash-lite khi timeout/lỗi, cho câu hỏi dài. Do quyết định dùng
+model preview ở trên đánh đổi lấy độ trễ cao/dao động lớn (5s-68s quan sát được) và tần suất 503 "high
+demand" đáng kể, bổ sung bước leo thang thứ 3 (ngoài kế hoạch ban đầu, phát sinh từ chính số liệu đo
+được ở bước model routing) để chặn trần latency mà không mất khả năng dùng pro-preview khi nó phản
+hồi bình thường.
+
+Implementation: `backend/app/services/gemini_client.py`, `stream_generate_answer()` nhận thêm
+`fallback_model` + `first_token_timeout`. Có deadline TUYỆT ĐỐI (tính một lần trước khi mở kết nối)
+bao trùm cả bước mở kết nối/chờ header lẫn bước chờ token đầu tiên. Nếu model chính (pro-preview) gặp
+503/429/lỗi mạng/hết deadline mà CHƯA gửi token nào cho client, chuyển ngay (không backoff — bản thân
+việc fallback đã là cách phục hồi) sang model dự phòng (flash-lite, vẫn giữ nguyên system prompt CoT).
+Model cuối cùng trong chuỗi giữ nguyên retry-với-backoff cũ (3 lần) — nơi gọi không truyền
+fallback_model (mọi nơi khác ngoài đường câu dài) không đổi hành vi. Một khi đã có token nào được gửi
+cho client, không retry/fallback nữa (tránh lặp nội dung) — lỗi ở giai đoạn đó truyền thẳng ra ngoài
+như cũ. `backend/app/services/rag_service.py`: `LONG_QUESTION_FIRST_TOKEN_TIMEOUT_SECONDS = 18.0`
+(giữa khoảng 15-20s được đề xuất).
+
+2 bug phát hiện và sửa trong lúc implement (case study - đúng dạng bug "tưởng đúng logic nhưng chỉ lộ
+khi đo số liệu thật" đã lặp lại nhiều lần trong dự án này, ví dụ tương tự ở Phase 4/6 với payload index
+và ở Bước 1/2 của feature retrieval phía trên):
+1. Bản đầu tiên đặt timeout riêng cho MỖI lần gọi `anext()` trên iterator dòng SSE thay vì một deadline
+   tuyệt đối - dòng đệm/dòng rỗng (keep-alive, candidate rỗng) liên tục "làm mới" đồng hồ đếm, khiến
+   tổng thời gian chờ trước token thật vượt xa ngưỡng dự kiến (đo được: 38s+ dù đặt ngưỡng 18s). Sửa
+   bằng cách tính deadline một lần duy nhất trước vòng lặp, dùng thời gian còn lại (remaining) cho mỗi
+   lần chờ thay vì reset lại timeout đầy đủ.
+2. Sau khi sửa (1), vẫn đo được thời gian vượt ngưỡng (21-25s dù đặt 18s) - vì deadline chỉ bắt đầu
+   tính SAU KHI đã nhận response header, trong khi TTFB (thời gian chờ header) mới chính là phần chậm
+   nhất của gemini-3.1-pro-preview (14-20s quan sát được qua log thời gian giữa các lệnh gọi Gemini kế
+   tiếp nhau) - một deadline chỉ tính từ lúc đã có header sẽ bỏ lọt đúng phần trễ mà cơ chế fallback
+   này sinh ra để chặn. Sửa bằng cách bọc luôn bước mở kết nối (`client.stream(...).__aenter__()`,
+   tương đương gửi request + chờ header) trong cùng một deadline với bước đọc dòng SSE sau đó, thay vì
+   2 deadline tách rời.
+   Cả 2 bug này chỉ lộ ra khi đo latency thật qua request thực tế tới Gemini (không mock) - review code
+   tĩnh không phát hiện được, vì logic "trông đúng" ở cấp độ đọc code (asyncio.wait_for bọc quanh mỗi
+   lần chờ trông hợp lý), chỉ sai ở chỗ đặt lại điểm bắt đầu đếm.
+
+Latency worst-case - trước/sau fallback (đo trên 4 câu tình huống, latency thật không giả lập):
+
+| | Trước (chỉ model routing, không fallback) | Sau (có fallback) |
 |---|---|---|
-| vandung-q7 (159 ký tự, dưới ngưỡng 250) | Trích Điều 15 (không phải Điều 13 ground truth); Điều 13 chỉ xuất hiện ở suggested_followups, không vào context chính | Không đổi — vẫn Điều 15, cùng nội dung. Đúng như dự kiến: câu ngắn không kích hoạt mở rộng top_k, không có lý do đổi. |
-| vandung-q26 (106 ký tự, dưới ngưỡng 250) | 0 citation legal_text (đúng dạng — câu lý luận không gắn 1 Điều cụ thể), dùng 2 nguồn academic_reference, khớp ~2/6 essay_key_points | Không đổi — cùng 2 nguồn, cùng nội dung câu trả lời (chỉ khác vài từ diễn đạt, không đổi về chất). Xác nhận: academic_reference retrieval nằm ngoài phạm vi Bước 1 (chỉ sửa nhánh legal_text), nên không có lý do đổi. |
-| tinhhuong-q4 (572 ký tự, trên ngưỡng 250) | TỪ CHỐI kết luận: "không thể khẳng định đúng hay sai dựa trên văn bản pháp luật đã được cung cấp" — retrieval vớt nhầm Điều 165/110 + 1 Thông tư thủ tục, bỏ lỡ Điều 109/123 | Kết luận ĐÚNG: "không đúng quy định", trích Điều 110 + Điều 123 (Điều 123 = cơ sở pháp lý ground truth dùng). Lập luận: cấm đi khỏi nơi cư trú theo Điều 123 chỉ áp dụng với bị can/bị cáo; A đang bị giữ khẩn cấp, chưa có quyết định khởi tố bị can nên chưa đủ tư cách áp dụng biện pháp này. Khác đường lập luận với đáp án mẫu (đáp án mẫu dùng Điều 109 "không áp dụng đồng thời 2 biện pháp ngăn chặn"), nhưng là căn cứ hợp lệ, có thật trong corpus, dẫn tới cùng kết luận đúng — không bịa. |
+| Worst-case quan sát (4 câu) | 69.84s (tinhhuong-q7) | 26.37s (tinhhuong-q4) |
+| Trần lý thuyết | Không có - phụ thuộc hoàn toàn vào pro-preview | ≈ 18s (timeout) + latency flash-lite (~5-11s quan sát được) ≈ 30-33s |
+| Rủi ro 503 làm lỗi hẳn stream | Có | Không - 503 chuyển fallback êm, không lộ lỗi cho user |
 
-29 câu evaluation — so với baseline (`backend/evaluation/results.json` trước fix, backup tại thời điểm test):
+Bằng chứng thực tế (không phải giả lập): trong lần chạy test cuối cùng để lấy số liệu final, pro-preview
+tự nhiên gặp 2 lần 503 "high demand" thật (không ép) cho tinhhuong-q1 và tinhhuong-q7 - cả 2 lần fallback
+kích hoạt đúng, flash-lite trả lời thành công trong 7-8s, user không thấy lỗi.
 
-| Chỉ số | Trước | Sau | Chênh |
-|---|---|---|---|
-| exact_match_rate | 95% (19/20) | 90% (18/20) | −5pt |
-| mean_recall | 95% | 90% | −5pt |
-| mean_precision | 71.7% | 69% | −2.7pt |
-| groundedness | 100% | 100% | không đổi |
-| correct_refusal | 100% | 100% | không đổi |
-| academic_reference_usage | 100% | 100% | không đổi |
+Đánh đổi chấp nhận: khi fallback kích hoạt, chất lượng câu trả lời rơi về mức flash-lite+CoT (đã đo ở
+bước trên: kết luận vẫn đúng nhưng hedge/kém quyết đoán hơn pro-preview ở một số câu như tinhhuong-q7) -
+hợp lý vì có câu trả lời chất lượng khá trong thời gian chấp nhận được > không có câu trả lời/chờ vô hạn.
 
-Phân tích 2 câu khác biệt — ĐÃ XÁC MINH không phải hồi quy do thay đổi retrieval:
-- Không có câu nào trong bộ 29 câu vượt 250 ký tự (câu dài nhất vẫn dưới ngưỡng) — code path mới
-  (nhánh legal_text semantic mở rộng cho câu dài) **chưa từng được kích hoạt** khi chạy bộ eval
-  này, nên về mặt logic không thể là nguyên nhân gây khác biệt.
-- "Theo Nghị định 250/NĐ-CP... Hội đồng định giá tài sản được thành lập ở những cấp nào?"
-  (expected Điều 7, trả về Điều 8, 9): đối chiếu lại kết quả baseline gốc — câu này **đã fail sẵn
-  trước khi có bất kỳ thay đổi nào** (cùng expected=7, cùng returned=8,9). Không phải hồi quy mới.
-- "Tại sao pháp luật hình sự giới hạn tuổi chịu trách nhiệm hình sự ở mức từ đủ 14 tuổi trở lên?..."
-  (169 ký tự, dưới ngưỡng 250; expected Điều 12, baseline trả về 12+90+91, lần chạy mới chỉ trả về
-  91): gọi độc lập lại đúng câu này 3 lần liên tiếp (ngoài script eval) — kết quả 91+12, chỉ-91,
-  91+12. Tự bản thân không ổn định giữa các lần gọi, vì citations được trích bằng regex từ văn bản
-  câu trả lời sinh ra (model có nêu tên "Điều 12" trong câu trả lời hay không), không phải trích
-  trực tiếp từ kết quả retrieval thô — đây là nhiễu vốn có ở tầng generation, tồn tại độc lập với
-  thay đổi retrieval của Bước 1.
-
-Kết luận: Bước 1 không gây hồi quy thật sự trên 29 câu (bộ này chỉ đủ để xác nhận "không phá gì"
-cho câu ngắn/vừa, không đủ dài để tự nó chứng minh cải thiện — vì vậy việc test riêng 3 câu chẩn
-đoán ở trên là bắt buộc, không chỉ là thủ tục).
+Test: dùng lại 3 câu chẩn đoán (đặc biệt tinhhuong-q4) + thêm 2-3 câu Tình huống khác trong ngân hàng đề (chưa từng test) để xác nhận cải thiện có nhất quán, không chỉ đúng 1 câu đã biết đáp án. Chạy lại 29 câu evaluation, xác nhận không hồi quy + đo thêm latency (model mạnh hơn có thể chậm hơn, cần biết đánh đổi).
+ĐÃ THỰC HIỆN ĐẦY ĐỦ - xem chi tiết ở 2 mục [x] trên. 29 câu evaluation qua 3 lần chạy (model routing,
+CoT-only isolation, fallback cuối) đều cho kết quả giống hệt nhau (exact_match_rate 90%, mean_recall
+90%, mean_precision 68-69%, groundedness/correct_refusal 100%) - không hồi quy, vì bộ 29 câu không có
+câu nào vượt ngưỡng 250 ký tự nên chưa từng thực sự kích hoạt code path câu dài (retrieval mở rộng,
+model routing, CoT, hay fallback) - bộ eval này chỉ xác nhận "không phá gì" cho câu ngắn/vừa, việc kiểm
+chứng cải thiện thực chất luôn phải dựa vào test riêng các câu tình huống dài.

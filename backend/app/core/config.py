@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     google_api_key: str = Field(alias="GOOGLE_API_KEY", min_length=1)
     gemini_chat_model: str = Field(alias="GEMINI_CHAT_MODEL", min_length=1)
     gemini_embedding_model: str = Field(alias="GEMINI_EMBEDDING_MODEL", min_length=1)
+    # requirements.md "Tăng impact LLM cho câu hỏi dài/phức tạp": stronger model used only for the
+    # final generation call on long/tình huống questions (is_long_question, see rag_service.py's
+    # LONG_QUESTION_CHAR_THRESHOLD) - unset falls back to gemini_chat_model so existing deployments
+    # keep working unchanged until this is explicitly configured.
+    gemini_chat_model_complex: str | None = Field(default=None, alias="GEMINI_CHAT_MODEL_COMPLEX")
     qdrant_url: AnyHttpUrl = Field(alias="QDRANT_URL")
     qdrant_api_key: str = Field(alias="QDRANT_API_KEY", min_length=1)
     qdrant_collection: str = Field(alias="QDRANT_COLLECTION", min_length=1)
@@ -42,6 +47,10 @@ class Settings(BaseSettings):
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
+
+    @property
+    def resolved_complex_chat_model(self) -> str:
+        return self.gemini_chat_model_complex or self.gemini_chat_model
 
     @field_validator("environment")
     @classmethod
