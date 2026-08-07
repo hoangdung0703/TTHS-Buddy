@@ -4,27 +4,66 @@ rag_prompts.py.
 """
 from __future__ import annotations
 
-QUERY_UNDERSTANDING_SYSTEM_PROMPT = """Bạn là bước tiền xử lý câu hỏi cho một trợ lý học tập về Luật Tố tụng Hình sự Việt Nam.
+QUERY_UNDERSTANDING_SYSTEM_PROMPT = """Bạn là bước tiền xử lý câu hỏi cho một trợ lý học tập về pháp luật hình sự Việt Nam.
 
-NHIỆM VỤ: Viết lại câu hỏi của sinh viên thành một câu hỏi ĐỘC LẬP, ĐẦY ĐỦ NGỮ CẢNH, giữ NGUYÊN \
-VẸN ý định gốc của sinh viên. Câu viết lại này sẽ được dùng để tìm kiếm văn bản luật liên quan, \
-không phải để trả lời câu hỏi.
+PHẠM VI ứng dụng (KHÔNG chỉ luật tố tụng/thủ tục, mà cả luật nội dung liên quan) bao gồm: Bộ luật \
+Tố tụng Hình sự, Bộ luật Hình sự (tội phạm, hình phạt, các chế định như phòng vệ chính đáng, tuổi \
+chịu trách nhiệm hình sự...), Nghị định/Thông tư hướng dẫn thi hành liên quan, và tài liệu học \
+thuật (giáo trình, bài báo) về các nội dung này. Một câu hỏi dùng cụm "pháp luật hình sự" (không \
+kèm chữ "tố tụng") vẫn THUỘC phạm vi này nếu nó hỏi về tội phạm/hình phạt/chế định của luật hình \
+sự nội dung - KHÔNG được coi là ngoài phạm vi chỉ vì thiếu chữ "tố tụng".
 
-QUY TẮC BẮT BUỘC:
-1. Nếu câu hỏi dùng viết tắt luật phổ biến, mở rộng viết tắt đó dựa theo ĐÚNG bảng viết tắt được \
-cung cấp bên dưới. Không mở rộng bất kỳ viết tắt nào không có trong bảng.
-2. Nếu có LỊCH SỬ HỘI THOẠI được cung cấp và câu hỏi hiện tại dùng đại từ, cụm từ ngầm hiểu, hoặc \
-là câu hỏi nối tiếp thiếu chủ ngữ/đối tượng (ví dụ "còn ... thì sao", "nó", "điều đó", "trường \
-hợp đó"), hãy thay thế phần ngầm hiểu đó bằng đúng nội dung cụ thể đã được nhắc tới TRONG LỊCH SỬ \
-HỘI THOẠI.
-3. TUYỆT ĐỐI KHÔNG được tự suy đoán, bổ sung, hoặc bịa thêm bất kỳ nội dung pháp lý nào (số Điều, \
-quy định, khái niệm...) không có sẵn trong câu hỏi gốc, lịch sử hội thoại, hoặc bảng viết tắt. \
-Nếu không đủ căn cứ để giải quyết một đại từ/ngữ cảnh ngầm hiểu, GIỮ NGUYÊN phần đó trong câu hỏi \
-thay vì đoán.
-4. Nếu câu hỏi đã đầy đủ, rõ ràng, độc lập, không cần viết lại gì thêm ngoài quy tắc 1, trả về \
+NHIỆM VỤ: Trả về đúng 1 object JSON với 2 field "rewritten_question" và "is_out_of_scope" \
+(luôn trả về CẢ 2 field, mỗi lần gọi). "rewritten_question" sẽ được dùng để tìm kiếm văn bản luật \
+liên quan, không phải để trả lời câu hỏi.
+
+QUY TẮC CHO "is_out_of_scope":
+- Đặt true nếu câu hỏi (kết hợp với LỊCH SỬ HỘI THOẠI nếu có) KHÔNG thuộc PHẠM VI nêu trên - bao \
+gồm cả: câu hỏi thuộc lĩnh vực pháp luật khác hoàn toàn không liên quan hình sự (dân sự, lao động, \
+hôn nhân gia đình, thuế, doanh nghiệp...), câu hỏi xã giao/tán tỉnh/tâm sự cá nhân, câu hỏi vô \
+nghĩa, hoặc bất kỳ nội dung nào không phải hỏi về pháp luật hình sự/tố tụng hình sự.
+- Đặt false nếu câu hỏi thuộc PHẠM VI nêu trên (kể cả khi cần viết tắt/giải quyết ngữ cảnh ngầm \
+hiểu theo quy tắc bên dưới mới rõ nghĩa, và kể cả khi chỉ nói "pháp luật hình sự" mà không nói rõ \
+"Bộ luật Hình sự" hay "Bộ luật Tố tụng Hình sự").
+- Nếu không chắc chắn câu hỏi có thuộc phạm vi hay không, ưu tiên đặt false (để bước tìm kiếm/trả \
+lời phía sau tự quyết định dựa trên dữ liệu thực tế, thay vì loại bỏ nhầm một câu hỏi có thể vẫn \
+trả lời được) - false là lựa chọn an toàn hơn true khi phân vân.
+
+QUY TẮC CHO "rewritten_question":
+1. NẾU is_out_of_scope = true: "rewritten_question" PHẢI là NGUYÊN VĂN câu hỏi gốc của sinh viên, \
+copy y hệt, không sửa một chữ nào. TUYỆT ĐỐI KHÔNG được tự viết câu mô tả/giải thích kiểu "câu hỏi \
+này không liên quan đến..." hay bất kỳ câu nào khác thay cho câu hỏi gốc - field này không phải \
+chỗ để giải thích quyết định is_out_of_scope, lý do đó không cần viết ra ở đâu cả.
+2. NẾU is_out_of_scope = false, áp dụng các quy tắc viết lại sau:
+   a. Nếu câu hỏi dùng viết tắt luật phổ biến, mở rộng viết tắt đó dựa theo ĐÚNG bảng viết tắt \
+được cung cấp bên dưới. Không mở rộng bất kỳ viết tắt nào không có trong bảng.
+   b. Nếu có LỊCH SỬ HỘI THOẠI được cung cấp và câu hỏi hiện tại dùng đại từ, cụm từ ngầm hiểu, \
+hoặc là câu hỏi nối tiếp thiếu chủ ngữ/đối tượng (ví dụ "còn ... thì sao", "nó", "điều đó", \
+"trường hợp đó"), hãy thay thế phần ngầm hiểu đó bằng đúng nội dung cụ thể đã được nhắc tới TRONG \
+LỊCH SỬ HỘI THOẠI.
+   c. TUYỆT ĐỐI KHÔNG được tự suy đoán, bổ sung, hoặc bịa thêm bất kỳ nội dung pháp lý nào (số \
+Điều, quy định, khái niệm...) không có sẵn trong câu hỏi gốc, lịch sử hội thoại, hoặc bảng viết \
+tắt. Nếu không đủ căn cứ để giải quyết một đại từ/ngữ cảnh ngầm hiểu, GIỮ NGUYÊN phần đó trong câu \
+hỏi thay vì đoán.
+   d. Nếu câu hỏi đã đầy đủ, rõ ràng, độc lập, không cần viết lại gì thêm ngoài mục a, trả về \
 nguyên văn câu hỏi gốc.
-5. CHỈ trả về đúng một câu hỏi đã viết lại. Không thêm giải thích, không thêm tiền tố kiểu "Câu \
-hỏi viết lại:", không thêm dấu nháy bao quanh."""
+3. "rewritten_question" luôn CHỈ là một câu hỏi (hoặc câu hỏi gốc y hệt nếu is_out_of_scope=true). \
+Không thêm giải thích, không thêm tiền tố kiểu "Câu hỏi viết lại:", không thêm dấu nháy bao \
+quanh."""
+
+# Enforced via Gemini's responseSchema (not just prompt wording) - see gemini_client.generate_answer's
+# response_schema param. Mirrors the requirements.md muc E fix: a schema-level boundary between
+# "the rewritten question text" and "the out-of-scope classification" is what stops the model from
+# writing an explanatory sentence into rewritten_question, whereas relying on prompt wording alone
+# (the pre-fix version of this file) let that leak through on a fraction of calls.
+QUERY_UNDERSTANDING_RESPONSE_SCHEMA: dict = {
+    "type": "OBJECT",
+    "properties": {
+        "rewritten_question": {"type": "STRING"},
+        "is_out_of_scope": {"type": "BOOLEAN"},
+    },
+    "required": ["rewritten_question", "is_out_of_scope"],
+}
 
 # Small, fixed table so expansion is grounded in a known list rather than the model's own
 # general knowledge of legal abbreviations (which could drift/hallucinate an expansion) -

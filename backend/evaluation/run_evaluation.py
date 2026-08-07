@@ -315,7 +315,12 @@ def main() -> None:
         print(f"  [{i}/{len(test_set)}] {case['question'][:70]}...")
         result = run_one(api_base_url, token, user_id, service_client, case)
         results.append(result)
-        time.sleep(0.3)  # light pacing against the Gemini API, not a hard rate limit need
+        # Must clear app.core.rate_limit.LLM_ROUTE_RATE_LIMIT (10/minute, per authenticated user)
+        # on /api/chat/query, not just "light pacing against the Gemini API" - one eval case is
+        # exactly one call against that limit, so anything faster than 6s/case risks a 429 that
+        # aborts the whole run partway through (observed directly: request 21/29 hit 429 at the
+        # old 0.3s pacing).
+        time.sleep(6.5)
 
     summary = summarize(results)
     print_report(results, summary)

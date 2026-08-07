@@ -63,14 +63,22 @@ def embed_query(text: str, settings: Settings) -> list[float]:
     return response.json()["embedding"]["values"]
 
 
-def generate_answer(system_prompt: str, user_prompt: str, settings: Settings, response_json: bool = False) -> str:
+def generate_answer(system_prompt: str, user_prompt: str, settings: Settings, response_json: bool = False,
+                     response_schema: dict | None = None) -> str:
     url = GENERATE_CONTENT_URL_TEMPLATE.format(model=settings.gemini_chat_model)
     generation_config: dict[str, object] = {"temperature": 0.1}
     if response_json:
-        # Used by essay_service.py's grading call - structured output means we can classify
-        # each rubric point by array position instead of fuzzy-matching LLM-reproduced text
-        # against the rubric strings.
+        # Used by essay_service.py's grading call and query_understanding_service.py's rewrite
+        # call - structured output means callers can rely on named fields (e.g. classify each
+        # rubric point by array position, or read is_out_of_scope as its own boolean) instead of
+        # fuzzy-matching free text.
         generation_config["responseMimeType"] = "application/json"
+    if response_schema is not None:
+        # Constrains the JSON shape itself (not just "some JSON") - see
+        # query_understanding_prompts.py's QUERY_UNDERSTANDING_RESPONSE_SCHEMA for why this
+        # matters: without it, nothing stops the model from putting explanatory prose into a
+        # field meant to hold only the rewritten question.
+        generation_config["responseSchema"] = response_schema
 
     body = {
         "systemInstruction": {"parts": [{"text": system_prompt}]},

@@ -616,7 +616,7 @@ async def retrieve_context(question: str, settings: Settings, qdrant_client: Qdr
 
 async def stream_answer_question(
     question: str, conversation_id: uuid.UUID, settings: Settings, qdrant_client: QdrantClient, result: RagAnswer,
-    recent_turns: list[dict[str, str]] | None = None
+    recent_turns: list[dict[str, str]] | None = None, is_out_of_scope: bool = False
 ) -> AsyncIterator[tuple[str, ChatStreamCitationsEvent | ChatStreamAnswerDeltaEvent |
                           ChatStreamSuggestedFollowupsEvent | ChatStreamDoneEvent]]:
     """Streaming counterpart of the old answer_question (Phase 4 Extension - see
@@ -643,7 +643,30 @@ async def stream_answer_question(
     citations are computed after the stream ends rather than guessed from retrieval alone -
     forwarding every token to the client immediately keeps the perceived response latency the
     same as before; only the citations badge is delayed until the answer it describes exists.
+
+    `is_out_of_scope` (requirements.md muc E - query_understanding_service.rewrite_question's own
+    classification, computed by the caller BEFORE this function runs) short-circuits straight to
+    the refusal answer, same shape as the no-context-blocks case below, WITHOUT calling retrieval
+    or generation at all - a question already classified as unrelated to Luat To tung Hinh su has
+    nothing for either step to usefully do, and skipping both avoids the exact failure mode this
+    fix targets: a malformed/off-topic query string reaching retrieval or the generation prompt.
     """
+    if is_out_of_scope:
+        result.answer = FALLBACK_ANSWER
+        result.citations = []
+        result.related_articles = []
+        result.suggested_followups = []
+        result.is_fallback = True
+        result.used_academic_reference = False
+        result.retrieved_chunks = []
+        yield ("citations", ChatStreamCitationsEvent(
+            citations=[], related_articles=[], conversation_id=conversation_id, rewritten_question=question
+        ))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=FALLBACK_ANSWER))
+        yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
+        yield ("done", ChatStreamDoneEvent())
+        return
+
     if is_aggregate_structure_question(question):
         source_document = detect_source_document(question)
         if source_document:

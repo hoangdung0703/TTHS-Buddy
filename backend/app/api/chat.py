@@ -134,7 +134,8 @@ async def query_chat(
     # pattern already used for the sync QdrantClient calls in rag_service.retrieve_context (see
     # requirements.md security/capacity audit - this was the main cause of near-total
     # serialization measured under concurrent chat load before this fix).
-    rewritten_question = await asyncio.to_thread(rewrite_question, body.question, recent_turns, settings)
+    query_understanding = await asyncio.to_thread(rewrite_question, body.question, recent_turns, settings)
+    rewritten_question = query_understanding.rewritten_question
 
     # Mutated in place by stream_answer_question as the stream progresses - holds the fields
     # (is_fallback, used_academic_reference, retrieved_chunks) that are intentionally never sent
@@ -146,7 +147,8 @@ async def query_chat(
 
     async def event_stream() -> AsyncIterator[str]:
         async for event_name, event_payload in stream_answer_question(
-            rewritten_question, conversation_id, settings, qdrant_client, result, recent_turns
+            rewritten_question, conversation_id, settings, qdrant_client, result, recent_turns,
+            is_out_of_scope=query_understanding.is_out_of_scope
         ):
             yield _sse_format(event_name, event_payload)
 
