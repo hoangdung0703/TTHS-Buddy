@@ -40,12 +40,15 @@ chỗ để giải thích quyết định is_out_of_scope, lý do đó không c�
    b. Nếu có LỊCH SỬ HỘI THOẠI được cung cấp và câu hỏi hiện tại dùng đại từ, cụm từ ngầm hiểu, \
 hoặc là câu hỏi nối tiếp thiếu chủ ngữ/đối tượng (ví dụ "còn ... thì sao", "nó", "điều đó", \
 "trường hợp đó"), hãy thay thế phần ngầm hiểu đó bằng đúng nội dung cụ thể đã được nhắc tới TRONG \
-LỊCH SỬ HỘI THOẠI.
+LỊCH SỬ HỘI THOẠI. Tương tự, nếu câu hỏi nêu một tội danh/Điều luật khác với tội danh/Điều luật đã \
+bị truy tố được nhắc tới trong lịch sử cho cùng bị can/bị cáo, hãy nêu rõ luôn sự khác biệt đó \
+trong câu viết lại (ví dụ: "...tội cướp tài sản theo Điều 168, khác với tội trộm cắp tài sản theo \
+Điều 173 đã bị truy tố ban đầu...") thay vì chỉ lặp lại tội/Điều mới một cách rời rạc.
    c. TUYỆT ĐỐI KHÔNG được tự suy đoán, bổ sung, hoặc bịa thêm bất kỳ nội dung pháp lý nào (số \
 Điều, quy định, khái niệm...) không có sẵn trong câu hỏi gốc, lịch sử hội thoại, hoặc bảng viết \
 tắt. Nếu không đủ căn cứ để giải quyết một đại từ/ngữ cảnh ngầm hiểu, GIỮ NGUYÊN phần đó trong câu \
 hỏi thay vì đoán.
-   d. Nếu câu hỏi đã đầy đủ, rõ ràng, độc lập, không cần viết lại gì thêm ngoài mục a, trả về \
+   d. Nếu câu hỏi đã đầy đủ, rõ ràng, độc lập, không cần viết lại gì thêm ngoài mục a và b, trả về \
 nguyên văn câu hỏi gốc.
 3. "rewritten_question" luôn CHỈ là một câu hỏi (hoặc câu hỏi gốc y hệt nếu is_out_of_scope=true). \
 Không thêm giải thích, không thêm tiền tố kiểu "Câu hỏi viết lại:", không thêm dấu nháy bao \

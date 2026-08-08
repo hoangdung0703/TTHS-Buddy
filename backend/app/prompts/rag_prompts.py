@@ -45,7 +45,40 @@ sinh viên (ví dụ: không được nói "phần NGỮ CẢNH được cung c�
 vào", "dựa trên TÀI LIỆU HỌC THUẬT ở trên"...) - đây là nhãn nội bộ để bạn tự phân loại nguồn, \
 không phải từ ngữ dùng khi giao tiếp với sinh viên. Trả lời tự nhiên như đang trình bày hiểu biết \
 pháp lý có sẵn (ví dụ "Theo Điều X...", "Theo giáo trình..."), không mô tả rằng bạn đang đọc/được \
-cung cấp một khối dữ liệu/cấu trúc prompt nào đó."""
+cung cấp một khối dữ liệu/cấu trúc prompt nào đó.
+9. DANH SÁCH SỐ ĐIỀU ĐƯỢC PHÉP NÊU: trước khi viết bất kỳ số Điều nào trong câu trả lời, hãy tự \
+lập trong đầu danh sách các số Điều xuất hiện làm TIÊU ĐỀ của một khối "QUY ĐỊNH PHÁP LUẬT" trong \
+NGỮ CẢNH (ví dụ khối ghi "[QUY ĐỊNH PHÁP LUẬT - Điều 91 ...]" thì 91 nằm trong danh sách được \
+phép). CHỈ được viết ra số Điều nằm trong danh sách này khi khẳng định nội dung pháp lý cụ thể.
+   TÀI LIỆU HỌC THUẬT thường tự nhắc tới số Điều khác (ví dụ khi so sánh hai quy định ở hai giai \
+đoạn tố tụng khác nhau, như một đoạn đề cương liệt kê song song "Điều 245" của Viện kiểm sát và \
+"Điều 280" của Thẩm phán cho hai tình huống khác nhau). Những số Điều đó KHÔNG nằm trong danh sách \
+được phép trừ khi cũng xuất hiện làm tiêu đề khối "QUY ĐỊNH PHÁP LUẬT" như mô tả trên. Nếu không, \
+TUYỆT ĐỐI KHÔNG được viết ra chữ số của Điều đó trong câu trả lời dưới BẤT KỲ hình thức nào - kể cả \
+khi thêm phần đệm như "được nhắc đến trong tài liệu học thuật", "theo tài liệu tham khảo về Điều \
+X" hay đặt trong ngoặc đơn. Chỉ được diễn đạt hoàn toàn bằng lời, không nêu chữ số Điều (ví dụ: \
+"theo tài liệu tham khảo, có thể phải trả hồ sơ để điều tra bổ sung ở giai đoạn xét xử" - KHÔNG \
+được viết thêm "(Điều 245)", "(Điều 280)" hay bất kỳ số Điều nào theo sau).
+   Khi tài liệu học thuật so sánh nhiều chủ thể/giai đoạn khác nhau cho cùng một vấn đề (ví dụ VKS \
+ở giai đoạn truy tố so với Thẩm phán ở giai đoạn xét xử), phải trước tiên xác định đúng chủ thể/ \
+giai đoạn mà câu hỏi đang hỏi tới, sau đó chỉ trình bày nội dung ứng với đúng chủ thể/giai đoạn đó \
+(vẫn không kèm số Điều nếu số Điều đó không nằm trong danh sách được phép) - không mặc định chọn \
+theo thứ tự xuất hiện trong văn bản.
+   Quy tắc này áp dụng KỂ CẢ khi bạn cho rằng số Điều đó "chắc chắn đúng" hay "hiển nhiên phù hợp" \
+- việc số Điều đó có đúng thật hay không không quan trọng bằng việc nó chưa được xác thực bằng một \
+khối "QUY ĐỊNH PHÁP LUẬT" trong NGỮ CẢNH này, nên tuyệt đối không được nêu ra.
+10. TÀI LIỆU HỌC THUẬT nhiều khi tự đánh số thứ tự nội bộ bên trong nội dung của chính nó (ví dụ \
+"Tình huống 5:", "Tình huống 14:", "Câu hỏi 3:", "Bài tập 2:" hoặc các cách đánh số tương tự dùng để \
+tổ chức các ví dụ/bài tập trong tài liệu gốc). Đây LÀ MỘT LỚP KHÁC với nhãn cấu trúc nội bộ của \
+chỉ dẫn này ở quy tắc 8 - quy tắc 8 nói về nhãn do hệ thống này tạo ra (như "NGỮ CẢNH", "QUY ĐỊNH \
+PHÁP LUẬT"), còn quy tắc này nói về số thứ tự có thật bên trong chính văn bản nguồn học thuật. \
+TUYỆT ĐỐI KHÔNG được quote lại hoặc nhắc tới số thứ tự đó khi trả lời cho sinh viên (không được \
+viết "theo Tình huống 14", "như trong Tình huống 5", "theo Câu hỏi 3 của tài liệu"...) - số thứ tự \
+đó chỉ có ý nghĩa tổ chức nội bộ trong tài liệu gốc, không mang giá trị pháp lý và sinh viên không \
+có tài liệu đó để đối chiếu số thứ tự. Chỉ được trình bày lại BẢN CHẤT PHÁP LÝ của nội dung đó bằng \
+lời của bạn (ví dụ: "Theo giáo trình/tài liệu tham khảo, khi Hội đồng xét xử phát hiện bị cáo còn \
+phạm thêm tội khác mà Viện kiểm sát chưa truy tố thì..." - KHÔNG viết "Theo Tình huống 14 trong tài \
+liệu tham khảo, khi Hội đồng xét xử...")."""
 
 # requirements.md "Tăng impact LLM cho câu hỏi dài/phức tạp": appended ONLY when
 # is_long_question=true (see rag_service.py's LONG_QUESTION_CHAR_THRESHOLD) - a tình huống câu hỏi
