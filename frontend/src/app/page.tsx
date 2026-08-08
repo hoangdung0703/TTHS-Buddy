@@ -49,11 +49,8 @@ export default function HomePage() {
       </header>
 
       <main className="relative z-10">
-        <section className="mx-auto grid max-w-6xl grid-cols-12 gap-8 px-8 pb-24 pt-20">
+        <section className="mx-auto grid max-w-6xl grid-cols-12 gap-8 px-8 pb-24 pt-28">
           <div className="col-span-12 md:col-span-8 md:col-start-2">
-            <p className="mb-8 inline-flex items-center rounded-full bg-accent px-4 py-1.5 text-sm font-semibold uppercase tracking-[0.12em] text-accent-foreground">
-              Tố tụng Hình sự · Trợ lý học tập AI
-            </p>
             <h1 className="mb-8 font-serif text-[clamp(2.6rem,5vw,4.2rem)] font-light leading-[1.15] tracking-tight text-foreground">
               Mọi câu trả lời
               <br />
