@@ -104,24 +104,43 @@ AGGREGATE_SCROLL_PAGE_SIZE = 1000
 # sees every chunk of any chuong without needing pagination.
 SUGGESTED_FOLLOWUP_CHUONG_SCROLL_LIMIT = 200
 
-LEGAL_SEMANTIC_TOP_K = 5
-LEGAL_PRIMARY_COUNT = 3
+# requirements.md "Cải thiện retrieval..." Bước 1 originally widened this pool ONLY for long/
+# tình huống questions (len(question) > 250), on the theory that only a long, multi-fact question
+# dilutes the embedding enough to push the correct Dieu out of a small top-k. A later real UAT
+# case (short multi-turn question, ~190 chars, about a co-defendant discovered mid-trial) showed
+# the same failure mode on a SHORT question too: the correct Dieu (280 - "Trả hồ sơ để điều tra bổ
+# sung") scored 0.66 (above LEGAL_SCORE_THRESHOLD) but ranked #11, outside a top_k=5 pool - the
+# "long question" proxy simply didn't cover this case. Measured empirically (real API, not just
+# this one case) before generalizing: applying top_k=25/primary_count=8 to EVERY legal_text
+# question (not just long ones) costs +0.058s mean retrieval latency (retrieval already runs
+# concurrently with academic_reference and dominated by the embed call, not Qdrant's own top-k
+# search cost) and, on the 29-question eval suite, citation exact_match_rate 95%->100% and
+# mean_recall 95%->100%, with mean_precision only 77%->75% (2pp, within noise - LEGAL_SCORE_THRESHOLD
+# still filters low-relevance chunks and primary_count still caps how many Dieu reach the final
+# context/citations either way). No length-based proxy needed - always use the wider pool.
+LEGAL_SEMANTIC_TOP_K = 25
+LEGAL_PRIMARY_COUNT = 8
+
+# requirements.md "Điều 280 vs Điều 170" investigation: with LEGAL_PRIMARY_COUNT=8 chosen purely by
+# score-order distinct-Dieu rank, several near-duplicate administrative Dieu from the SAME source
+# document (e.g. Thông tư liên tịch 01/2026's Điều 8/9/14/29, all about khởi tố bị can/nhập tách vụ
+# án - topically adjacent to nearly every procedural question) can occupy most of the 8 slots ahead
+# of the actually-relevant Dieu from a DIFFERENT document (real case: Điều 280 BLTTHS ranked #9
+# distinct-Dieu, one slot past the cap, on ~10-20% of runs depending on minor Query Understanding
+# rewrite variance) - confirmed via direct _retrieve_legal debugging: the correct Dieu was in the
+# top-25 semantic pool but never reached legal_primary, and legal_related (where it landed instead)
+# is NEVER fed into context_blocks/generation, so this was a retrieval-selection bug, not a
+# generation "picked the wrong of two co-present Dieu" bug. 3 (not 4) is the smallest cap that
+# empirically resolves the reproduced case - see _retrieve_legal for how it's applied.
+MAX_PRIMARY_PER_SOURCE_DOCUMENT = 3
 LEGAL_RELATED_COUNT = 2
 ACADEMIC_TOP_K = 3
 LEGAL_SCORE_THRESHOLD = 0.5
 ACADEMIC_SCORE_THRESHOLD = 0.5
 
-# requirements.md "Cải thiện retrieval cho câu hỏi vận dụng/tình huống dài" Bước 1: a long,
-# multi-fact tình huống question dilutes the embedding towards surface procedural details
-# repeated in the question text, pushing the Dieu that actually holds the core legal principle
-# out of a small top-k even when it still clears LEGAL_SCORE_THRESHOLD. Widening the semantic
-# pool (not the score threshold, not academic_reference, not exact-match) gives that Dieu more
-# room to surface without loosening precision for the short/medium questions that already work -
-# threshold picked from the 3 real diagnostic questions (106/159/572 chars): only the 572-char
-# tình huống question should cross it, vandung-q7 (159) and vandung-q26 (106) must not.
+# Still used by stream_answer_question below (generation model/CoT addendum selection for long/
+# tình huống questions) - retrieval pool width no longer depends on this (see above).
 LONG_QUESTION_CHAR_THRESHOLD = 250
-LEGAL_SEMANTIC_TOP_K_LONG = 25
-LEGAL_PRIMARY_COUNT_LONG = 8
 
 # requirements.md "Tăng impact LLM..." fallback step: settings.resolved_complex_chat_model
 # (preview-tier, high latency variance - 5s-68s observed) gets this long to produce a first token
@@ -482,20 +501,16 @@ def _retrieve_legal(client: QdrantClient, collection: str, question: str,
     """Returns (primary_chunks, related_chunks). Exact Dieu-number matches (if the question names
     one) always take priority over semantic search results for the primary slots.
 
-    Long/tình huống questions (see LONG_QUESTION_CHAR_THRESHOLD) widen both the semantic pool and
-    the number of primary slots - a wider pool alone would still cap the correct Dieu out at
-    LEGAL_PRIMARY_COUNT=3 if 3 more-surface-similar Dieu already rank above it, which is exactly
-    the failure mode this fix targets. Exact-match and academic_reference retrieval are
-    untouched - only the legal_text semantic branch is affected.
+    Semantic pool width (LEGAL_SEMANTIC_TOP_K/LEGAL_PRIMARY_COUNT) is the same for every
+    question - see those constants' comment for why a length-based proxy for "does this question
+    need a wider pool" was tried first and replaced. Exact-match and academic_reference retrieval
+    are untouched - only the legal_text semantic branch is affected by pool width.
     """
     dieu_number = detect_dieu_number(question)
     source_document = detect_source_document(question) if dieu_number else None
     exact_chunks = _retrieve_legal_exact(client, collection, dieu_number, source_document) if dieu_number else []
 
-    is_long_question = len(question) > LONG_QUESTION_CHAR_THRESHOLD
-    semantic_top_k = LEGAL_SEMANTIC_TOP_K_LONG if is_long_question else LEGAL_SEMANTIC_TOP_K
-    primary_count = LEGAL_PRIMARY_COUNT_LONG if is_long_question else LEGAL_PRIMARY_COUNT
-    semantic_chunks = _retrieve_semantic(client, collection, vector, "legal_text", semantic_top_k)
+    semantic_chunks = _retrieve_semantic(client, collection, vector, "legal_text", LEGAL_SEMANTIC_TOP_K)
 
     merged = _dedup_by_point_id(exact_chunks + semantic_chunks)
     above_threshold = [c for c in merged if c.is_exact_match or (c.score or 0.0) >= LEGAL_SCORE_THRESHOLD]
@@ -503,12 +518,35 @@ def _retrieve_legal(client: QdrantClient, collection: str, question: str,
     # Group by (dieu_number, law_version) rather than slicing the flat chunk list, so a long
     # Dieu split into several Khoan chunks (see ingestion/chunking.py) counts as ONE Dieu
     # towards primary_count instead of eating multiple primary slots with itself.
+    #
+    # Diversity-aware selection (see MAX_PRIMARY_PER_SOURCE_DOCUMENT's comment): still walk
+    # above_threshold in the SAME score order as before (a single source's own internal ranking
+    # is untouched), but once a source_document has filled its per-source cap, further Dieu from
+    # that SAME source are deferred rather than immediately consuming a primary slot - giving a
+    # competitive Dieu from a DIFFERENT source room to be picked up first. Deferred keys backfill
+    # any slots still empty after one full pass, so a question that genuinely has no competing
+    # source in the pool (e.g. asking broadly about one specific Thông tư/Nghị định) still fills
+    # up to LEGAL_PRIMARY_COUNT instead of being short-changed by a cap with nothing to trade off
+    # against - the cap is a tie-breaker among competing sources, not a hard ceiling.
     primary_keys_ordered: list[tuple[str, str | None]] = []
+    deferred_keys: list[tuple[str, str | None]] = []
+    seen_keys: set[tuple[str, str | None]] = set()
+    source_counts: dict[str, int] = {}
     for chunk in above_threshold:
         key = (chunk.payload["dieu_number"], chunk.payload["law_version"])
-        if key not in primary_keys_ordered:
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        source_document = chunk.payload["source_document"]
+        if (len(primary_keys_ordered) < LEGAL_PRIMARY_COUNT
+                and source_counts.get(source_document, 0) < MAX_PRIMARY_PER_SOURCE_DOCUMENT):
             primary_keys_ordered.append(key)
-    primary_keys = set(primary_keys_ordered[:primary_count])
+            source_counts[source_document] = source_counts.get(source_document, 0) + 1
+        else:
+            deferred_keys.append(key)
+    if len(primary_keys_ordered) < LEGAL_PRIMARY_COUNT:
+        primary_keys_ordered.extend(deferred_keys[:LEGAL_PRIMARY_COUNT - len(primary_keys_ordered)])
+    primary_keys = set(primary_keys_ordered[:LEGAL_PRIMARY_COUNT])
 
     primary = [c for c in above_threshold
                if (c.payload["dieu_number"], c.payload["law_version"]) in primary_keys]
