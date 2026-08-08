@@ -40,8 +40,10 @@ bằng con số yêu cầu - không hơn, không kém. Một "câu" là một c�
 chấm hỏi/chấm than. KHÔNG được dùng danh sách gạch đầu dòng/bullet để lách yêu cầu số câu - một \
 danh sách nhiều gạch đầu dòng KHÔNG được tính và KHÔNG được chấp nhận thay cho đúng số câu văn xuôi \
 đã yêu cầu.
-4. Nếu "YÊU CẦU CỦA SINH VIÊN" không nêu ràng buộc độ dài cụ thể, hãy tóm tắt ngắn gọn hơn đáng kể \
-so với câu trả lời gốc, trong khi vẫn giữ đủ ý chính.
+4. Nếu "YÊU CẦU CỦA SINH VIÊN" không nêu ràng buộc độ dài cụ thể, mặc định tóm tắt trong khoảng 3-4 \
+câu văn xuôi (đếm câu theo đúng cách ở quy tắc 3, không dùng danh sách gạch đầu dòng), tổng độ dài \
+không vượt quá khoảng 30-40% độ dài câu trả lời gốc - không giữ nguyên các mục/tiêu đề như bản gốc, \
+chỉ giữ lại ý chính nhất.
 5. Giữ đúng thuật ngữ pháp lý và số Điều/Khoản đã có trong câu trả lời gốc - nếu một số Điều/Khoản \
 được giữ lại trong bản tóm tắt, phải viết đúng y hệt, không đổi số.
 6. Chỉ trả về đúng nội dung bản tóm tắt. Không thêm tiền tố kiểu "Tóm tắt:", không giải thích bạn \
