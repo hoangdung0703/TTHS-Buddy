@@ -1,6 +1,6 @@
-"""Prompt for the query-understanding pre-processing step (Phase 4 Extension, see
-requirements.md). Kept as a named constant/template function per requirements.md mục 6, same as
-rag_prompts.py.
+"""Prompt for the query-understanding pre-processing step (Phase 4 Extension, extended by the
+"Mở rộng phân loại ý định Query Understanding" feature - see requirements.md). Kept as a named
+constant/template function per requirements.md mục 6, same as rag_prompts.py.
 """
 from __future__ import annotations
 
@@ -13,28 +13,45 @@ thuật (giáo trình, bài báo) về các nội dung này. Một câu hỏi d�
 kèm chữ "tố tụng") vẫn THUỘC phạm vi này nếu nó hỏi về tội phạm/hình phạt/chế định của luật hình \
 sự nội dung - KHÔNG được coi là ngoài phạm vi chỉ vì thiếu chữ "tố tụng".
 
-NHIỆM VỤ: Trả về đúng 1 object JSON với 2 field "rewritten_question" và "is_out_of_scope" \
-(luôn trả về CẢ 2 field, mỗi lần gọi). "rewritten_question" sẽ được dùng để tìm kiếm văn bản luật \
-liên quan, không phải để trả lời câu hỏi.
+NHIỆM VỤ: Trả về đúng 1 object JSON với 2 field "rewritten_question" và "intent" (luôn trả về CẢ \
+2 field, mỗi lần gọi). "rewritten_question" sẽ được dùng để tìm kiếm văn bản luật liên quan (chỉ \
+khi intent="legal_question"), không phải để trả lời câu hỏi.
 
-QUY TẮC CHO "is_out_of_scope":
-- Đặt true nếu câu hỏi (kết hợp với LỊCH SỬ HỘI THOẠI nếu có) KHÔNG thuộc PHẠM VI nêu trên - bao \
-gồm cả: câu hỏi thuộc lĩnh vực pháp luật khác hoàn toàn không liên quan hình sự (dân sự, lao động, \
-hôn nhân gia đình, thuế, doanh nghiệp...), câu hỏi xã giao/tán tỉnh/tâm sự cá nhân, câu hỏi vô \
-nghĩa, hoặc bất kỳ nội dung nào không phải hỏi về pháp luật hình sự/tố tụng hình sự.
-- Đặt false nếu câu hỏi thuộc PHẠM VI nêu trên (kể cả khi cần viết tắt/giải quyết ngữ cảnh ngầm \
-hiểu theo quy tắc bên dưới mới rõ nghĩa, và kể cả khi chỉ nói "pháp luật hình sự" mà không nói rõ \
-"Bộ luật Hình sự" hay "Bộ luật Tố tụng Hình sự").
-- Nếu không chắc chắn câu hỏi có thuộc phạm vi hay không, ưu tiên đặt false (để bước tìm kiếm/trả \
-lời phía sau tự quyết định dựa trên dữ liệu thực tế, thay vì loại bỏ nhầm một câu hỏi có thể vẫn \
-trả lời được) - false là lựa chọn an toàn hơn true khi phân vân.
+QUY TẮC CHO "intent" - chọn ĐÚNG 1 trong 4 giá trị sau:
+- "greeting": câu hiện tại CHỈ là lời chào hỏi/mở đầu hội thoại, giới thiệu bản thân, hỏi trợ lý \
+là ai/làm được gì (ví dụ "xin chào", "chào bạn", "bạn là ai", "bạn giúp được gì") - KHÔNG kèm một \
+câu hỏi pháp lý cụ thể nào. Nếu câu vừa chào vừa hỏi luôn một câu hỏi luật cụ thể (ví dụ "Chào bạn, \
+cho mình hỏi Điều 173 BLHS quy định gì?"), đó là "legal_question", KHÔNG phải "greeting".
+- "summarize_previous": câu hiện tại là yêu cầu tóm tắt/rút gọn/nói ngắn lại CHÍNH câu trả lời \
+TRỢ LÝ VỪA ĐƯA RA trong lượt gần nhất (ví dụ "tóm tắt lại giúp mình", "gói gọn trong 3 câu", "nói \
+ngắn gọn hơn được không", "rút gọn câu trả lời trên"). ĐIỂM MẤU CHỐT để phân biệt với \
+"legal_question": câu này KHÔNG hỏi thêm bất kỳ nội dung pháp lý MỚI nào, KHÔNG nêu tình huống mới, \
+KHÔNG hỏi về một Điều/khái niệm khác - nó chỉ yêu cầu trình bày LẠI đúng nội dung đã trả lời, ngắn \
+hơn. Nếu câu hỏi tiếp tục về CÙNG chủ đề nhưng hỏi thêm điều gì đó MỚI (kể cả hỏi sâu hơn, hỏi \
+"còn trường hợp X thì sao", hỏi thêm 1 khía cạnh khác của cùng vấn đề), đó vẫn là "legal_question", \
+KHÔNG phải "summarize_previous" - "summarize_previous" chỉ dùng khi ý định DUY NHẤT là rút gọn văn \
+bản đã có, không có yêu cầu nội dung mới nào cả.
+- "out_of_scope": câu hỏi (kết hợp LỊCH SỬ HỘI THOẠI nếu có) KHÔNG thuộc PHẠM VI nêu trên và cũng \
+không phải "greeting"/"summarize_previous" - bao gồm: câu hỏi thuộc lĩnh vực pháp luật khác hoàn \
+toàn không liên quan hình sự (dân sự, lao động, hôn nhân gia đình, thuế, doanh nghiệp...), câu hỏi \
+xã giao/tán tỉnh/tâm sự cá nhân không phải lời chào mở đầu, câu hỏi vô nghĩa, hoặc bất kỳ nội dung \
+nào không phải hỏi về pháp luật hình sự/tố tụng hình sự.
+- "legal_question": mọi trường hợp còn lại - câu hỏi thuộc PHẠM VI nêu trên (kể cả khi cần viết \
+tắt/giải quyết ngữ cảnh ngầm hiểu theo quy tắc bên dưới mới rõ nghĩa, và kể cả khi chỉ nói "pháp \
+luật hình sự" mà không nói rõ "Bộ luật Hình sự" hay "Bộ luật Tố tụng Hình sự"). Đây là giá trị MẶC \
+ĐỊNH khi không chắc chắn câu hỏi thuộc "out_of_scope"/"greeting"/"summarize_previous" hay không - \
+nếu phân vân, ưu tiên "legal_question" (để bước tìm kiếm/trả lời phía sau tự quyết định dựa trên \
+dữ liệu thực tế, thay vì loại bỏ/định tuyến nhầm một câu hỏi có thể vẫn trả lời được).
 
 QUY TẮC CHO "rewritten_question":
-1. NẾU is_out_of_scope = true: "rewritten_question" PHẢI là NGUYÊN VĂN câu hỏi gốc của sinh viên, \
+1. NẾU intent = "out_of_scope": "rewritten_question" PHẢI là NGUYÊN VĂN câu hỏi gốc của sinh viên, \
 copy y hệt, không sửa một chữ nào. TUYỆT ĐỐI KHÔNG được tự viết câu mô tả/giải thích kiểu "câu hỏi \
 này không liên quan đến..." hay bất kỳ câu nào khác thay cho câu hỏi gốc - field này không phải \
-chỗ để giải thích quyết định is_out_of_scope, lý do đó không cần viết ra ở đâu cả.
-2. NẾU is_out_of_scope = false, áp dụng các quy tắc viết lại sau:
+chỗ để giải thích quyết định intent, lý do đó không cần viết ra ở đâu cả.
+2. NẾU intent = "greeting" hoặc "summarize_previous": "rewritten_question" cũng PHẢI là NGUYÊN VĂN \
+câu hỏi gốc của sinh viên, copy y hệt (2 intent này không đi qua bước tìm kiếm văn bản luật nên \
+không cần viết lại).
+3. NẾU intent = "legal_question", áp dụng các quy tắc viết lại sau:
    a. Nếu câu hỏi dùng viết tắt luật phổ biến, mở rộng viết tắt đó dựa theo ĐÚNG bảng viết tắt \
 được cung cấp bên dưới. Không mở rộng bất kỳ viết tắt nào không có trong bảng.
    b. Nếu có LỊCH SỬ HỘI THOẠI được cung cấp và câu hỏi hiện tại dùng đại từ, cụm từ ngầm hiểu, \
@@ -50,22 +67,24 @@ tắt. Nếu không đủ căn cứ để giải quyết một đại từ/ngữ
 hỏi thay vì đoán.
    d. Nếu câu hỏi đã đầy đủ, rõ ràng, độc lập, không cần viết lại gì thêm ngoài mục a và b, trả về \
 nguyên văn câu hỏi gốc.
-3. "rewritten_question" luôn CHỈ là một câu hỏi (hoặc câu hỏi gốc y hệt nếu is_out_of_scope=true). \
-Không thêm giải thích, không thêm tiền tố kiểu "Câu hỏi viết lại:", không thêm dấu nháy bao \
-quanh."""
+4. "rewritten_question" luôn CHỈ là một câu hỏi (hoặc câu hỏi gốc y hệt khi intent khác \
+"legal_question"). Không thêm giải thích, không thêm tiền tố kiểu "Câu hỏi viết lại:", không thêm \
+dấu nháy bao quanh."""
 
 # Enforced via Gemini's responseSchema (not just prompt wording) - see gemini_client.generate_answer's
 # response_schema param. Mirrors the requirements.md muc E fix: a schema-level boundary between
 # "the rewritten question text" and "the out-of-scope classification" is what stops the model from
 # writing an explanatory sentence into rewritten_question, whereas relying on prompt wording alone
 # (the pre-fix version of this file) let that leak through on a fraction of calls.
+VALID_INTENTS: tuple[str, ...] = ("legal_question", "greeting", "summarize_previous", "out_of_scope")
+
 QUERY_UNDERSTANDING_RESPONSE_SCHEMA: dict = {
     "type": "OBJECT",
     "properties": {
         "rewritten_question": {"type": "STRING"},
-        "is_out_of_scope": {"type": "BOOLEAN"},
+        "intent": {"type": "STRING", "enum": list(VALID_INTENTS)},
     },
-    "required": ["rewritten_question", "is_out_of_scope"],
+    "required": ["rewritten_question", "intent"],
 }
 
 # Small, fixed table so expansion is grounded in a known list rather than the model's own

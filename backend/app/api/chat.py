@@ -22,6 +22,7 @@ from app.models.chat import (
 from app.services.chat_log_service import (
     delete_conversation,
     get_conversation_detail,
+    get_last_assistant_turn,
     get_recent_turns,
     list_conversations,
     log_chat_query,
@@ -137,6 +138,14 @@ async def query_chat(
     query_understanding = await asyncio.to_thread(rewrite_question, body.question, recent_turns, settings)
     rewritten_question = query_understanding.rewritten_question
 
+    # Only fetched for intent=summarize_previous (see rag_service.stream_answer_question) - no
+    # need to spend the extra Postgres round-trip for the other 3 intents.
+    last_turn = None
+    if query_understanding.intent == "summarize_previous":
+        last_turn = await asyncio.to_thread(
+            get_last_assistant_turn, supabase_client, current_user.user_id, conversation_id
+        )
+
     # Mutated in place by stream_answer_question as the stream progresses - holds the fields
     # (is_fallback, used_academic_reference, retrieved_chunks) that are intentionally never sent
     # over SSE, only logged (see requirements.md Phase 9).
@@ -148,7 +157,7 @@ async def query_chat(
     async def event_stream() -> AsyncIterator[str]:
         async for event_name, event_payload in stream_answer_question(
             rewritten_question, conversation_id, settings, qdrant_client, result, recent_turns,
-            is_out_of_scope=query_understanding.is_out_of_scope
+            intent=query_understanding.intent, last_turn=last_turn
         ):
             yield _sse_format(event_name, event_payload)
 

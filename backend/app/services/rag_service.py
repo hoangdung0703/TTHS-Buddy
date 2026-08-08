@@ -12,6 +12,7 @@ content never appears in the `citations` field (which is legal-citation-shaped o
 from __future__ import annotations
 
 import asyncio
+import random
 import re
 import uuid
 from collections.abc import AsyncIterator
@@ -33,6 +34,12 @@ from app.models.chat import (
     RelatedArticle,
     SuggestedFollowup,
 )
+from app.prompts.conversational_prompts import (
+    GREETING_TEMPLATES,
+    NO_PREVIOUS_ANSWER_MESSAGE,
+    SUMMARIZE_SYSTEM_PROMPT,
+    build_summarize_prompt,
+)
 from app.prompts.rag_prompts import (
     build_system_prompt,
     build_user_prompt,
@@ -40,7 +47,7 @@ from app.prompts.rag_prompts import (
     format_legal_context_block,
 )
 from app.services.chat_suggestions_service import build_suggested_question
-from app.services.gemini_client import embed_query, stream_generate_answer
+from app.services.gemini_client import embed_query, generate_answer, stream_generate_answer
 
 logger = get_logger(__name__)
 
@@ -617,7 +624,8 @@ async def retrieve_context(question: str, settings: Settings, qdrant_client: Qdr
 
 async def stream_answer_question(
     question: str, conversation_id: uuid.UUID, settings: Settings, qdrant_client: QdrantClient, result: RagAnswer,
-    recent_turns: list[dict[str, str]] | None = None, is_out_of_scope: bool = False
+    recent_turns: list[dict[str, str]] | None = None, intent: str = "legal_question",
+    last_turn: dict[str, Any] | None = None
 ) -> AsyncIterator[tuple[str, ChatStreamCitationsEvent | ChatStreamAnswerDeltaEvent |
                           ChatStreamSuggestedFollowupsEvent | ChatStreamDoneEvent]]:
     """Streaming counterpart of the old answer_question (Phase 4 Extension - see
@@ -645,14 +653,24 @@ async def stream_answer_question(
     forwarding every token to the client immediately keeps the perceived response latency the
     same as before; only the citations badge is delayed until the answer it describes exists.
 
-    `is_out_of_scope` (requirements.md muc E - query_understanding_service.rewrite_question's own
-    classification, computed by the caller BEFORE this function runs) short-circuits straight to
-    the refusal answer, same shape as the no-context-blocks case below, WITHOUT calling retrieval
-    or generation at all - a question already classified as unrelated to Luat To tung Hinh su has
-    nothing for either step to usefully do, and skipping both avoids the exact failure mode this
-    fix targets: a malformed/off-topic query string reaching retrieval or the generation prompt.
+    `intent` (query_understanding_service.rewrite_question's own classification, computed by the
+    caller BEFORE this function runs - requirements.md muc E, extended by the "Mở rộng phân loại ý
+    định Query Understanding" feature to 4 values) short-circuits 3 of its 4 possible values
+    straight past retrieval/generation, all in this same shape (citations event -> single
+    answer_delta -> empty suggested_followups -> done):
+    - "out_of_scope": the refusal answer (unchanged behavior from muc E) - a question already
+      classified as unrelated to Luat To tung Hinh su has nothing for retrieval/generation to
+      usefully do, and skipping both avoids a malformed/off-topic query string reaching either.
+    - "greeting": one of GREETING_TEMPLATES, picked at random - no LLM call at all, cheapest and
+      fastest path possible, same short-circuit spirit as out_of_scope.
+    - "summarize_previous": one lightweight LLM call constrained to `last_turn`'s own answer text
+      (see SUMMARIZE_SYSTEM_PROMPT) - never touches retrieval, and reuses `last_turn`'s own
+      citations verbatim (no recomputation) since the underlying legal content hasn't changed,
+      only its presentation. `last_turn` is None when this is the first message of the
+      conversation (nothing to summarize yet - see NO_PREVIOUS_ANSWER_MESSAGE).
+    Only "legal_question" (the default) falls through to the retrieval/generation pipeline below.
     """
-    if is_out_of_scope:
+    if intent == "out_of_scope":
         result.answer = FALLBACK_ANSWER
         result.citations = []
         result.related_articles = []
@@ -664,6 +682,56 @@ async def stream_answer_question(
             citations=[], related_articles=[], conversation_id=conversation_id, rewritten_question=question
         ))
         yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=FALLBACK_ANSWER))
+        yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
+        yield ("done", ChatStreamDoneEvent())
+        return
+
+    if intent == "greeting":
+        answer_text = random.choice(GREETING_TEMPLATES)
+        result.answer = answer_text
+        result.citations = []
+        result.related_articles = []
+        result.suggested_followups = []
+        result.is_fallback = False
+        result.used_academic_reference = False
+        result.retrieved_chunks = []
+        yield ("citations", ChatStreamCitationsEvent(
+            citations=[], related_articles=[], conversation_id=conversation_id, rewritten_question=question
+        ))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
+        yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
+        yield ("done", ChatStreamDoneEvent())
+        return
+
+    if intent == "summarize_previous":
+        if last_turn is None:
+            answer_text = NO_PREVIOUS_ANSWER_MESSAGE
+            citations: list[Citation] = []
+        else:
+            try:
+                summary_response = await asyncio.to_thread(
+                    generate_answer, SUMMARIZE_SYSTEM_PROMPT,
+                    build_summarize_prompt(last_turn["answer"], question), settings
+                )
+                answer_text = summary_response.strip() or last_turn["answer"]
+            except Exception:
+                # A broken summarize call must never break the whole chat request - fall back to
+                # showing the original (unsummarized) answer rather than erroring out, same
+                # resilience pattern as query_understanding_service.rewrite_question's own fallback.
+                logger.exception("summarize_previous call failed - falling back to the original answer")
+                answer_text = last_turn["answer"]
+            citations = [Citation(**c) for c in last_turn["citations"]]
+        result.answer = answer_text
+        result.citations = citations
+        result.related_articles = []
+        result.suggested_followups = []
+        result.is_fallback = False
+        result.used_academic_reference = False
+        result.retrieved_chunks = []
+        yield ("citations", ChatStreamCitationsEvent(
+            citations=citations, related_articles=[], conversation_id=conversation_id, rewritten_question=question
+        ))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
         yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
         yield ("done", ChatStreamDoneEvent())
         return

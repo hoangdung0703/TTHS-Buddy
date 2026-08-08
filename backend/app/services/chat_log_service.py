@@ -55,6 +55,34 @@ def get_recent_turns(supabase_client: Client, user_id: str, conversation_id: uui
     return [{"question": row.get("rewritten_question") or row["question"], "answer": row["answer"]} for row in rows]
 
 
+def get_last_assistant_turn(supabase_client: Client, user_id: str,
+                             conversation_id: uuid.UUID) -> dict[str, Any] | None:
+    """Returns the most recently logged answer + its citations for this conversation (used by
+    intent=summarize_previous - see rag_service.stream_answer_question), or None if this
+    conversation has no prior turn yet (e.g. the summarize request is the first message)."""
+    try:
+        response = (
+            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+            .select("answer, citations")
+            .eq("user_id", user_id)
+            .eq("conversation_id", str(conversation_id))
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+    except Exception:
+        logger.exception(
+            "Failed to read last turn (user_id=%s, conversation_id=%s) - treating as no prior turn",
+            user_id, conversation_id
+        )
+        return None
+
+    rows = response.data or []
+    if not rows:
+        return None
+    return {"answer": rows[0]["answer"], "citations": rows[0].get("citations") or []}
+
+
 def _truncate_title(question: str) -> str:
     stripped = question.strip()
     if len(stripped) <= CONVERSATION_TITLE_MAX_LENGTH:
