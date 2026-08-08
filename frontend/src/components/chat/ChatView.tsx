@@ -75,6 +75,15 @@ export function ChatView({ conversationId }: ChatViewProps) {
   // Mirrors `messages` synchronously so handleAsk's finally block can hand off the freshest
   // array to pendingFreshConversationHandoff without waiting for a re-render.
   const messagesRef = useRef<ChatMessage[]>(messages);
+  // Captures, once, whether this mount landed with a valid handoff for `conversationId` - a pure
+  // read, so it's safe to evaluate twice under React StrictMode's dev-only double-render. The
+  // reset effect below must consult THIS ref rather than re-reading the module-level
+  // pendingFreshConversationHandoff directly: StrictMode also double-invokes effects (mount ->
+  // cleanup -> mount again), and the effect's own first invocation nulls out the module variable
+  // once consumed - its second invocation would otherwise see it already-null, wrongly conclude
+  // "no handoff", and fall through to a real getConversationDetail() fetch, flashing the "Đang
+  // tải lại hội thoại" spinner for the ~1s round trip even though nothing actually needed reloading.
+  const hadFreshHandoffRef = useRef(pendingFreshConversationHandoff?.conversationId === conversationId);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -116,12 +125,14 @@ export function ChatView({ conversationId }: ChatViewProps) {
       return;
     }
 
-    if (pendingFreshConversationHandoff?.conversationId === conversationId) {
+    if (hadFreshHandoffRef.current) {
       // Already seeded via the lazy useState initializer above - this mount is the router.replace
       // landing right after this exact conversation was created locally, so there's nothing new
       // to fetch from the server (and fetching here is what causes the clobber race described
       // above).
-      pendingFreshConversationHandoff = null;
+      if (pendingFreshConversationHandoff?.conversationId === conversationId) {
+        pendingFreshConversationHandoff = null;
+      }
       setIsLoadingHistory(false);
       return;
     }
