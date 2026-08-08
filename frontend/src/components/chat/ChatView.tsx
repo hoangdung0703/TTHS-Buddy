@@ -22,6 +22,15 @@ function createMessageId(): string {
   return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+// Module-scoped (not component state) so it survives the unmount/remount that router.replace
+// causes when a bare-/chat conversation gets its first real conversation_id (see the finally
+// block in handleAsk below). Without this, the freshly-mounted /chat/[id] instance starts with
+// empty messages and re-fetches from the server - and if a 2nd question is sent before that
+// fetch resolves, its plain setMessages(loaded) overwrite (not a functional update) can wipe out
+// the just-appended message, since both race to be the last setMessages call. Handing the
+// already-correct local state across the remount avoids the refetch (and the race) entirely.
+let pendingFreshConversationHandoff: { conversationId: string; messages: ChatMessage[] } | null = null;
+
 interface ChatViewProps {
   // The conversation_id segment from the URL (/chat/[conversationId]), or null on the bare
   // /chat route - null means "start a brand new conversation", matching the pre-existing
@@ -30,11 +39,17 @@ interface ChatViewProps {
 }
 
 export function ChatView({ conversationId }: ChatViewProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    pendingFreshConversationHandoff?.conversationId === conversationId
+      ? pendingFreshConversationHandoff.messages
+      : []
+  );
   const [suggestions, setSuggestions] = useState<ChatSuggestion[]>([]);
   const [input, setInput] = useState<string>("");
   const [isSending, setIsSending] = useState<boolean>(false);
-  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(conversationId !== null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(
+    conversationId !== null && pendingFreshConversationHandoff?.conversationId !== conversationId
+  );
   const [error, setError] = useState<string | null>(null);
   // Client-held for the lifetime of this chat session (Phase 4 Extension) - captured from the
   // first "citations" SSE event and reused on every follow-up question so the backend can look
@@ -57,6 +72,13 @@ export function ChatView({ conversationId }: ChatViewProps) {
   // nút "Ôn tập") against double-firing (React StrictMode double-invokes effects in dev, and
   // this component re-renders while the query is streaming in).
   const autoSendHandledRef = useRef(false);
+  // Mirrors `messages` synchronously so handleAsk's finally block can hand off the freshest
+  // array to pendingFreshConversationHandoff without waiting for a re-render.
+  const messagesRef = useRef<ChatMessage[]>(messages);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     void getChatSuggestions().then(setSuggestions);
@@ -90,6 +112,16 @@ export function ChatView({ conversationId }: ChatViewProps) {
 
     if (conversationId === null) {
       setMessages([]);
+      setIsLoadingHistory(false);
+      return;
+    }
+
+    if (pendingFreshConversationHandoff?.conversationId === conversationId) {
+      // Already seeded via the lazy useState initializer above - this mount is the router.replace
+      // landing right after this exact conversation was created locally, so there's nothing new
+      // to fetch from the server (and fetching here is what causes the clobber race described
+      // above).
+      pendingFreshConversationHandoff = null;
       setIsLoadingHistory(false);
       return;
     }
@@ -138,13 +170,32 @@ export function ChatView({ conversationId }: ChatViewProps) {
       return;
     }
 
+    // Keeps messagesRef synchronously in step with every update made in this function, so the
+    // finally block below can hand the freshest array to pendingFreshConversationHandoff without
+    // depending on the separate mirroring effect (which only flushes after a commit+paint cycle
+    // - too late relative to this function's own synchronous "just finished streaming" instant).
+    function updateMessages(updater: (current: ChatMessage[]) => ChatMessage[]): void {
+      setMessages((current) => {
+        const next = updater(current);
+        messagesRef.current = next;
+        return next;
+      });
+    }
+
     setError(null);
     setInput("");
-    setMessages((current) => [...current, { id: createMessageId(), role: "user", content: trimmed }]);
+    updateMessages((current) => [...current, { id: createMessageId(), role: "user", content: trimmed }]);
     setIsSending(true);
 
     const assistantMessageId = createMessageId();
     let assistantMessageStarted = false;
+    // Bare /chat (conversationId prop null) never pushes the URL to /chat/[id] on its own, so a
+    // conversation started there leaves pathname stuck at "/chat" for its whole lifetime. That
+    // breaks the Sidebar "Hội thoại mới" Link (href="/chat"): navigating to the URL you're
+    // already on is a no-op for Next.js, so nothing remounts and the reset effect above never
+    // reruns. Once this first turn finishes, replace the URL to match the now-real
+    // conversation_id so "/chat" stays free for that Link to actually navigate to.
+    let newlyStartedConversationId: string | null = null;
 
     function ensureAssistantMessage(): void {
       if (assistantMessageStarted) {
@@ -152,7 +203,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
       }
       assistantMessageStarted = true;
       setStreamingMessageId(assistantMessageId);
-      setMessages((current) => [
+      updateMessages((current) => [
         ...current,
         { id: assistantMessageId, role: "assistant", content: "", citations: [] }
       ]);
@@ -162,8 +213,11 @@ export function ChatView({ conversationId }: ChatViewProps) {
       await sendChatQuery(trimmed, activeConversationId, {
         onCitations: (event) => {
           setActiveConversationId(event.conversation_id);
+          if (conversationId === null) {
+            newlyStartedConversationId = event.conversation_id;
+          }
           ensureAssistantMessage();
-          setMessages((current) =>
+          updateMessages((current) =>
             current.map((message) =>
               message.id === assistantMessageId ? { ...message, citations: event.citations } : message
             )
@@ -171,7 +225,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
         },
         onDelta: (event) => {
           ensureAssistantMessage();
-          setMessages((current) =>
+          updateMessages((current) =>
             current.map((message) =>
               message.id === assistantMessageId ? { ...message, content: message.content + event.delta } : message
             )
@@ -189,6 +243,13 @@ export function ChatView({ conversationId }: ChatViewProps) {
     } finally {
       setIsSending(false);
       setStreamingMessageId(null);
+      if (newlyStartedConversationId !== null) {
+        pendingFreshConversationHandoff = {
+          conversationId: newlyStartedConversationId,
+          messages: messagesRef.current
+        };
+        router.replace(`/chat/${newlyStartedConversationId}`);
+      }
     }
   }
 
