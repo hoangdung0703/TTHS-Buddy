@@ -1048,7 +1048,16 @@ async def stream_answer_question(
     # one the model actually used.
     cited_dieu_numbers = _extract_cited_dieu_numbers(answer_text)
     actually_cited_primary = [c for c in retrieval.legal_primary if c.payload["dieu_number"] in cited_dieu_numbers]
-    citations = [] if is_fallback else _build_citations(actually_cited_primary)
+    # citations is intentionally NOT gated on is_fallback (unlike related_articles below) -
+    # requirements.md muc B investigation: a compound multi-part answer (several sub-questions in
+    # one message) can correctly cite a Dieu for one part while ANOTHER part refuses with the
+    # fallback phrase - _is_fallback_answer's whole-text substring check can't tell those apart,
+    # so gating citations on it wiped out a legitimately-cited Dieu (e.g. Dieu 174) just because a
+    # different part of the same answer happened to also contain "khong tim thay noi dung lien
+    # quan". actually_cited_primary is already extraction-based (only Dieu the model's own text
+    # names via "Theo Dieu [so]...") so a genuine single-topic refusal naturally yields an empty
+    # list here anyway - this only changes behavior for the compound-answer case it's meant to fix.
+    citations = _build_citations(actually_cited_primary)
     related_articles = [] if is_fallback else _build_related_articles(retrieval.legal_related)
 
     yield ("citations", ChatStreamCitationsEvent(
