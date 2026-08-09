@@ -18,12 +18,20 @@ previous turn actually left a scenario+rubric pending, but a model call can stil
 violate that instruction. This module never trusts the model alone for a decision that controls
 whether a hidden rubric gets used at all - see the hard downgrade below, same defensive principle
 as the meta-commentary/malformed-rewrite safety nets already in this file.
+
+For intent=legal_question, this same call also flags requirements.md muc C ("Ẩn danh hóa người
+thật"): a question that names a real/identifiable real-world person alongside a specific behavior
+to legally classify gets its rewritten_question pre-anonymized (real names replaced by A/B/C) right
+here, before retrieval/generation ever see it - see needs_anonymization/anonymized_names on
+QueryUnderstandingResult and rag_service.py's use of them for the buffered-generation + leak-check
+path that keeps the absolute "never repeat the real name" constraint even if this LLM call itself
+misbehaves.
 """
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.core.config import Settings
 from app.core.logging import get_logger
@@ -58,11 +66,44 @@ _META_COMMENTARY_PATTERNS = (
 _MAX_LENGTH_MULTIPLIER = 5
 _MAX_LENGTH_ABSOLUTE_MARGIN = 60
 
+# Cleans up whatever punctuation _scrub_residual_names's removal leaves behind (e.g. "Anh A ()"
+# from a nickname that used to sit in parentheses, or doubled spaces from a name removed
+# mid-sentence) - applied only after every name has already been stripped out.
+_EMPTY_PARENS_PATTERN = re.compile(r"\(\s*\)")
+_MULTI_SPACE_PATTERN = re.compile(r"[ \t]{2,}")
+
+
+def _scrub_residual_names(text: str, anonymized_names: list[str]) -> str:
+    """Second, code-level layer (requirements.md muc C's absolute constraint) on top of the
+    prompt's own anonymization instructions - even with the explicit "don't leave the nickname in
+    parentheses" example added to the prompt after reproducing exactly that failure, a model call
+    can still occasionally leave a residual name/nickname in rewritten_question (which reaches the
+    client verbatim via the citations SSE event's rewritten_question field, not just internal
+    generation). Strips every string in anonymized_names (the model's own list of what it claims
+    to have anonymized) out of the text it produced, longest-first so a name that's a substring of
+    another (e.g. a first name inside a full name) doesn't leave a partial fragment behind."""
+    if not anonymized_names:
+        return text
+    scrubbed = text
+    for name in sorted((n for n in anonymized_names if n), key=len, reverse=True):
+        scrubbed = re.sub(re.escape(name), "", scrubbed, flags=re.IGNORECASE)
+    scrubbed = _EMPTY_PARENS_PATTERN.sub("", scrubbed)
+    scrubbed = _MULTI_SPACE_PATTERN.sub(" ", scrubbed)
+    return scrubbed.strip()
+
 
 @dataclass
 class QueryUnderstandingResult:
     rewritten_question: str
     intent: str  # one of VALID_INTENTS - see query_understanding_prompts.py
+    # requirements.md muc C "An danh hoa nguoi that" - true only when intent="legal_question" AND
+    # the question named a real/identifiable real-world person alongside a specific behavior to
+    # classify legally (not a direct guilt confirmation/denial question - see the prompt's
+    # rewritten_question rule 3.d). When true, rewritten_question has already had every name in
+    # anonymized_names replaced by an A/B/C label - rag_service.py uses anonymized_names only as a
+    # defensive post-generation leak check, never shown to the student.
+    needs_anonymization: bool = False
+    anonymized_names: list[str] = field(default_factory=list)
 
 
 def _looks_like_malformed_rewrite(original_question: str, rewritten_question: str) -> bool:
@@ -85,6 +126,8 @@ def rewrite_question(
         parsed = json.loads(response_text)
         rewritten = str(parsed["rewritten_question"]).strip()
         intent = str(parsed["intent"]).strip()
+        needs_anonymization = bool(parsed.get("needs_anonymization", False))
+        anonymized_names = [str(n).strip() for n in parsed.get("anonymized_names") or [] if str(n).strip()]
         if intent not in VALID_INTENTS:
             # responseSchema's enum constraint should already prevent this, but never trust a
             # single enforcement layer alone (same principle as the meta-commentary safety net
@@ -123,6 +166,11 @@ def rewrite_question(
         # anyway so the logged chat_query_logs row stays honest even if the model violated the
         # prompt's rewrite rules for these intents.
         rewritten = question
+        # Anonymization only ever applies within the legal_question retrieval/generation path
+        # (requirements.md muc C) - the prompt's own rule 5 already tells the model this, but
+        # don't trust that alone (same defensive layering as every other field on this call).
+        needs_anonymization = False
+        anonymized_names = []
     elif _looks_like_malformed_rewrite(question, rewritten):
         # Layer 2 safety net (requirements.md muc E, buoc 4) - independent of layer 1, catches the
         # same failure mode if it slips through with intent still reported as legal_question.
@@ -132,5 +180,39 @@ def rewrite_question(
             question, rewritten
         )
         rewritten = question
+        # rewritten reverted to the STUDENT'S ORIGINAL wording, which still contains the real
+        # name(s) if needs_anonymization was true - never carry that flag forward onto untrusted
+        # text that was never actually anonymized (requirements.md muc C's absolute constraint:
+        # the final answer must never repeat the real name). Falls through to the ordinary
+        # legal_question path instead, same as before this feature existed.
+        if needs_anonymization:
+            logger.warning(
+                "needs_anonymization=true but rewritten_question was discarded as malformed - "
+                "downgrading to needs_anonymization=false rather than trusting unanonymized text"
+            )
+        needs_anonymization = False
+        anonymized_names = []
+    elif needs_anonymization and not anonymized_names:
+        # The model flagged anonymization but gave us nothing to defensively check the final
+        # answer against - safer to skip the special (buffered + disclaimer) generation path than
+        # to run it with an empty leak-detection list, same "don't trust a flag with nothing behind
+        # it" principle as the answer_evaluation gate above. rewritten_question may already be
+        # anonymized text regardless (harmless either way), just without the disclaimer/addendum.
+        logger.warning(
+            "needs_anonymization=true but anonymized_names was empty - downgrading to "
+            "needs_anonymization=false"
+        )
+        needs_anonymization = False
 
-    return QueryUnderstandingResult(rewritten_question=rewritten, intent=intent)
+    if needs_anonymization:
+        # Layer 2, code-level (see _scrub_residual_names docstring) - independent of the prompt's
+        # own anonymization instructions, catches a residual real name/nickname the model's rewrite
+        # missed (e.g. the "name (nickname)" pattern reproduced during this feature's own testing).
+        scrubbed = _scrub_residual_names(rewritten, anonymized_names)
+        if scrubbed:
+            rewritten = scrubbed
+
+    return QueryUnderstandingResult(
+        rewritten_question=rewritten, intent=intent,
+        needs_anonymization=needs_anonymization, anonymized_names=anonymized_names
+    )

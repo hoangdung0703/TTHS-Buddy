@@ -47,6 +47,8 @@ from app.prompts.conversational_prompts import (
     build_summarize_prompt,
 )
 from app.prompts.rag_prompts import (
+    ANONYMIZATION_DISCLAIMER,
+    ANONYMIZATION_LEAK_FALLBACK_ANSWER,
     build_system_prompt,
     build_user_prompt,
     format_academic_context_block,
@@ -626,6 +628,18 @@ def _is_fallback_answer(answer_text: str) -> bool:
     return "không tìm thấy nội dung liên quan" in answer_text.lower()
 
 
+def _answer_leaks_real_name(answer_text: str, anonymized_names: list[str]) -> bool:
+    """requirements.md muc C's absolute constraint (never repeat the real name, even indirectly)
+    is enforced at two independent layers: RAG_ANONYMIZATION_ADDENDUM (instruction-level) and this
+    check (code-level, fail-closed) - a plain case-insensitive substring match against every name
+    query_understanding_service flagged as replaced is a blunt tool, but it's a reliable one for
+    the concrete failure mode this guards against (the model recognizing and volunteering the real
+    name/nickname despite being told not to), and false positives here only cost a safe generic
+    fallback answer rather than ever letting a real name pass through."""
+    lowered = answer_text.lower()
+    return any(name.lower() in lowered for name in anonymized_names if name)
+
+
 def _extract_cited_dieu_numbers(answer_text: str) -> set[str]:
     """RAG_SYSTEM_PROMPT rule 2 requires the model to name a legal_text citation as "Theo Dieu
     [so] [ten van ban]..." - reusing DIEU_NUMBER_PATTERN (built for detecting a Dieu number in
@@ -675,7 +689,8 @@ async def retrieve_context(question: str, settings: Settings, qdrant_client: Qdr
 async def stream_answer_question(
     question: str, conversation_id: uuid.UUID, settings: Settings, qdrant_client: QdrantClient, result: RagAnswer,
     recent_turns: list[dict[str, str]] | None = None, intent: str = "legal_question",
-    last_turn: dict[str, Any] | None = None
+    last_turn: dict[str, Any] | None = None, needs_anonymization: bool = False,
+    anonymized_names: list[str] | None = None
 ) -> AsyncIterator[tuple[str, ChatStreamCitationsEvent | ChatStreamAnswerDeltaEvent |
                           ChatStreamGradingEvent | ChatStreamSuggestedFollowupsEvent | ChatStreamDoneEvent]]:
     """Streaming counterpart of the old answer_question (Phase 4 Extension - see
@@ -744,6 +759,16 @@ async def stream_answer_question(
       matched/missing points go out ONLY in the grading_result event, never persisted back to
       chat_query_logs (grading is terminal - nothing downstream needs to re-read it).
     Only "legal_question" (the default) falls through to the retrieval/generation pipeline below.
+
+    `needs_anonymization`/`anonymized_names` (requirements.md muc C, only ever true alongside
+    intent="legal_question" - query_understanding_service.rewrite_question already forces both to
+    False/[] for every other intent) mean `question` here has already had every real name replaced
+    by an A/B/C label before it ever reached retrieval. Generation for this case is BUFFERED rather
+    than token-streamed to the client (unlike the normal legal_question path just below it) so the
+    complete answer can be leak-checked against `anonymized_names` (_answer_leaks_real_name) and
+    have ANONYMIZATION_DISCLAIMER appended in code - both BEFORE anything reaches the client -
+    trading true streaming latency for the "never repeat the real name" guarantee on this
+    intentionally rare path.
     """
     if intent == "out_of_scope":
         result.answer = FALLBACK_ANSWER
@@ -975,26 +1000,46 @@ async def stream_answer_question(
     # wait indefinitely on a preview-tier model - see gemini_client.py's docstring for the exact
     # fallback contract.
     is_long_question = len(question) > LONG_QUESTION_CHAR_THRESHOLD
-    system_prompt = build_system_prompt(is_long_question)
+    system_prompt = build_system_prompt(is_long_question, needs_anonymization=needs_anonymization)
     generation_model = settings.resolved_complex_chat_model if is_long_question else settings.gemini_chat_model
     fallback_model = settings.gemini_chat_model if is_long_question else None
     first_token_timeout = LONG_QUESTION_FIRST_TOKEN_TIMEOUT_SECONDS if is_long_question else None
 
+    # requirements.md muc C: needs_anonymization buffers the whole answer instead of forwarding
+    # each token as it arrives (unlike the normal path) so the leak check + disclaimer below can
+    # run BEFORE anything reaches the client - see this function's docstring.
     answer_parts: list[str] = []
     async for text_chunk in stream_generate_answer(
         system_prompt, user_prompt, settings, model=generation_model,
         fallback_model=fallback_model, first_token_timeout=first_token_timeout
     ):
         answer_parts.append(text_chunk)
-        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=text_chunk))
+        if not needs_anonymization:
+            yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=text_chunk))
 
     answer_text = "".join(answer_parts)
+    leaked_real_name = False
+
+    if needs_anonymization:
+        if answer_text and not _is_fallback_answer(answer_text):
+            if _answer_leaks_real_name(answer_text, anonymized_names or []):
+                logger.warning(
+                    "Anonymized generation still named a real person from anonymized_names - "
+                    "failing closed to the generic safe-answer fallback"
+                )
+                answer_text = ANONYMIZATION_LEAK_FALLBACK_ANSWER
+                leaked_real_name = True
+            else:
+                answer_text = f"{answer_text.rstrip()}\n\n{ANONYMIZATION_DISCLAIMER}"
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
     # Same trust-the-model's-own-refusal reasoning as the old answer_question: the retrieval
     # threshold is intentionally lenient (see LEGAL_SCORE_THRESHOLD), so weakly-related chunks
     # sometimes get passed as context even though none of them actually answer the question -
     # when the model refuses anyway, clear citations/related_articles so the final logged/served
-    # answer never shows "sources" for a response that admits it found nothing relevant.
-    is_fallback = _is_fallback_answer(answer_text)
+    # answer never shows "sources" for a response that admits it found nothing relevant. A leaked-
+    # name safety fallback (leaked_real_name) counts as a fallback too, for the same reason, even
+    # though its wording doesn't match _is_fallback_answer's usual "not found" phrase.
+    is_fallback = leaked_real_name or _is_fallback_answer(answer_text)
 
     # Restrict citations to the legal_primary chunks the model actually cited (per the system
     # prompt's rule 2, a legal_text citation always names its Dieu as "Theo Dieu [so]...") rather

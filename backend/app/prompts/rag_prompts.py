@@ -101,10 +101,56 @@ Bước 3 - Kết luận: chỉ đưa ra kết luận sau khi đã hoàn thành 
 nêu rõ dựa trên đối chiếu nào ở Bước 2."""
 
 
-def build_system_prompt(is_long_question: bool) -> str:
+# requirements.md muc C ("Ẩn danh hóa người thật"): appended ONLY when query_understanding_service
+# flagged needs_anonymization=true - the rewritten_question fed to generation already has every
+# real name replaced by an A/B/C label (done in the query-understanding step, not here), but the
+# generation model can still independently RECOGNIZE the real person from the described behavior
+# (general world knowledge isn't erased by removing the name) and volunteer it anyway - this
+# addendum is the instruction-level guard against that, on top of the code-level defensive leak
+# check in rag_service.py (belt-and-suspenders: neither alone is trusted for an absolute
+# constraint like "never repeat the real name").
+RAG_ANONYMIZATION_ADDENDUM = """
+
+HƯỚNG DẪN KHI CÂU HỎI ĐÃ ĐƯỢC ẨN DANH HÓA:
+Câu hỏi bên dưới đã được thay tên người thật bằng ký hiệu ẩn danh (ví dụ "Anh A", "Chị B"...). Đây \
+là yêu cầu phân tích NGUYÊN TẮC PHÁP LÝ áp dụng cho HÀNH VI được mô tả, KHÔNG phải kết luận về một \
+vụ việc/con người thực tế cụ thể nào. TUYỆT ĐỐI:
+- CHỈ dùng đúng ký hiệu ẩn danh đã cho (Anh A/Chị B/C...) khi nhắc tới các nhân vật trong câu hỏi, \
+kể cả khi bạn nhận ra hoặc suy đoán được danh tính thực tế của họ từ mô tả hành vi - KHÔNG được viết \
+ra bất kỳ tên riêng, biệt danh, nghệ danh, hay chi tiết nhận dạng nào khác của người thật đó dưới \
+bất kỳ hình thức nào, kể cả gián tiếp.
+- KHÔNG khẳng định hay ngụ ý đây là kết luận về một vụ việc thực tế cụ thể đã/đang được tòa án xử \
+lý - chỉ phân tích cấu thành tội phạm/quy định pháp luật áp dụng cho LOẠI hành vi được mô tả."""
+
+# requirements.md muc C: exact wording required by the feature's "câu miễn trừ trách nhiệm bắt buộc"
+# spec - appended verbatim (not paraphrased by the model) so it's guaranteed present regardless of
+# how the model itself chose to phrase the rest of the answer. rag_service.py appends this in code
+# after generation, never relies on the model to include it.
+ANONYMIZATION_DISCLAIMER = (
+    "Đây là phân tích nguyên tắc pháp lý chung dựa trên mô tả hành vi, không phải kết luận về vụ "
+    "việc thực tế cụ thể nào."
+)
+
+# requirements.md muc C: fail-closed fallback for the rare case the code-level leak check in
+# rag_service.py (_answer_leaks_real_name) still finds one of anonymized_names in the generated
+# answer despite RAG_ANONYMIZATION_ADDENDUM - the absolute "never repeat the real name" constraint
+# outranks giving a substantive answer, so this replaces the whole answer rather than trying to
+# patch out just the leaked name (which risks leaving a grammatically broken or partially-leaked
+# sentence).
+ANONYMIZATION_LEAK_FALLBACK_ANSWER = (
+    "Xin lỗi, tôi không thể đưa ra phân tích an toàn cho câu hỏi này. Bạn có thể hỏi lại bằng cách "
+    "chỉ mô tả hành vi cụ thể (không nêu tên người liên quan) để mình phân tích nguyên tắc pháp lý "
+    "áp dụng cho hành vi đó."
+)
+
+
+def build_system_prompt(is_long_question: bool, needs_anonymization: bool = False) -> str:
+    prompt = RAG_SYSTEM_PROMPT
     if is_long_question:
-        return RAG_SYSTEM_PROMPT + RAG_LONG_QUESTION_COT_ADDENDUM
-    return RAG_SYSTEM_PROMPT
+        prompt += RAG_LONG_QUESTION_COT_ADDENDUM
+    if needs_anonymization:
+        prompt += RAG_ANONYMIZATION_ADDENDUM
+    return prompt
 
 
 def _format_recent_turns(recent_turns: list[dict[str, str]]) -> str:

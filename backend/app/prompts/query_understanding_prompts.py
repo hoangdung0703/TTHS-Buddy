@@ -13,9 +13,10 @@ thuật (giáo trình, bài báo) về các nội dung này. Một câu hỏi d�
 kèm chữ "tố tụng") vẫn THUỘC phạm vi này nếu nó hỏi về tội phạm/hình phạt/chế định của luật hình \
 sự nội dung - KHÔNG được coi là ngoài phạm vi chỉ vì thiếu chữ "tố tụng".
 
-NHIỆM VỤ: Trả về đúng 1 object JSON với 2 field "rewritten_question" và "intent" (luôn trả về CẢ \
-2 field, mỗi lần gọi). "rewritten_question" sẽ được dùng để tìm kiếm văn bản luật liên quan (chỉ \
-khi intent="legal_question"), không phải để trả lời câu hỏi.
+NHIỆM VỤ: Trả về đúng 1 object JSON với 4 field "rewritten_question", "intent", \
+"needs_anonymization", "anonymized_names" (luôn trả về CẢ 4 field, mỗi lần gọi). "rewritten_question" \
+sẽ được dùng để tìm kiếm văn bản luật liên quan (chỉ khi intent="legal_question"), không phải để \
+trả lời câu hỏi.
 
 QUY TẮC CHO "intent" - chọn ĐÚNG 1 trong 7 giá trị sau:
 - "greeting": câu hiện tại CHỈ là lời chào hỏi/mở đầu hội thoại, giới thiệu bản thân, hỏi trợ lý \
@@ -105,11 +106,41 @@ trong câu viết lại (ví dụ: "...tội cướp tài sản theo Điều 168
 Điều, quy định, khái niệm...) không có sẵn trong câu hỏi gốc, lịch sử hội thoại, hoặc bảng viết \
 tắt. Nếu không đủ căn cứ để giải quyết một đại từ/ngữ cảnh ngầm hiểu, GIỮ NGUYÊN phần đó trong câu \
 hỏi thay vì đoán.
-   d. Nếu câu hỏi đã đầy đủ, rõ ràng, độc lập, không cần viết lại gì thêm ngoài mục a và b, trả về \
+   d. Nếu câu hỏi nhắc tên MỘT NGƯỜI CÓ THẬT/NHẬN DIỆN ĐƯỢC NGOÀI ĐỜI (người nổi tiếng, nhân vật \
+thời sự, hoặc bất kỳ tên riêng cụ thể nào gắn với một vụ việc thực tế - kể cả biệt danh/nghệ danh) \
+VÀ câu hỏi mô tả một HÀNH VI cụ thể của người đó rồi hỏi hành vi đó cấu thành tội gì/vi phạm quy \
+định nào/xử lý thế nào theo pháp luật (ví dụ "X đăng video nói Y, làm Z thì phạm tội gì?", "hành vi \
+livestream chửi bới của X có cấu thành tội vu khống không?") - đây LÀ trường hợp cần ẩn danh hóa: \
+   - Viết lại câu hỏi, THAY THẾ mọi tên riêng/biệt danh/nghệ danh của (các) người có thật đó bằng \
+ký hiệu ẩn danh trung tính theo thứ tự xuất hiện: "Anh A" cho người đầu tiên, "Chị B"/"Anh B" cho \
+người thứ hai (giữ đúng giới tính nếu xác định được, mặc định "Anh" nếu không rõ), "C" cho người \
+thứ ba, và tiếp tục theo bảng chữ cái. GIỮ NGUYÊN toàn bộ vai trò/quan hệ/hành vi/tình tiết đã nêu, \
+chỉ thay tên. Vẫn áp dụng thêm các mục a, b, c ở trên cho phần còn lại của câu hỏi.
+     QUAN TRỌNG: khi một người có CẢ tên thật LẪN biệt danh/nghệ danh cùng xuất hiện (ví dụ dạng \
+"Tên thật (Biệt danh)" hoặc "Biệt danh (Tên thật)"), phải thay THẾ TOÀN BỘ cụm đó (cả tên thật và \
+biệt danh, kể cả phần trong ngoặc đơn) chỉ bằng MỘT ký hiệu ẩn danh duy nhất - TUYỆT ĐỐI KHÔNG được \
+giữ lại biệt danh/nghệ danh trong ngoặc đơn ngay sau ký hiệu ẩn danh. Sai: "Anh A (Vua Quạt) tổ \
+chức đánh bạc..." (biệt danh "Vua Quạt" vẫn còn nhận diện được người thật). Đúng: "Anh A tổ chức \
+đánh bạc..." (không còn dấu vết tên thật/biệt danh nào).
+   - Đặt "needs_anonymization" = true.
+   - Liệt kê trong "anonymized_names" TẤT CẢ các biến thể tên/biệt danh/nghệ danh của người đó đã \
+xuất hiện trong câu hỏi gốc (nguyên văn, mỗi biến thể là một phần tử riêng - ví dụ cả "Bùi Hữu \
+Khánh" VÀ "Vua Quạt" nếu cả hai cùng xuất hiện - để hệ thống dùng kiểm tra an toàn nội bộ, không \
+hiển thị cho sinh viên).
+   NGƯỢC LẠI, nếu câu hỏi nhắc tên người có thật nhưng hỏi TRỰC TIẾP xin xác nhận/phủ nhận cáo buộc/ \
+tội danh cụ thể của CHÍNH người đó (ví dụ "X có tội không?", "X có bị đi tù không?", "ai đúng ai sai \
+trong vụ của X?") mà KHÔNG mô tả hành vi để phân tích cấu thành tội phạm, hoặc nếu tên trong câu hỏi \
+đã là tên ẩn danh/hư cấu sẵn (ví dụ "anh A", "chị B", "người này", không xác định được là ai ngoài \
+đời) - đây KHÔNG phải trường hợp cần ẩn danh hóa: giữ nguyên câu hỏi như bình thường (áp dụng mục a, \
+b, c như thường lệ), đặt "needs_anonymization" = false, "anonymized_names" = [].
+   e. Nếu câu hỏi đã đầy đủ, rõ ràng, độc lập, không cần viết lại gì thêm ngoài mục a, b, d, trả về \
 nguyên văn câu hỏi gốc.
 4. "rewritten_question" luôn CHỈ là một câu hỏi (hoặc câu hỏi gốc y hệt khi intent khác \
 "legal_question"). Không thêm giải thích, không thêm tiền tố kiểu "Câu hỏi viết lại:", không thêm \
-dấu nháy bao quanh."""
+dấu nháy bao quanh.
+5. "needs_anonymization" (boolean) và "anonymized_names" (mảng chuỗi) CHỈ có ý nghĩa khi \
+intent="legal_question" - với mọi intent khác, luôn đặt "needs_anonymization"=false và \
+"anonymized_names"=[]."""
 
 # Enforced via Gemini's responseSchema (not just prompt wording) - see gemini_client.generate_answer's
 # response_schema param. Mirrors the requirements.md muc E fix: a schema-level boundary between
@@ -126,8 +157,14 @@ QUERY_UNDERSTANDING_RESPONSE_SCHEMA: dict = {
     "properties": {
         "rewritten_question": {"type": "STRING"},
         "intent": {"type": "STRING", "enum": list(VALID_INTENTS)},
+        # Anonymization fields (requirements.md muc C "An danh hoa nguoi that") - see the system
+        # prompt's rewritten_question rule 3.d for the exact detection criteria. Only meaningful
+        # for intent="legal_question"; forced to false/[] for every other intent, both in the
+        # prompt's own rule 5 and defensively again in query_understanding_service.py.
+        "needs_anonymization": {"type": "BOOLEAN"},
+        "anonymized_names": {"type": "ARRAY", "items": {"type": "STRING"}},
     },
-    "required": ["rewritten_question", "intent"],
+    "required": ["rewritten_question", "intent", "needs_anonymization", "anonymized_names"],
 }
 
 # Small, fixed table so expansion is grounded in a known list rather than the model's own

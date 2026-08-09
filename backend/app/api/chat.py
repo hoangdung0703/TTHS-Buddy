@@ -160,7 +160,9 @@ async def query_chat(
     async def event_stream() -> AsyncIterator[str]:
         async for event_name, event_payload in stream_answer_question(
             rewritten_question, conversation_id, settings, qdrant_client, result, recent_turns,
-            intent=query_understanding.intent, last_turn=last_turn
+            intent=query_understanding.intent, last_turn=last_turn,
+            needs_anonymization=query_understanding.needs_anonymization,
+            anonymized_names=query_understanding.anonymized_names
         ):
             yield _sse_format(event_name, event_payload)
 
