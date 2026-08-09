@@ -13,10 +13,10 @@ thuật (giáo trình, bài báo) về các nội dung này. Một câu hỏi d�
 kèm chữ "tố tụng") vẫn THUỘC phạm vi này nếu nó hỏi về tội phạm/hình phạt/chế định của luật hình \
 sự nội dung - KHÔNG được coi là ngoài phạm vi chỉ vì thiếu chữ "tố tụng".
 
-NHIỆM VỤ: Trả về đúng 1 object JSON với 4 field "rewritten_question", "intent", \
-"needs_anonymization", "anonymized_names" (luôn trả về CẢ 4 field, mỗi lần gọi). "rewritten_question" \
-sẽ được dùng để tìm kiếm văn bản luật liên quan (chỉ khi intent="legal_question"), không phải để \
-trả lời câu hỏi.
+NHIỆM VỤ: Trả về đúng 1 object JSON với 5 field "rewritten_question", "intent", \
+"needs_anonymization", "anonymized_names", "sub_questions" (luôn trả về CẢ 5 field, mỗi lần gọi). \
+"rewritten_question" sẽ được dùng để tìm kiếm văn bản luật liên quan (chỉ khi intent="legal_question"), \
+không phải để trả lời câu hỏi.
 
 QUY TẮC CHO "intent" - chọn ĐÚNG 1 trong 7 giá trị sau:
 - "greeting": câu hiện tại CHỈ là lời chào hỏi/mở đầu hội thoại, giới thiệu bản thân, hỏi trợ lý \
@@ -140,7 +140,28 @@ nguyên văn câu hỏi gốc.
 dấu nháy bao quanh.
 5. "needs_anonymization" (boolean) và "anonymized_names" (mảng chuỗi) CHỈ có ý nghĩa khi \
 intent="legal_question" - với mọi intent khác, luôn đặt "needs_anonymization"=false và \
-"anonymized_names"=[]."""
+"anonymized_names"=[].
+
+QUY TẮC CHO "sub_questions" (mảng chuỗi) - CHỈ có ý nghĩa khi intent="legal_question":
+1. MẶC ĐỊNH là mảng rỗng [] - kể cả khi intent="legal_question", CHỈ điền khác rỗng khi câu hỏi \
+hiện tại có TÍN HIỆU CẤU TRÚC LIỆT KÊ RÕ RÀNG các câu hỏi con riêng biệt: đánh số lặp lại kiểu \
+"1./2./3.", nhãn lặp lại kiểu "Nhận định 1/Nhận định 2/...", "Trường hợp 1/Trường hợp 2/...", \
+"Câu 1/Câu 2/...", hoặc các cách đánh số/gắn nhãn tương tự rõ ràng khác. Đây PHẢI là tín hiệu CẤU \
+TRÚC (đánh số/nhãn lặp lại thấy được trong văn bản), TUYỆT ĐỐI KHÔNG dựa vào suy đoán ngữ nghĩa kiểu \
+"câu này có vẻ hỏi nhiều việc" - một câu hỏi dài, nhiều tình tiết, nhiều vế nhưng KHÔNG có đánh số/ \
+nhãn liệt kê rõ ràng trong văn bản vẫn PHẢI coi là 1 câu hỏi thống nhất duy nhất (sub_questions=[]), \
+xử lý như bình thường qua "rewritten_question". Với intent khác "legal_question", luôn đặt \
+sub_questions=[].
+2. Khi CÓ tín hiệu cấu trúc liệt kê rõ ràng: mỗi phần tử của "sub_questions" ứng với ĐÚNG 1 câu hỏi \
+con theo đúng thứ tự xuất hiện, GIỮ NGUYÊN VẸN nội dung/chi tiết của câu con gốc đó - TUYỆT ĐỐI \
+KHÔNG paraphrase làm mất thông tin, không tóm tắt, không gộp 2 câu con lại làm 1. Chỉ áp dụng thêm \
+đúng quy tắc mục 3.a (mở rộng viết tắt) và 3.b (giải quyết đại từ/ngữ cảnh ngầm hiểu dựa trên LỊCH \
+SỬ HỘI THOẠI, nếu câu con đó có dùng đại từ/ngầm hiểu) cho MỖI câu con riêng lẻ, giống hệt cách áp \
+dụng cho "rewritten_question" ở mục 3. Không cần giữ lại nhãn đánh số ("Nhận định 1:", "Câu 2:"...) \
+trong nội dung từng phần tử - chỉ cần đúng nội dung câu hỏi con, không cần tiền tố nhãn.
+3. Khi "sub_questions" khác rỗng, "rewritten_question" VẪN PHẢI được điền đầy đủ như bình thường \
+(viết lại toàn bộ câu hỏi gốc theo đúng quy tắc mục 3) - đây là phương án dự phòng/dùng để ghi log, \
+không phải field bị thay thế bởi "sub_questions"."""
 
 # Enforced via Gemini's responseSchema (not just prompt wording) - see gemini_client.generate_answer's
 # response_schema param. Mirrors the requirements.md muc E fix: a schema-level boundary between
@@ -163,8 +184,17 @@ QUERY_UNDERSTANDING_RESPONSE_SCHEMA: dict = {
         # prompt's own rule 5 and defensively again in query_understanding_service.py.
         "needs_anonymization": {"type": "BOOLEAN"},
         "anonymized_names": {"type": "ARRAY", "items": {"type": "STRING"}},
+        # requirements.md "Viec 3" (tach cau hoi nhieu chu de truoc khi retrieval) - see the system
+        # prompt's "sub_questions" rules for the exact detection criteria (numbered/labeled
+        # enumeration structure only, never semantic guessing). Only meaningful for
+        # intent="legal_question"; forced to [] for every other intent AND when no enumeration
+        # structure is detected, both in the prompt's own rules and defensively again in
+        # query_understanding_service.py.
+        "sub_questions": {"type": "ARRAY", "items": {"type": "STRING"}},
     },
-    "required": ["rewritten_question", "intent", "needs_anonymization", "anonymized_names"],
+    "required": [
+        "rewritten_question", "intent", "needs_anonymization", "anonymized_names", "sub_questions"
+    ],
 }
 
 # Small, fixed table so expansion is grounded in a known list rather than the model's own

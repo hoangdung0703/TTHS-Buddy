@@ -104,6 +104,14 @@ class QueryUnderstandingResult:
     # defensive post-generation leak check, never shown to the student.
     needs_anonymization: bool = False
     anonymized_names: list[str] = field(default_factory=list)
+    # requirements.md "Viec 3" (tach cau hoi nhieu chu de truoc khi retrieval) - non-empty ONLY
+    # when intent="legal_question" AND the message had a clear enumerated sub-question structure
+    # (numbered "1./2./3.", "Nhận định N", "Trường hợp N", "Câu N"... - see the prompt's
+    # sub_questions rules). Each element is that sub-question's own text, already run through the
+    # same abbreviation-expansion/context-resolution rules as rewritten_question. Bước 1+2 only:
+    # rag_service.py does not yet consume this for retrieval/generation - see
+    # retrieve_context_for_subquestions, added standalone ahead of that wiring (Bước 3).
+    sub_questions: list[str] = field(default_factory=list)
 
 
 def _looks_like_malformed_rewrite(original_question: str, rewritten_question: str) -> bool:
@@ -128,6 +136,7 @@ def rewrite_question(
         intent = str(parsed["intent"]).strip()
         needs_anonymization = bool(parsed.get("needs_anonymization", False))
         anonymized_names = [str(n).strip() for n in parsed.get("anonymized_names") or [] if str(n).strip()]
+        sub_questions = [str(q).strip() for q in parsed.get("sub_questions") or [] if str(q).strip()]
         if intent not in VALID_INTENTS:
             # responseSchema's enum constraint should already prevent this, but never trust a
             # single enforcement layer alone (same principle as the meta-commentary safety net
@@ -171,6 +180,9 @@ def rewrite_question(
         # don't trust that alone (same defensive layering as every other field on this call).
         needs_anonymization = False
         anonymized_names = []
+        # sub_questions only ever applies within the legal_question path too (requirements.md
+        # "Viec 3") - same defensive layering as needs_anonymization just above.
+        sub_questions = []
     elif _looks_like_malformed_rewrite(question, rewritten):
         # Layer 2 safety net (requirements.md muc E, buoc 4) - independent of layer 1, catches the
         # same failure mode if it slips through with intent still reported as legal_question.
@@ -192,6 +204,15 @@ def rewrite_question(
             )
         needs_anonymization = False
         anonymized_names = []
+        # rewritten (and therefore each sub_question, derived from the same untrusted call) was
+        # discarded as malformed - don't propagate a sub_questions split built from text this
+        # module no longer trusts, same reasoning as the needs_anonymization reset just above.
+        if sub_questions:
+            logger.warning(
+                "sub_questions was non-empty but rewritten_question was discarded as malformed - "
+                "downgrading to sub_questions=[] rather than trusting an untrusted split"
+            )
+        sub_questions = []
     elif needs_anonymization and not anonymized_names:
         # The model flagged anonymization but gave us nothing to defensively check the final
         # answer against - safer to skip the special (buffered + disclaimer) generation path than
@@ -212,7 +233,15 @@ def rewrite_question(
         if scrubbed:
             rewritten = scrubbed
 
+    if len(sub_questions) < 2:
+        # A "split" of 0 or 1 item isn't a real enumeration - either the model found nothing to
+        # split (already []) or degenerately echoed the whole message as a single-element list.
+        # Independent retrieval only makes sense for >=2 sub-questions, so normalize both cases to
+        # [] rather than let a 1-item list silently trigger a per-subquestion retrieval path later.
+        sub_questions = []
+
     return QueryUnderstandingResult(
         rewritten_question=rewritten, intent=intent,
-        needs_anonymization=needs_anonymization, anonymized_names=anonymized_names
+        needs_anonymization=needs_anonymization, anonymized_names=anonymized_names,
+        sub_questions=sub_questions
     )

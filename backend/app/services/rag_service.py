@@ -686,6 +686,31 @@ async def retrieve_context(question: str, settings: Settings, qdrant_client: Qdr
     )
 
 
+async def retrieve_context_for_subquestions(
+    sub_questions: list[str], settings: Settings, qdrant_client: QdrantClient
+) -> list[RetrievalResult]:
+    """requirements.md "Viec 3" Buoc 2 (tach cau hoi nhieu chu de truoc khi retrieval) - calls
+    retrieve_context() INDEPENDENTLY for each sub-question (its own embed_query call, its own
+    top_k=25/primary_count=8/diversity-aware selection, completely unchanged from the single-
+    question path) instead of embedding the whole multi-topic message as one vector. This is what
+    mục A/B's investigation showed fixes the "embedding dilution" root cause: a Dieu that ranks #1
+    when its own sub-question is embedded alone gets crowded out to rank in the hundreds when
+    embedded together with 5 other unrelated sub-questions in the same vector (see requirements.md
+    for the measured rank comparison). Concurrent via asyncio.gather, same pattern as the two
+    concurrent calls inside retrieve_context itself - N sub-questions costs N embed+Qdrant round
+    trips, but they overlap in wall-clock time rather than serializing.
+
+    Buoc 1+2 ONLY (per requirements.md staging) - returns the list of independent RetrievalResult,
+    one per sub-question, in the same order as `sub_questions`. Deliberately NOT wired into
+    stream_answer_question yet: merging these into one generation call with per-part context
+    labeling is Buoc 3, a separate, not-yet-built step so this increment stays independently
+    reviewable/testable.
+    """
+    return list(await asyncio.gather(
+        *(retrieve_context(sub_question, settings, qdrant_client) for sub_question in sub_questions)
+    ))
+
+
 async def stream_answer_question(
     question: str, conversation_id: uuid.UUID, settings: Settings, qdrant_client: QdrantClient, result: RagAnswer,
     recent_turns: list[dict[str, str]] | None = None, intent: str = "legal_question",
