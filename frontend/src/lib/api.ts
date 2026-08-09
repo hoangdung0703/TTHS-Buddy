@@ -19,6 +19,7 @@ import { ESSAY_BANK_DESCRIPTIONS, ESSAY_BANK_SUBTITLES, ESSAY_BANK_TITLES } from
 import type {
   ChatStreamAnswerDeltaEvent,
   ChatStreamCitationsEvent,
+  ChatStreamGradingEvent,
   ChatStreamSuggestedFollowupsEvent,
   ChatSuggestion,
   ConversationDetailResponse,
@@ -114,6 +115,9 @@ export interface ChatStreamHandlers {
   onCitations: (event: ChatStreamCitationsEvent) => void;
   onDelta: (event: ChatStreamAnswerDeltaEvent) => void;
   onSuggestedFollowups: (event: ChatStreamSuggestedFollowupsEvent) => void;
+  // Only fires for intent=answer_evaluation turns ("Sinh tình huống minh họa" Lượt 2) - see
+  // ChatStreamGradingEvent.
+  onGradingResult: (event: ChatStreamGradingEvent) => void;
 }
 
 // Parses one complete "event: <name>\ndata: <json>" block (already split on the blank-line
@@ -143,6 +147,8 @@ function dispatchSseBlock(block: string, handlers: ChatStreamHandlers): void {
     handlers.onDelta(data as ChatStreamAnswerDeltaEvent);
   } else if (eventName === "suggested_followups") {
     handlers.onSuggestedFollowups(data as ChatStreamSuggestedFollowupsEvent);
+  } else if (eventName === "grading_result") {
+    handlers.onGradingResult(data as ChatStreamGradingEvent);
   }
 }
 

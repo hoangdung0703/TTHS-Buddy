@@ -2,13 +2,20 @@
 lightweight Gemini call that runs BEFORE retrieval to (a) expand common legal abbreviations,
 (b) resolve implicit conversational context (pronouns, "what about X") into a standalone
 question, and (c) classify the question's intent (requirements.md muc E, extended by the "Mở rộng
-phân loại ý định Query Understanding" feature, and again by the "Sinh tình huống minh họa" feature)
-into one of legal_question/greeting/summarize_previous/request_scenario/out_of_scope, using only
-the recent conversation turns already logged for this
+phân loại ý định Query Understanding" feature, and again by the "Sinh tình huống minh họa" feature,
+Lượt 1 và Lượt 2) into one of legal_question/greeting/summarize_previous/request_scenario/
+answer_evaluation/out_of_scope, using only the recent conversation turns already logged for this
 conversation_id - never inventing new legal content. Retrieval and the final answer prompt use
 the rewritten question this returns, not the student's raw input - UNLESS intent is not
 legal_question, in which case rag_service short-circuits to the matching branch (refusal/greeting
-template/summarize call) without calling retrieval/generation at all.
+template/summarize/scenario/grading call) without calling retrieval/generation at all.
+
+"answer_evaluation" has an extra, DETERMINISTIC gate on top of the LLM's own classification (see
+`has_pending_scenario` below): the LLM is told (via the prompt's "LƯU Ý ĐẶC BIỆT" line) whether the
+previous turn actually left a scenario+rubric pending, but a model call can still occasionally
+violate that instruction. This module never trusts the model alone for a decision that controls
+whether a hidden rubric gets used at all - see the hard downgrade below, same defensive principle
+as the meta-commentary/malformed-rewrite safety nets already in this file.
 """
 from __future__ import annotations
 
@@ -63,8 +70,10 @@ def _looks_like_malformed_rewrite(original_question: str, rewritten_question: st
     return len(rewritten_question) > max_allowed_length
 
 
-def rewrite_question(question: str, recent_turns: list[dict[str, str]], settings: Settings) -> QueryUnderstandingResult:
-    user_prompt = build_query_understanding_prompt(question, recent_turns)
+def rewrite_question(
+    question: str, recent_turns: list[dict[str, str]], settings: Settings, has_pending_scenario: bool = False
+) -> QueryUnderstandingResult:
+    user_prompt = build_query_understanding_prompt(question, recent_turns, has_pending_scenario)
 
     try:
         response_text = generate_answer(
@@ -80,6 +89,19 @@ def rewrite_question(question: str, recent_turns: list[dict[str, str]], settings
             # below) - degrade to the safe default rather than propagating an unrecognized intent
             # string into rag_service's branching.
             logger.warning("Query understanding returned unrecognized intent %r - defaulting to legal_question", intent)
+            intent = "legal_question"
+        if intent == "answer_evaluation" and not has_pending_scenario:
+            # Hard, code-level gate (requirements.md "Sinh tình huống minh họa" Lượt 2): the
+            # caller (chat.py) computed has_pending_scenario from chat_query_logs.scenario_key_points
+            # directly, which is authoritative - the LLM's own classification, even though it was
+            # given this same fact in the prompt, is not trusted alone to decide whether a hidden
+            # grading rubric gets used. Without this, a model that ignores the prompt's "LƯU Ý ĐẶC
+            # BIỆT" gating instruction could route an ordinary message into grading against a
+            # rubric that doesn't exist for this turn.
+            logger.warning(
+                "Query understanding returned answer_evaluation without a pending scenario rubric "
+                "(has_pending_scenario=False) - downgrading to legal_question"
+            )
             intent = "legal_question"
     except Exception:
         # A broken/malformed query-understanding call must never break the whole chat request -

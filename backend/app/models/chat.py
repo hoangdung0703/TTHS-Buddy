@@ -45,7 +45,9 @@ class ChatSuggestionsResponse(BaseModel):
 # event, in order: answer_delta (one or more) -> citations -> suggested_followups -> done (the
 # aggregate-structure and no-context-blocks cases emit citations, always empty, before their
 # single answer_delta instead - see rag_service.stream_answer_question for the full order
-# guarantee and why citations otherwise wait for the complete answer).
+# guarantee and why citations otherwise wait for the complete answer). intent=answer_evaluation
+# additionally emits a "grading_result" event (ChatStreamGradingEvent) between answer_delta and
+# suggested_followups - see that class below.
 class ChatStreamCitationsEvent(BaseModel):
     citations: list[Citation]
     related_articles: list[RelatedArticle]
@@ -61,6 +63,16 @@ class ChatStreamAnswerDeltaEvent(BaseModel):
 
 class ChatStreamSuggestedFollowupsEvent(BaseModel):
     suggested_followups: list[SuggestedFollowup]
+
+
+# Only emitted for intent=answer_evaluation (requirements.md "Sinh tình huống minh họa" Lượt 2),
+# right after that turn's answer_delta (the qualitative "nhận xét" sentence). Deliberately has NO
+# score/percentage field anywhere - matched/missing points only, mirroring EssaySubmitResponse's
+# shape (see models/essay.py) since the frontend reuses that same matched/missing visual language.
+class ChatStreamGradingEvent(BaseModel):
+    matched_points: list[str]
+    missing_points: list[str]
+    missing_points_display: list[str] | None = None
 
 
 class ChatStreamDoneEvent(BaseModel):

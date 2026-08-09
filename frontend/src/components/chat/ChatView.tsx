@@ -6,14 +6,18 @@ import { useEffect, useRef, useState } from "react";
 
 import { CitationList } from "@/components/chat/CitationList";
 import { FormattedAnswer } from "@/components/chat/FormattedAnswer";
+import { ScenarioGradingResult } from "@/components/chat/ScenarioGradingResult";
 import { ApiError, getChatSuggestions, getConversationDetail, sendChatQuery } from "@/lib/api";
-import type { ChatSuggestion, Citation } from "@/lib/types";
+import type { ChatStreamGradingEvent, ChatSuggestion, Citation } from "@/lib/types";
 
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   citations?: Citation[];
+  // Only set for intent=answer_evaluation turns ("Sinh tình huống minh họa" Lượt 2) - see
+  // ScenarioGradingResult.
+  gradingResult?: ChatStreamGradingEvent;
 }
 
 const COPY_FEEDBACK_DURATION_MS = 1800;
@@ -255,6 +259,14 @@ export function ChatView({ conversationId }: ChatViewProps) {
         onSuggestedFollowups: () => {
           // Not surfaced in this UI yet (no per-answer follow-up chip slot exists) - the top
           // static suggestion chips (GET /api/chat/suggestions) are unrelated and unaffected.
+        },
+        onGradingResult: (event) => {
+          ensureAssistantMessage();
+          updateMessages((current) =>
+            current.map((message) =>
+              message.id === assistantMessageId ? { ...message, gradingResult: event } : message
+            )
+          );
         }
       });
     } catch (submitError) {
@@ -364,6 +376,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
                 </div>
                 <FormattedAnswer text={message.content} />
                 <CitationList citations={message.citations ?? []} />
+                {message.gradingResult ? <ScenarioGradingResult result={message.gradingResult} /> : null}
               </div>
             </div>
           )

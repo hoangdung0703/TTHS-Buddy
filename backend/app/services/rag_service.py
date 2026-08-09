@@ -29,6 +29,7 @@ from app.models.chat import (
     ChatStreamAnswerDeltaEvent,
     ChatStreamCitationsEvent,
     ChatStreamDoneEvent,
+    ChatStreamGradingEvent,
     ChatStreamSuggestedFollowupsEvent,
     Citation,
     RelatedArticle,
@@ -38,6 +39,7 @@ from app.prompts.conversational_prompts import (
     GREETING_TEMPLATES,
     NO_PREVIOUS_ANSWER_MESSAGE,
     NO_SCENARIO_CONTEXT_MESSAGE,
+    NO_SCENARIO_TO_GRADE_MESSAGE,
     SUMMARIZE_SYSTEM_PROMPT,
     build_summarize_prompt,
 )
@@ -49,6 +51,7 @@ from app.prompts.rag_prompts import (
 )
 from app.services.chat_suggestions_service import build_suggested_question
 from app.services.gemini_client import embed_query, generate_answer, stream_generate_answer
+from app.services.scenario_grading_service import grade_scenario_answer
 from app.services.scenario_service import generate_scenario
 
 logger = get_logger(__name__)
@@ -671,7 +674,7 @@ async def stream_answer_question(
     recent_turns: list[dict[str, str]] | None = None, intent: str = "legal_question",
     last_turn: dict[str, Any] | None = None
 ) -> AsyncIterator[tuple[str, ChatStreamCitationsEvent | ChatStreamAnswerDeltaEvent |
-                          ChatStreamSuggestedFollowupsEvent | ChatStreamDoneEvent]]:
+                          ChatStreamGradingEvent | ChatStreamSuggestedFollowupsEvent | ChatStreamDoneEvent]]:
     """Streaming counterpart of the old answer_question (Phase 4 Extension - see
     requirements.md). Yields (event_name, payload) tuples in the order: answer_delta (one or
     more) -> citations -> suggested_followups -> done - except for the two early-return cases
@@ -699,9 +702,10 @@ async def stream_answer_question(
 
     `intent` (query_understanding_service.rewrite_question's own classification, computed by the
     caller BEFORE this function runs - requirements.md muc E, extended by the "Mở rộng phân loại ý
-    định Query Understanding" feature and again by "Sinh tình huống minh họa" to 5 values)
-    short-circuits 4 of its 5 possible values straight past retrieval/generation, all in this same
-    shape (citations event -> single answer_delta -> empty suggested_followups -> done):
+    định Query Understanding" feature and again by "Sinh tình huống minh họa" Lượt 1/2 to 6 values)
+    short-circuits 5 of its 6 possible values straight past retrieval/generation, all in this same
+    shape (citations event -> single answer_delta -> empty suggested_followups -> done), except
+    answer_evaluation which additionally emits a grading_result event between the two:
     - "out_of_scope": the refusal answer (unchanged behavior from muc E) - a question already
       classified as unrelated to Luat To tung Hinh su has nothing for retrieval/generation to
       usefully do, and skipping both avoids a malformed/off-topic query string reaching either.
@@ -720,6 +724,16 @@ async def stream_answer_question(
       never be sent to the client (same "logged, not served" precedent as is_fallback/
       retrieved_chunks above). Falls back to NO_SCENARIO_CONTEXT_MESSAGE when there's no prior
       conversation turn, or when generate_scenario itself reports nothing to illustrate.
+    - "answer_evaluation": one LLM call (scenario_grading_service.grade_scenario_answer) grading
+      `question` (the student's analysis) against `last_turn["scenario_key_points"]` - the hidden
+      rubric request_scenario saved on the immediately preceding turn. Only reachable when that
+      rubric actually exists: query_understanding_service.rewrite_question already hard-downgrades
+      this intent to legal_question otherwise (see that module), so `last_turn` and its rubric are
+      trusted here, with a defensive NO_SCENARIO_TO_GRADE_MESSAGE fallback if that invariant is
+      ever violated. `result.answer` carries only the qualitative "feedback" sentence (no
+      score/percentage - requirements.md's core philosophy for this whole feature line); the
+      matched/missing points go out ONLY in the grading_result event, never persisted back to
+      chat_query_logs (grading is terminal - nothing downstream needs to re-read it).
     Only "legal_question" (the default) falls through to the retrieval/generation pipeline below.
     """
     if intent == "out_of_scope":
@@ -817,6 +831,51 @@ async def stream_answer_question(
             citations=[], related_articles=[], conversation_id=conversation_id, rewritten_question=question
         ))
         yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
+        yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
+        yield ("done", ChatStreamDoneEvent())
+        return
+
+    if intent == "answer_evaluation":
+        # last_turn["scenario_key_points"] is trusted here - query_understanding_service already
+        # hard-downgraded this intent to legal_question if it were missing (see that module's
+        # rewrite_question). The `or []` defensive fallback below only matters if that invariant
+        # is ever violated (e.g. a future bug), never in the normal path.
+        key_points: list[str] = (last_turn or {}).get("scenario_key_points") or []
+        scenario_text: str = (last_turn or {}).get("answer") or ""
+        grading = None
+        if key_points and scenario_text:
+            try:
+                grading = await asyncio.to_thread(grade_scenario_answer, scenario_text, key_points, question, settings)
+            except Exception:
+                # A broken grading call must never break the whole chat request - same resilience
+                # pattern as summarize_previous/request_scenario above.
+                logger.exception("answer_evaluation call failed - falling back to no-context message")
+        if grading is None:
+            answer_text = NO_SCENARIO_TO_GRADE_MESSAGE
+            matched_points: list[str] = []
+            missing_points: list[str] = []
+            missing_points_display: list[str] | None = None
+        else:
+            answer_text = grading.feedback
+            matched_points = grading.matched
+            missing_points = grading.missing
+            missing_points_display = grading.missing_points_display
+        result.answer = answer_text
+        result.citations = []
+        result.related_articles = []
+        result.suggested_followups = []
+        result.is_fallback = grading is None
+        result.used_academic_reference = False
+        result.retrieved_chunks = []
+        result.scenario_key_points = None
+        yield ("citations", ChatStreamCitationsEvent(
+            citations=[], related_articles=[], conversation_id=conversation_id, rewritten_question=question
+        ))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
+        yield ("grading_result", ChatStreamGradingEvent(
+            matched_points=matched_points, missing_points=missing_points,
+            missing_points_display=missing_points_display
+        ))
         yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
         yield ("done", ChatStreamDoneEvent())
         return

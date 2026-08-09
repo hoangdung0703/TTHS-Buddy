@@ -130,21 +130,24 @@ async def query_chat(
 
     conversation_id = body.conversation_id or uuid.uuid4()
     recent_turns = get_recent_turns(supabase_client, current_user.user_id, conversation_id)
+    # Fetched UNCONDITIONALLY now (requirements.md "Sinh tình huống minh họa" Lượt 2) - unlike the
+    # old summarize_previous-only fetch, has_pending_scenario below must be known BEFORE
+    # rewrite_question runs, since query_understanding_service needs it as part of its own
+    # classification (and as the deterministic gate on intent=answer_evaluation) - a
+    # chicken-and-egg requirement the old "fetch only after intent is known" approach can't satisfy.
+    last_turn = await asyncio.to_thread(
+        get_last_assistant_turn, supabase_client, current_user.user_id, conversation_id
+    )
+    has_pending_scenario = bool(last_turn and last_turn.get("scenario_key_points"))
     # rewrite_question calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded to a
     # thread so it doesn't block the single event loop for every other in-flight request, same
     # pattern already used for the sync QdrantClient calls in rag_service.retrieve_context (see
     # requirements.md security/capacity audit - this was the main cause of near-total
     # serialization measured under concurrent chat load before this fix).
-    query_understanding = await asyncio.to_thread(rewrite_question, body.question, recent_turns, settings)
+    query_understanding = await asyncio.to_thread(
+        rewrite_question, body.question, recent_turns, settings, has_pending_scenario
+    )
     rewritten_question = query_understanding.rewritten_question
-
-    # Only fetched for intent=summarize_previous (see rag_service.stream_answer_question) - no
-    # need to spend the extra Postgres round-trip for the other 3 intents.
-    last_turn = None
-    if query_understanding.intent == "summarize_previous":
-        last_turn = await asyncio.to_thread(
-            get_last_assistant_turn, supabase_client, current_user.user_id, conversation_id
-        )
 
     # Mutated in place by stream_answer_question as the stream progresses - holds the fields
     # (is_fallback, used_academic_reference, retrieved_chunks) that are intentionally never sent

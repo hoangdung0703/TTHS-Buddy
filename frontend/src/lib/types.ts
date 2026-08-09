@@ -54,6 +54,16 @@ export interface ChatStreamSuggestedFollowupsEvent {
   suggested_followups: SuggestedFollowup[];
 }
 
+// Only emitted for intent=answer_evaluation ("Sinh tình huống minh họa" Lượt 2), between
+// answer_delta and suggested_followups. Deliberately has NO score/percentage field - matched/
+// missing points only, same shape as EssaySubmitResponse's grading fields so the chat UI can
+// reuse that module's matched/missing visual language.
+export interface ChatStreamGradingEvent {
+  matched_points: string[];
+  missing_points: string[];
+  missing_points_display?: string[] | null;
+}
+
 export interface ChatSuggestion {
   id: string;
   text: string;

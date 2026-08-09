@@ -17,7 +17,7 @@ NHIỆM VỤ: Trả về đúng 1 object JSON với 2 field "rewritten_question"
 2 field, mỗi lần gọi). "rewritten_question" sẽ được dùng để tìm kiếm văn bản luật liên quan (chỉ \
 khi intent="legal_question"), không phải để trả lời câu hỏi.
 
-QUY TẮC CHO "intent" - chọn ĐÚNG 1 trong 5 giá trị sau:
+QUY TẮC CHO "intent" - chọn ĐÚNG 1 trong 6 giá trị sau:
 - "greeting": câu hiện tại CHỈ là lời chào hỏi/mở đầu hội thoại, giới thiệu bản thân, hỏi trợ lý \
 là ai/làm được gì (ví dụ "xin chào", "chào bạn", "bạn là ai", "bạn giúp được gì") - KHÔNG kèm một \
 câu hỏi pháp lý cụ thể nào. Nếu câu vừa chào vừa hỏi luôn một câu hỏi luật cụ thể (ví dụ "Chào bạn, \
@@ -40,6 +40,16 @@ bất kỳ nội dung pháp lý MỚI nào. Nếu câu vừa xin ví dụ vừa 
 "legal_question", KHÔNG phải "request_scenario". Nếu câu hỏi CHỈ xin ví dụ chung chung mà không liên \
 quan đến nội dung pháp lý nào (kể cả trong lịch sử hội thoại lẫn trong chính câu hỏi), đó KHÔNG phải \
 "request_scenario" - coi là "out_of_scope"/"legal_question" tùy ngữ cảnh như bình thường.
+- "answer_evaluation": CHỈ được chọn khi CẢ HAI điều kiện sau đều đúng: (a) phần LỊCH SỬ HỘI THOẠI \
+bên dưới có dòng "LƯU Ý ĐẶC BIỆT" xác nhận lượt trả lời gần nhất của trợ lý LÀ một tình huống minh \
+họa đang chờ sinh viên phân tích, VÀ (b) câu hiện tại của sinh viên là một câu TRẢ LỜI/PHÂN TÍCH thử \
+cho chính tình huống đó (mô tả nhân vật trong tình huống đã làm gì đúng/sai, áp dụng quy định nào, \
+kết luận thế nào...) chứ KHÔNG phải một câu hỏi mới. NẾU KHÔNG có dòng "LƯU Ý ĐẶC BIỆT" đó trong \
+lịch sử hội thoại, TUYỆT ĐỐI KHÔNG được chọn "answer_evaluation" dù câu hiện tại trông giống một câu \
+trả lời/phân tích - hãy chọn giá trị khác phù hợp nhất (thường là "legal_question"). NẾU CÓ dòng \
+"LƯU Ý ĐẶC BIỆT" đó nhưng câu hiện tại rõ ràng là một câu hỏi luật MỚI, không liên quan đến việc \
+phân tích tình huống (ví dụ hỏi sang một Điều/khái niệm khác hẳn), vẫn chọn "legal_question" như \
+bình thường, không ép vào "answer_evaluation".
 - "out_of_scope": câu hỏi (kết hợp LỊCH SỬ HỘI THOẠI nếu có) KHÔNG thuộc PHẠM VI nêu trên và cũng \
 không phải "greeting"/"summarize_previous" - bao gồm: câu hỏi thuộc lĩnh vực pháp luật khác hoàn \
 toàn không liên quan hình sự (dân sự, lao động, hôn nhân gia đình, thuế, doanh nghiệp...), câu hỏi \
@@ -57,9 +67,9 @@ QUY TẮC CHO "rewritten_question":
 copy y hệt, không sửa một chữ nào. TUYỆT ĐỐI KHÔNG được tự viết câu mô tả/giải thích kiểu "câu hỏi \
 này không liên quan đến..." hay bất kỳ câu nào khác thay cho câu hỏi gốc - field này không phải \
 chỗ để giải thích quyết định intent, lý do đó không cần viết ra ở đâu cả.
-2. NẾU intent = "greeting", "summarize_previous", hoặc "request_scenario": "rewritten_question" \
-cũng PHẢI là NGUYÊN VĂN câu hỏi gốc của sinh viên, copy y hệt (các intent này không đi qua bước tìm \
-kiếm văn bản luật nên không cần viết lại).
+2. NẾU intent = "greeting", "summarize_previous", "request_scenario", hoặc "answer_evaluation": \
+"rewritten_question" cũng PHẢI là NGUYÊN VĂN câu hỏi gốc của sinh viên, copy y hệt (các intent này \
+không đi qua bước tìm kiếm văn bản luật nên không cần viết lại).
 3. NẾU intent = "legal_question", áp dụng các quy tắc viết lại sau:
    a. Nếu câu hỏi dùng viết tắt luật phổ biến, mở rộng viết tắt đó dựa theo ĐÚNG bảng viết tắt \
 được cung cấp bên dưới. Không mở rộng bất kỳ viết tắt nào không có trong bảng.
@@ -86,7 +96,8 @@ dấu nháy bao quanh."""
 # writing an explanatory sentence into rewritten_question, whereas relying on prompt wording alone
 # (the pre-fix version of this file) let that leak through on a fraction of calls.
 VALID_INTENTS: tuple[str, ...] = (
-    "legal_question", "greeting", "summarize_previous", "request_scenario", "out_of_scope"
+    "legal_question", "greeting", "summarize_previous", "request_scenario", "answer_evaluation",
+    "out_of_scope",
 )
 
 QUERY_UNDERSTANDING_RESPONSE_SCHEMA: dict = {
@@ -125,11 +136,23 @@ def _format_recent_turns(recent_turns: list[dict[str, str]]) -> str:
     )
 
 
-def build_query_understanding_prompt(question: str, recent_turns: list[dict[str, str]]) -> str:
+def build_query_understanding_prompt(
+    question: str, recent_turns: list[dict[str, str]], has_pending_scenario: bool = False
+) -> str:
     parts = [f"BẢNG VIẾT TẮT LUẬT CHUẨN:\n{_format_abbreviation_table()}"]
 
     if recent_turns:
-        parts.append(f"LỊCH SỬ HỘI THOẠI GẦN ĐÂY (cũ nhất trước):\n{_format_recent_turns(recent_turns)}")
+        history_block = f"LỊCH SỬ HỘI THOẠI GẦN ĐÂY (cũ nhất trước):\n{_format_recent_turns(recent_turns)}"
+        if has_pending_scenario:
+            # Deterministic fact (computed in chat.py from chat_query_logs.scenario_key_points,
+            # not inferred by this LLM call) - the "answer_evaluation" criterion above requires
+            # this exact line to be present before the model may ever choose that intent, so its
+            # wording here must match what that criterion looks for.
+            history_block += (
+                "\n\nLƯU Ý ĐẶC BIỆT: lượt trả lời gần nhất của trợ lý ở trên LÀ một tình huống "
+                "minh họa đang chờ sinh viên phân tích/trả lời."
+            )
+        parts.append(history_block)
 
     parts.append(f"Câu hỏi hiện tại của sinh viên: {question}")
     return "\n\n---\n\n".join(parts)

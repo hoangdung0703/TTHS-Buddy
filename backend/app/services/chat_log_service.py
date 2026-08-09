@@ -57,13 +57,21 @@ def get_recent_turns(supabase_client: Client, user_id: str, conversation_id: uui
 
 def get_last_assistant_turn(supabase_client: Client, user_id: str,
                              conversation_id: uuid.UUID) -> dict[str, Any] | None:
-    """Returns the most recently logged answer + its citations for this conversation (used by
-    intent=summarize_previous - see rag_service.stream_answer_question), or None if this
-    conversation has no prior turn yet (e.g. the summarize request is the first message)."""
+    """Returns the most recently logged answer + its citations + hidden scenario rubric (if any)
+    for this conversation, or None if this conversation has no prior turn yet. Used by:
+    - intent=summarize_previous (answer/citations - see rag_service.stream_answer_question)
+    - intent=request_scenario/answer_evaluation gating (scenario_key_points - requirements.md
+      "Sinh tình huống minh họa"): chat.py calls this UNCONDITIONALLY on every turn (not just when
+      the intent is already known to need it) specifically so it can compute
+      has_pending_scenario BEFORE query_understanding_service.rewrite_question runs, since that
+      fact is part of what the classifier itself needs to decide intent - a chicken-and-egg
+      requirement summarize_previous's original conditional fetch (fetched only after intent was
+      already known) didn't have.
+    """
     try:
         response = (
             supabase_client.table(CHAT_QUERY_LOGS_TABLE)
-            .select("answer, citations")
+            .select("answer, citations, scenario_key_points")
             .eq("user_id", user_id)
             .eq("conversation_id", str(conversation_id))
             .order("created_at", desc=True)
@@ -80,7 +88,11 @@ def get_last_assistant_turn(supabase_client: Client, user_id: str,
     rows = response.data or []
     if not rows:
         return None
-    return {"answer": rows[0]["answer"], "citations": rows[0].get("citations") or []}
+    return {
+        "answer": rows[0]["answer"],
+        "citations": rows[0].get("citations") or [],
+        "scenario_key_points": rows[0].get("scenario_key_points") or None,
+    }
 
 
 def _truncate_title(question: str) -> str:

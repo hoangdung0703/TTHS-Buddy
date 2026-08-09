@@ -32,6 +32,16 @@ NO_SCENARIO_CONTEXT_MESSAGE = (
     "thể trước, rồi mình sẽ tạo tình huống minh họa cho nội dung đó nhé."
 )
 
+# Safety-net only (requirements.md "Sinh tình huống minh họa" Lượt 2) - should never actually
+# surface in practice, since query_understanding_service.rewrite_question's hard downgrade already
+# prevents intent=answer_evaluation from reaching rag_service without a pending scenario rubric.
+# Kept for the same defensive-in-depth reason as every other "this shouldn't happen but never
+# trust a single layer" fallback in this codebase.
+NO_SCENARIO_TO_GRADE_MESSAGE = (
+    "Có vẻ không có tình huống nào đang chờ chấm. Bạn có thể hỏi một câu hỏi luật, hoặc xin mình "
+    "tạo một tình huống minh họa mới nhé."
+)
+
 SUMMARIZE_SYSTEM_PROMPT = """Bạn là bước tóm tắt lại một câu trả lời về pháp luật mà trợ lý VỪA đưa \
 ra cho sinh viên trong lượt trước, theo đúng yêu cầu tóm tắt hiện tại của sinh viên.
 
