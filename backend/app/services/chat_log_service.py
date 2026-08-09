@@ -243,6 +243,7 @@ def log_chat_query(supabase_client: Client, user_id: str, conversation_id: uuid.
         "citations": [c.model_dump() for c in result.citations],
         "related_articles": [r.model_dump() for r in result.related_articles],
         "retrieved_chunks": [_serialize_retrieved_chunk(c) for c in result.retrieved_chunks],
+        "scenario_key_points": result.scenario_key_points,
     }
     try:
         supabase_client.table(CHAT_QUERY_LOGS_TABLE).insert(row).execute()

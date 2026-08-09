@@ -24,6 +24,14 @@ GREETING_TEMPLATES: tuple[str, ...] = (
 # conversation, so there is nothing to summarize yet.
 NO_PREVIOUS_ANSWER_MESSAGE = "Bạn muốn mình tóm tắt nội dung nào? Hãy đặt câu hỏi trước nhé."
 
+# Edge case (requirements.md "Sinh tình huống minh họa"): intent=request_scenario but there is no
+# prior legal content in this conversation to build a scenario from (first message of the
+# conversation, or scenario_service.generate_scenario correctly reported nothing to illustrate).
+NO_SCENARIO_CONTEXT_MESSAGE = (
+    "Bạn muốn mình tạo tình huống minh họa cho nội dung pháp lý nào? Hãy hỏi một câu hỏi luật cụ "
+    "thể trước, rồi mình sẽ tạo tình huống minh họa cho nội dung đó nhé."
+)
+
 SUMMARIZE_SYSTEM_PROMPT = """Bạn là bước tóm tắt lại một câu trả lời về pháp luật mà trợ lý VỪA đưa \
 ra cho sinh viên trong lượt trước, theo đúng yêu cầu tóm tắt hiện tại của sinh viên.
 

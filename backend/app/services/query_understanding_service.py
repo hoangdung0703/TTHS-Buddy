@@ -2,8 +2,9 @@
 lightweight Gemini call that runs BEFORE retrieval to (a) expand common legal abbreviations,
 (b) resolve implicit conversational context (pronouns, "what about X") into a standalone
 question, and (c) classify the question's intent (requirements.md muc E, extended by the "Mở rộng
-phân loại ý định Query Understanding" feature) into one of legal_question/greeting/
-summarize_previous/out_of_scope, using only the recent conversation turns already logged for this
+phân loại ý định Query Understanding" feature, and again by the "Sinh tình huống minh họa" feature)
+into one of legal_question/greeting/summarize_previous/request_scenario/out_of_scope, using only
+the recent conversation turns already logged for this
 conversation_id - never inventing new legal content. Retrieval and the final answer prompt use
 the rewritten question this returns, not the student's raw input - UNLESS intent is not
 legal_question, in which case rag_service short-circuits to the matching branch (refusal/greeting

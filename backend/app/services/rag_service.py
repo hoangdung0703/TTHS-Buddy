@@ -37,6 +37,7 @@ from app.models.chat import (
 from app.prompts.conversational_prompts import (
     GREETING_TEMPLATES,
     NO_PREVIOUS_ANSWER_MESSAGE,
+    NO_SCENARIO_CONTEXT_MESSAGE,
     SUMMARIZE_SYSTEM_PROMPT,
     build_summarize_prompt,
 )
@@ -48,6 +49,7 @@ from app.prompts.rag_prompts import (
 )
 from app.services.chat_suggestions_service import build_suggested_question
 from app.services.gemini_client import embed_query, generate_answer, stream_generate_answer
+from app.services.scenario_service import generate_scenario
 
 logger = get_logger(__name__)
 
@@ -208,6 +210,10 @@ class RagAnswer:
     is_fallback: bool
     retrieved_chunks: list[RetrievedChunk]
     used_academic_reference: bool
+    # Hidden rubric for intent=request_scenario (requirements.md "Sinh tình huống minh họa" Lượt
+    # 1) - never sent over SSE (see stream_answer_question's docstring), only logged to
+    # chat_query_logs for Lượt 2 grading (not built yet). None for every other intent/branch.
+    scenario_key_points: list[str] | None = None
 
 
 @dataclass
@@ -693,9 +699,9 @@ async def stream_answer_question(
 
     `intent` (query_understanding_service.rewrite_question's own classification, computed by the
     caller BEFORE this function runs - requirements.md muc E, extended by the "Mở rộng phân loại ý
-    định Query Understanding" feature to 4 values) short-circuits 3 of its 4 possible values
-    straight past retrieval/generation, all in this same shape (citations event -> single
-    answer_delta -> empty suggested_followups -> done):
+    định Query Understanding" feature and again by "Sinh tình huống minh họa" to 5 values)
+    short-circuits 4 of its 5 possible values straight past retrieval/generation, all in this same
+    shape (citations event -> single answer_delta -> empty suggested_followups -> done):
     - "out_of_scope": the refusal answer (unchanged behavior from muc E) - a question already
       classified as unrelated to Luat To tung Hinh su has nothing for retrieval/generation to
       usefully do, and skipping both avoids a malformed/off-topic query string reaching either.
@@ -706,6 +712,14 @@ async def stream_answer_question(
       citations verbatim (no recomputation) since the underlying legal content hasn't changed,
       only its presentation. `last_turn` is None when this is the first message of the
       conversation (nothing to summarize yet - see NO_PREVIOUS_ANSWER_MESSAGE).
+    - "request_scenario": one LLM call (scenario_service.generate_scenario) grounded ONLY in
+      `recent_turns` (no retrieval - reuses whatever Điều luật was already discussed) that
+      produces a visible fictional scenario AND a hidden key_points rubric. Only the scenario text
+      goes into `result.answer`/the SSE stream; `result.scenario_key_points` carries the rubric
+      for chat_log_service.log_chat_query to persist for Lượt 2 grading (not built yet) - it must
+      never be sent to the client (same "logged, not served" precedent as is_fallback/
+      retrieved_chunks above). Falls back to NO_SCENARIO_CONTEXT_MESSAGE when there's no prior
+      conversation turn, or when generate_scenario itself reports nothing to illustrate.
     Only "legal_question" (the default) falls through to the retrieval/generation pipeline below.
     """
     if intent == "out_of_scope":
@@ -768,6 +782,39 @@ async def stream_answer_question(
         result.retrieved_chunks = []
         yield ("citations", ChatStreamCitationsEvent(
             citations=citations, related_articles=[], conversation_id=conversation_id, rewritten_question=question
+        ))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
+        yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
+        yield ("done", ChatStreamDoneEvent())
+        return
+
+    if intent == "request_scenario":
+        scenario_key_points: list[str] | None = None
+        if not recent_turns:
+            answer_text = NO_SCENARIO_CONTEXT_MESSAGE
+        else:
+            try:
+                scenario_result = await asyncio.to_thread(generate_scenario, recent_turns, question, settings)
+            except Exception:
+                # A broken scenario call must never break the whole chat request - same
+                # resilience pattern as summarize_previous above.
+                logger.exception("request_scenario call failed - falling back to no-context message")
+                scenario_result = None
+            if scenario_result is None or not scenario_result.scenario:
+                answer_text = NO_SCENARIO_CONTEXT_MESSAGE
+            else:
+                answer_text = scenario_result.scenario
+                scenario_key_points = scenario_result.key_points
+        result.answer = answer_text
+        result.citations = []
+        result.related_articles = []
+        result.suggested_followups = []
+        result.is_fallback = scenario_key_points is None
+        result.used_academic_reference = False
+        result.retrieved_chunks = []
+        result.scenario_key_points = scenario_key_points
+        yield ("citations", ChatStreamCitationsEvent(
+            citations=[], related_articles=[], conversation_id=conversation_id, rewritten_question=question
         ))
         yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
         yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))

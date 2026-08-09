@@ -17,7 +17,7 @@ NHIỆM VỤ: Trả về đúng 1 object JSON với 2 field "rewritten_question"
 2 field, mỗi lần gọi). "rewritten_question" sẽ được dùng để tìm kiếm văn bản luật liên quan (chỉ \
 khi intent="legal_question"), không phải để trả lời câu hỏi.
 
-QUY TẮC CHO "intent" - chọn ĐÚNG 1 trong 4 giá trị sau:
+QUY TẮC CHO "intent" - chọn ĐÚNG 1 trong 5 giá trị sau:
 - "greeting": câu hiện tại CHỈ là lời chào hỏi/mở đầu hội thoại, giới thiệu bản thân, hỏi trợ lý \
 là ai/làm được gì (ví dụ "xin chào", "chào bạn", "bạn là ai", "bạn giúp được gì") - KHÔNG kèm một \
 câu hỏi pháp lý cụ thể nào. Nếu câu vừa chào vừa hỏi luôn một câu hỏi luật cụ thể (ví dụ "Chào bạn, \
@@ -31,6 +31,15 @@ hơn. Nếu câu hỏi tiếp tục về CÙNG chủ đề nhưng hỏi thêm đ
 "còn trường hợp X thì sao", hỏi thêm 1 khía cạnh khác của cùng vấn đề), đó vẫn là "legal_question", \
 KHÔNG phải "summarize_previous" - "summarize_previous" chỉ dùng khi ý định DUY NHẤT là rút gọn văn \
 bản đã có, không có yêu cầu nội dung mới nào cả.
+- "request_scenario": câu hiện tại yêu cầu một VÍ DỤ/TÌNH HUỐNG THỰC TẾ minh họa cho nội dung pháp \
+lý (Điều luật, khái niệm, quy định) VỪA được thảo luận trong LỊCH SỬ HỘI THOẠI gần đây (ví dụ: "cho \
+mình một tình huống thực tế minh họa", "cho ví dụ cụ thể được không", "vẽ ra một trường hợp áp dụng \
+điều này", "kể một tình huống liên quan đến quy định vừa nói"). ĐIỂM MẤU CHỐT để phân biệt với \
+"legal_question": câu này CHỈ xin một ví dụ/tình huống minh họa cho nội dung ĐÃ CÓ, KHÔNG hỏi thêm \
+bất kỳ nội dung pháp lý MỚI nào. Nếu câu vừa xin ví dụ vừa hỏi thêm một câu hỏi luật mới/khác, đó là \
+"legal_question", KHÔNG phải "request_scenario". Nếu câu hỏi CHỈ xin ví dụ chung chung mà không liên \
+quan đến nội dung pháp lý nào (kể cả trong lịch sử hội thoại lẫn trong chính câu hỏi), đó KHÔNG phải \
+"request_scenario" - coi là "out_of_scope"/"legal_question" tùy ngữ cảnh như bình thường.
 - "out_of_scope": câu hỏi (kết hợp LỊCH SỬ HỘI THOẠI nếu có) KHÔNG thuộc PHẠM VI nêu trên và cũng \
 không phải "greeting"/"summarize_previous" - bao gồm: câu hỏi thuộc lĩnh vực pháp luật khác hoàn \
 toàn không liên quan hình sự (dân sự, lao động, hôn nhân gia đình, thuế, doanh nghiệp...), câu hỏi \
@@ -48,9 +57,9 @@ QUY TẮC CHO "rewritten_question":
 copy y hệt, không sửa một chữ nào. TUYỆT ĐỐI KHÔNG được tự viết câu mô tả/giải thích kiểu "câu hỏi \
 này không liên quan đến..." hay bất kỳ câu nào khác thay cho câu hỏi gốc - field này không phải \
 chỗ để giải thích quyết định intent, lý do đó không cần viết ra ở đâu cả.
-2. NẾU intent = "greeting" hoặc "summarize_previous": "rewritten_question" cũng PHẢI là NGUYÊN VĂN \
-câu hỏi gốc của sinh viên, copy y hệt (2 intent này không đi qua bước tìm kiếm văn bản luật nên \
-không cần viết lại).
+2. NẾU intent = "greeting", "summarize_previous", hoặc "request_scenario": "rewritten_question" \
+cũng PHẢI là NGUYÊN VĂN câu hỏi gốc của sinh viên, copy y hệt (các intent này không đi qua bước tìm \
+kiếm văn bản luật nên không cần viết lại).
 3. NẾU intent = "legal_question", áp dụng các quy tắc viết lại sau:
    a. Nếu câu hỏi dùng viết tắt luật phổ biến, mở rộng viết tắt đó dựa theo ĐÚNG bảng viết tắt \
 được cung cấp bên dưới. Không mở rộng bất kỳ viết tắt nào không có trong bảng.
@@ -76,7 +85,9 @@ dấu nháy bao quanh."""
 # "the rewritten question text" and "the out-of-scope classification" is what stops the model from
 # writing an explanatory sentence into rewritten_question, whereas relying on prompt wording alone
 # (the pre-fix version of this file) let that leak through on a fraction of calls.
-VALID_INTENTS: tuple[str, ...] = ("legal_question", "greeting", "summarize_previous", "out_of_scope")
+VALID_INTENTS: tuple[str, ...] = (
+    "legal_question", "greeting", "summarize_previous", "request_scenario", "out_of_scope"
+)
 
 QUERY_UNDERSTANDING_RESPONSE_SCHEMA: dict = {
     "type": "OBJECT",
