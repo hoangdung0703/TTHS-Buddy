@@ -17,20 +17,40 @@ NHIỆM VỤ: Trả về đúng 1 object JSON với 2 field "rewritten_question"
 2 field, mỗi lần gọi). "rewritten_question" sẽ được dùng để tìm kiếm văn bản luật liên quan (chỉ \
 khi intent="legal_question"), không phải để trả lời câu hỏi.
 
-QUY TẮC CHO "intent" - chọn ĐÚNG 1 trong 6 giá trị sau:
+QUY TẮC CHO "intent" - chọn ĐÚNG 1 trong 7 giá trị sau:
 - "greeting": câu hiện tại CHỈ là lời chào hỏi/mở đầu hội thoại, giới thiệu bản thân, hỏi trợ lý \
 là ai/làm được gì (ví dụ "xin chào", "chào bạn", "bạn là ai", "bạn giúp được gì") - KHÔNG kèm một \
 câu hỏi pháp lý cụ thể nào. Nếu câu vừa chào vừa hỏi luôn một câu hỏi luật cụ thể (ví dụ "Chào bạn, \
 cho mình hỏi Điều 173 BLHS quy định gì?"), đó là "legal_question", KHÔNG phải "greeting".
-- "summarize_previous": câu hiện tại là yêu cầu tóm tắt/rút gọn/nói ngắn lại CHÍNH câu trả lời \
-TRỢ LÝ VỪA ĐƯA RA trong lượt gần nhất (ví dụ "tóm tắt lại giúp mình", "gói gọn trong 3 câu", "nói \
-ngắn gọn hơn được không", "rút gọn câu trả lời trên"). ĐIỂM MẤU CHỐT để phân biệt với \
+- "summarize_previous": câu hiện tại là yêu cầu NGẮN GỌN HƠN CHÍNH câu trả lời TRỢ LÝ VỪA ĐƯA RA \
+trong lượt gần nhất - mục đích là để phát biểu/ghi chú nhanh/nắm ý chính, KHÔNG phải vì không hiểu \
+nội dung (ví dụ "tóm tắt lại giúp mình", "gói gọn trong 3 câu", "nói ngắn gọn hơn được không", "rút \
+gọn câu trả lời trên", "cho mình bản tóm tắt"). ĐIỂM MẤU CHỐT để phân biệt với "explain_simpler": \
+"summarize_previous" là yêu cầu về ĐỘ DÀI (làm NGẮN lại), không phải yêu cầu về ĐỘ DỄ HIỂU - câu hỏi \
+không thể hiện dấu hiệu người hỏi đang bối rối/không hiểu nội dung. ĐIỂM MẤU CHỐT để phân biệt với \
 "legal_question": câu này KHÔNG hỏi thêm bất kỳ nội dung pháp lý MỚI nào, KHÔNG nêu tình huống mới, \
 KHÔNG hỏi về một Điều/khái niệm khác - nó chỉ yêu cầu trình bày LẠI đúng nội dung đã trả lời, ngắn \
 hơn. Nếu câu hỏi tiếp tục về CÙNG chủ đề nhưng hỏi thêm điều gì đó MỚI (kể cả hỏi sâu hơn, hỏi \
 "còn trường hợp X thì sao", hỏi thêm 1 khía cạnh khác của cùng vấn đề), đó vẫn là "legal_question", \
 KHÔNG phải "summarize_previous" - "summarize_previous" chỉ dùng khi ý định DUY NHẤT là rút gọn văn \
 bản đã có, không có yêu cầu nội dung mới nào cả.
+- "explain_simpler": câu hiện tại là yêu cầu giải thích LẠI CHÍNH câu trả lời TRỢ LÝ VỪA ĐƯA RA \
+trong lượt gần nhất theo cách DỄ HIỂU HƠN - mục đích là vì người hỏi CHƯA HIỂU nội dung, không phải \
+vì muốn nó ngắn hơn (ví dụ "giải thích đơn giản hơn được không", "tôi không hiểu, nói lại được \
+không", "khó hiểu quá, giải thích dễ hiểu hơn giúp mình", "cho ví dụ dễ hình dung hơn về ý vừa nói", \
+"nói theo cách bình thường được không, đừng dùng từ chuyên ngành"). ĐIỂM MẤU CHỐT để phân biệt với \
+"summarize_previous": "explain_simpler" là yêu cầu về ĐỘ DỄ HIỂU (giảm thuật ngữ khó/diễn giải lại/ \
+thêm ví dụ), KHÔNG nhất thiết phải ngắn hơn - câu trả lời có thể DÀI HƠN bản gốc nếu cần thêm ví dụ \
+hoặc giải thích thuật ngữ. Dấu hiệu nhận biết: người hỏi thể hiện sự bối rối/không hiểu ("không \
+hiểu", "khó hiểu", "rối quá", "chưa rõ") hoặc xin cách diễn đạt khác/ví dụ minh họa, KHÔNG chỉ đơn \
+thuần xin bản ngắn hơn. ĐIỂM MẤU CHỐT để phân biệt với "legal_question": câu này KHÔNG hỏi thêm bất \
+kỳ nội dung pháp lý MỚI nào, KHÔNG nêu tình huống mới, KHÔNG hỏi về một Điều/khái niệm khác - nó chỉ \
+yêu cầu trình bày LẠI đúng nội dung đã trả lời, dễ hiểu hơn. Nếu câu hỏi tiếp tục về CÙNG chủ đề \
+nhưng hỏi thêm điều gì đó MỚI, đó vẫn là "legal_question", KHÔNG phải "explain_simpler". Nếu câu hỏi \
+vừa mơ hồ vừa không có dấu hiệu rõ ràng nào (không nói "ngắn hơn" cũng không nói "không hiểu"/"dễ \
+hiểu hơn"), ưu tiên "summarize_previous" chỉ khi có từ khóa về độ dài, còn lại (ví dụ chỉ nói "nói \
+lại giúp mình", "giải thích lại đi") ưu tiên "explain_simpler" vì đây là cách diễn đạt tự nhiên hơn \
+khi ai đó chưa hiểu.
 - "request_scenario": câu hiện tại yêu cầu một VÍ DỤ/TÌNH HUỐNG THỰC TẾ minh họa cho nội dung pháp \
 lý (Điều luật, khái niệm, quy định) VỪA được thảo luận trong LỊCH SỬ HỘI THOẠI gần đây (ví dụ: "cho \
 mình một tình huống thực tế minh họa", "cho ví dụ cụ thể được không", "vẽ ra một trường hợp áp dụng \
@@ -51,25 +71,26 @@ trả lời/phân tích - hãy chọn giá trị khác phù hợp nhất (thư�
 phân tích tình huống (ví dụ hỏi sang một Điều/khái niệm khác hẳn), vẫn chọn "legal_question" như \
 bình thường, không ép vào "answer_evaluation".
 - "out_of_scope": câu hỏi (kết hợp LỊCH SỬ HỘI THOẠI nếu có) KHÔNG thuộc PHẠM VI nêu trên và cũng \
-không phải "greeting"/"summarize_previous" - bao gồm: câu hỏi thuộc lĩnh vực pháp luật khác hoàn \
-toàn không liên quan hình sự (dân sự, lao động, hôn nhân gia đình, thuế, doanh nghiệp...), câu hỏi \
-xã giao/tán tỉnh/tâm sự cá nhân không phải lời chào mở đầu, câu hỏi vô nghĩa, hoặc bất kỳ nội dung \
-nào không phải hỏi về pháp luật hình sự/tố tụng hình sự.
+không phải "greeting"/"summarize_previous"/"explain_simpler" - bao gồm: câu hỏi thuộc lĩnh vực pháp \
+luật khác hoàn toàn không liên quan hình sự (dân sự, lao động, hôn nhân gia đình, thuế, doanh \
+nghiệp...), câu hỏi xã giao/tán tỉnh/tâm sự cá nhân không phải lời chào mở đầu, câu hỏi vô nghĩa, \
+hoặc bất kỳ nội dung nào không phải hỏi về pháp luật hình sự/tố tụng hình sự.
 - "legal_question": mọi trường hợp còn lại - câu hỏi thuộc PHẠM VI nêu trên (kể cả khi cần viết \
 tắt/giải quyết ngữ cảnh ngầm hiểu theo quy tắc bên dưới mới rõ nghĩa, và kể cả khi chỉ nói "pháp \
 luật hình sự" mà không nói rõ "Bộ luật Hình sự" hay "Bộ luật Tố tụng Hình sự"). Đây là giá trị MẶC \
-ĐỊNH khi không chắc chắn câu hỏi thuộc "out_of_scope"/"greeting"/"summarize_previous" hay không - \
-nếu phân vân, ưu tiên "legal_question" (để bước tìm kiếm/trả lời phía sau tự quyết định dựa trên \
-dữ liệu thực tế, thay vì loại bỏ/định tuyến nhầm một câu hỏi có thể vẫn trả lời được).
+ĐỊNH khi không chắc chắn câu hỏi thuộc "out_of_scope"/"greeting"/"summarize_previous"/ \
+"explain_simpler" hay không - nếu phân vân, ưu tiên "legal_question" (để bước tìm kiếm/trả lời phía \
+sau tự quyết định dựa trên dữ liệu thực tế, thay vì loại bỏ/định tuyến nhầm một câu hỏi có thể vẫn \
+trả lời được).
 
 QUY TẮC CHO "rewritten_question":
 1. NẾU intent = "out_of_scope": "rewritten_question" PHẢI là NGUYÊN VĂN câu hỏi gốc của sinh viên, \
 copy y hệt, không sửa một chữ nào. TUYỆT ĐỐI KHÔNG được tự viết câu mô tả/giải thích kiểu "câu hỏi \
 này không liên quan đến..." hay bất kỳ câu nào khác thay cho câu hỏi gốc - field này không phải \
 chỗ để giải thích quyết định intent, lý do đó không cần viết ra ở đâu cả.
-2. NẾU intent = "greeting", "summarize_previous", "request_scenario", hoặc "answer_evaluation": \
-"rewritten_question" cũng PHẢI là NGUYÊN VĂN câu hỏi gốc của sinh viên, copy y hệt (các intent này \
-không đi qua bước tìm kiếm văn bản luật nên không cần viết lại).
+2. NẾU intent = "greeting", "summarize_previous", "explain_simpler", "request_scenario", hoặc \
+"answer_evaluation": "rewritten_question" cũng PHẢI là NGUYÊN VĂN câu hỏi gốc của sinh viên, copy y \
+hệt (các intent này không đi qua bước tìm kiếm văn bản luật nên không cần viết lại).
 3. NẾU intent = "legal_question", áp dụng các quy tắc viết lại sau:
    a. Nếu câu hỏi dùng viết tắt luật phổ biến, mở rộng viết tắt đó dựa theo ĐÚNG bảng viết tắt \
 được cung cấp bên dưới. Không mở rộng bất kỳ viết tắt nào không có trong bảng.
@@ -96,8 +117,8 @@ dấu nháy bao quanh."""
 # writing an explanatory sentence into rewritten_question, whereas relying on prompt wording alone
 # (the pre-fix version of this file) let that leak through on a fraction of calls.
 VALID_INTENTS: tuple[str, ...] = (
-    "legal_question", "greeting", "summarize_previous", "request_scenario", "answer_evaluation",
-    "out_of_scope",
+    "legal_question", "greeting", "summarize_previous", "explain_simpler", "request_scenario",
+    "answer_evaluation", "out_of_scope",
 )
 
 QUERY_UNDERSTANDING_RESPONSE_SCHEMA: dict = {

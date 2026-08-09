@@ -36,11 +36,14 @@ from app.models.chat import (
     SuggestedFollowup,
 )
 from app.prompts.conversational_prompts import (
+    EXPLAIN_SIMPLER_SYSTEM_PROMPT,
     GREETING_TEMPLATES,
+    NO_PREVIOUS_ANSWER_FOR_EXPLAIN_MESSAGE,
     NO_PREVIOUS_ANSWER_MESSAGE,
     NO_SCENARIO_CONTEXT_MESSAGE,
     NO_SCENARIO_TO_GRADE_MESSAGE,
     SUMMARIZE_SYSTEM_PROMPT,
+    build_explain_simpler_prompt,
     build_summarize_prompt,
 )
 from app.prompts.rag_prompts import (
@@ -716,6 +719,12 @@ async def stream_answer_question(
       citations verbatim (no recomputation) since the underlying legal content hasn't changed,
       only its presentation. `last_turn` is None when this is the first message of the
       conversation (nothing to summarize yet - see NO_PREVIOUS_ANSWER_MESSAGE).
+    - "explain_simpler": same shape as summarize_previous (one lightweight LLM call constrained to
+      `last_turn`'s own answer, reuses its citations verbatim, same None-first-turn guard) but a
+      DIFFERENT prompt (EXPLAIN_SIMPLER_SYSTEM_PROMPT) optimized for easier-to-understand rather
+      than shorter - split out as its own intent because summarize_previous's length-constrained
+      prompt was mechanically shortening "tôi không hiểu, giải thích đơn giản hơn" requests instead
+      of reducing jargon/adding examples (see requirements.md UAT investigation).
     - "request_scenario": one LLM call (scenario_service.generate_scenario) grounded ONLY in
       `recent_turns` (no retrieval - reuses whatever Điều luật was already discussed) that
       produces a visible fictional scenario AND a hidden key_points rubric. Only the scenario text
@@ -785,6 +794,39 @@ async def stream_answer_question(
                 # showing the original (unsummarized) answer rather than erroring out, same
                 # resilience pattern as query_understanding_service.rewrite_question's own fallback.
                 logger.exception("summarize_previous call failed - falling back to the original answer")
+                answer_text = last_turn["answer"]
+            citations = [Citation(**c) for c in last_turn["citations"]]
+        result.answer = answer_text
+        result.citations = citations
+        result.related_articles = []
+        result.suggested_followups = []
+        result.is_fallback = False
+        result.used_academic_reference = False
+        result.retrieved_chunks = []
+        yield ("citations", ChatStreamCitationsEvent(
+            citations=citations, related_articles=[], conversation_id=conversation_id, rewritten_question=question
+        ))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
+        yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
+        yield ("done", ChatStreamDoneEvent())
+        return
+
+    if intent == "explain_simpler":
+        if last_turn is None:
+            answer_text = NO_PREVIOUS_ANSWER_FOR_EXPLAIN_MESSAGE
+            citations = []
+        else:
+            try:
+                explain_response = await asyncio.to_thread(
+                    generate_answer, EXPLAIN_SIMPLER_SYSTEM_PROMPT,
+                    build_explain_simpler_prompt(last_turn["answer"], question), settings
+                )
+                answer_text = explain_response.strip() or last_turn["answer"]
+            except Exception:
+                # A broken explain_simpler call must never break the whole chat request - fall
+                # back to showing the original answer rather than erroring out, same resilience
+                # pattern as summarize_previous above.
+                logger.exception("explain_simpler call failed - falling back to the original answer")
                 answer_text = last_turn["answer"]
             citations = [Citation(**c) for c in last_turn["citations"]]
         result.answer = answer_text

@@ -1,6 +1,10 @@
-"""Prompts/templates for the two non-legal, non-refusal intents added by the "Mở rộng phân loại ý
-định Query Understanding" feature (see requirements.md): "greeting" (fixed templates, no LLM call
-at all) and "summarize_previous" (one lightweight LLM call, constrained to the existing answer).
+"""Prompts/templates for the non-legal, non-refusal intents added by the "Mở rộng phân loại ý định
+Query Understanding" feature (see requirements.md): "greeting" (fixed templates, no LLM call at
+all), "summarize_previous" (one lightweight LLM call, constrained to the existing answer, optimized
+for SHORTER), and "explain_simpler" (same shape but optimized for EASIER TO UNDERSTAND, not
+shorter - split into its own intent/prompt after UAT investigation found summarize_previous's
+length-constrained prompt was mechanically shortening "tôi không hiểu, giải thích đơn giản hơn"
+requests instead of reducing jargon).
 """
 from __future__ import annotations
 
@@ -71,6 +75,46 @@ chỉ giữ lại ý chính nhất.
 def build_summarize_prompt(original_answer: str, student_request: str) -> str:
     return (
         f"CÂU TRẢ LỜI GỐC (cần tóm tắt lại, không thêm nội dung mới):\n{original_answer}\n\n"
+        "---\n\n"
+        f"YÊU CẦU CỦA SINH VIÊN: {student_request}"
+    )
+
+
+# Edge case shared with summarize_previous (requirements.md): intent=explain_simpler but this is
+# the first message of the conversation, so there is nothing to re-explain yet.
+NO_PREVIOUS_ANSWER_FOR_EXPLAIN_MESSAGE = "Bạn muốn mình giải thích lại nội dung nào? Hãy đặt câu hỏi trước nhé."
+
+EXPLAIN_SIMPLER_SYSTEM_PROMPT = """Bạn là bước diễn giải LẠI một câu trả lời về pháp luật mà trợ lý \
+VỪA đưa ra cho sinh viên trong lượt trước, theo cách DỄ HIỂU HƠN, vì sinh viên chưa hiểu nội dung đó.
+
+QUY TẮC BẮT BUỘC:
+1. CHỈ được dùng nội dung đã có trong "CÂU TRẢ LỜI GỐC" bên dưới. TUYỆT ĐỐI KHÔNG được thêm bất kỳ \
+nguyên tắc/quy định/khái niệm pháp lý MỚI nào không có sẵn trong câu trả lời gốc, kể cả khi bạn biết \
+hoặc tin rằng thông tin đó đúng - chỉ được diễn giải LẠI, không được bổ sung căn cứ pháp lý mới.
+2. MỤC TIÊU là DỄ HIỂU HƠN, KHÔNG PHẢI ngắn hơn - đây là điểm khác biệt cốt lõi với việc tóm tắt. \
+KHÔNG được coi đây là yêu cầu rút gọn: TUYỆT ĐỐI KHÔNG cắt bớt nội dung/ý chỉ để cho ngắn. Bản diễn \
+giải HOÀN TOÀN CÓ THỂ dài hơn câu trả lời gốc nếu việc đó giúp dễ hiểu hơn (ví dụ thêm câu giải \
+thích một thuật ngữ, thêm một ví dụ đời thường minh họa). Không có giới hạn số câu/độ dài nào áp \
+dụng ở đây.
+3. Cách làm cho dễ hiểu hơn (áp dụng những cách phù hợp với nội dung cụ thể, không cần dùng hết):
+   a. Thay thuật ngữ pháp lý chuyên ngành bằng từ ngữ đời thường khi có thể mà không làm sai nghĩa; \
+nếu thuật ngữ đó bắt buộc phải giữ nguyên (ví dụ tên gọi chính thức của một tội danh, một chế định), \
+GIỮ NGUYÊN thuật ngữ đó nhưng thêm một câu giải thích ngắn ngay sau để làm rõ nghĩa.
+   b. Chia nhỏ các câu dài, nhiều mệnh đề lồng nhau thành các câu ngắn hơn, mỗi câu một ý.
+   c. Nếu giúp hình dung dễ hơn, có thể thêm MỘT ví dụ đời thường ngắn minh họa cho quy định/khái \
+niệm - ví dụ này phải là một tình huống MINH HỌA chung chung, không được bịa thêm một quy định pháp \
+lý cụ thể (số Điều, mức phạt...) không có trong câu trả lời gốc để "giải thích" cho ví dụ đó.
+   d. Có thể dùng cấu trúc gạch đầu dòng nếu giúp dễ theo dõi hơn so với đoạn văn liền mạch - khác \
+với việc tóm tắt, ở đây KHÔNG có ràng buộc phải viết văn xuôi liền mạch.
+4. Giữ đúng thuật ngữ pháp lý và số Điều/Khoản đã có trong câu trả lời gốc khi được nhắc tới - nếu \
+một số Điều/Khoản được giữ lại trong bản diễn giải, phải viết đúng y hệt, không đổi số.
+5. Chỉ trả về đúng nội dung bản diễn giải. Không thêm tiền tố kiểu "Giải thích đơn giản:", không \
+giải thích bạn đang làm gì."""
+
+
+def build_explain_simpler_prompt(original_answer: str, student_request: str) -> str:
+    return (
+        f"CÂU TRẢ LỜI GỐC (cần diễn giải lại dễ hiểu hơn, không thêm căn cứ pháp lý mới):\n{original_answer}\n\n"
         "---\n\n"
         f"YÊU CẦU CỦA SINH VIÊN: {student_request}"
     )

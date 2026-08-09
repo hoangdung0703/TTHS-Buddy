@@ -59,7 +59,7 @@ def get_last_assistant_turn(supabase_client: Client, user_id: str,
                              conversation_id: uuid.UUID) -> dict[str, Any] | None:
     """Returns the most recently logged answer + its citations + hidden scenario rubric (if any)
     for this conversation, or None if this conversation has no prior turn yet. Used by:
-    - intent=summarize_previous (answer/citations - see rag_service.stream_answer_question)
+    - intent=summarize_previous/explain_simpler (answer/citations - see rag_service.stream_answer_question)
     - intent=request_scenario/answer_evaluation gating (scenario_key_points - requirements.md
       "Sinh tình huống minh họa"): chat.py calls this UNCONDITIONALLY on every turn (not just when
       the intent is already known to need it) specifically so it can compute
