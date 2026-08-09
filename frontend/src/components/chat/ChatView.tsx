@@ -65,6 +65,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
   // succeeded, reset after COPY_FEEDBACK_DURATION_MS so the icon/label reverts on its own.
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -174,6 +175,15 @@ export function ChatView({ conversationId }: ChatViewProps) {
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
+
+  // Auto-resize the question textarea vertically as its content grows (capped by the
+  // max-h-[200px] class on the element itself, which then scrolls internally).
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
 
   async function handleAsk(question: string): Promise<void> {
     const trimmed = question.trim();
@@ -405,19 +415,27 @@ export function ChatView({ conversationId }: ChatViewProps) {
           event.preventDefault();
           void handleAsk(input);
         }}
-        className="flex items-center gap-2 rounded-full border border-border bg-card px-2 py-2"
+        className="flex items-end gap-2 rounded-3xl border border-border bg-card px-2 py-2"
       >
-        <input
+        <textarea
+          ref={inputRef}
           value={input}
           onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              void handleAsk(input);
+            }
+          }}
           placeholder="Hỏi về Luật Tố tụng Hình sự..."
-          className="flex-1 bg-transparent px-3 py-2 text-sm text-foreground outline-none"
+          rows={1}
+          className="max-h-[200px] min-h-11 flex-1 resize-none overflow-y-auto bg-transparent px-3 py-2.5 text-sm text-foreground outline-none"
           disabled={isSending}
         />
         <button
           type="submit"
           disabled={isSending || input.trim().length === 0}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
         >
           <SendHorizontal className="h-4 w-4" />
         </button>
