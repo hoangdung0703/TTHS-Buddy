@@ -261,6 +261,11 @@ def log_chat_query(supabase_client: Client, user_id: str, conversation_id: uuid.
         # rag_service._rule9_ungrounded_dieu_numbers's docstring. None for branches that never ran
         # the check (not a legal-content answer at all); [] means it ran and found nothing.
         "rule9_ungrounded_dieu_numbers": result.rule9_ungrounded_dieu_numbers,
+        # requirements.md "Viec 3" Buoc 3 completeness guard - see
+        # migrations/0009_chat_query_logs_multipart_completeness.sql and
+        # rag_service._multipart_missing_parts's docstring. None for every branch except the
+        # multi-part one; [] means it ran and every PHAN was present.
+        "multipart_missing_parts": result.multipart_missing_parts,
     }
     try:
         supabase_client.table(CHAT_QUERY_LOGS_TABLE).insert(row).execute()

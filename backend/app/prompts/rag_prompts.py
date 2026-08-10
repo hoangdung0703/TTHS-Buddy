@@ -177,12 +177,38 @@ RULE9_VIOLATION_FALLBACK_ANSWER = (
 )
 
 
-def build_system_prompt(is_long_question: bool, needs_anonymization: bool = False) -> str:
+# requirements.md "Viec 3" Buoc 3 (build context co cau truc cho generation) - appended ONLY when
+# rag_service.py split the message into independently-retrieved PHAN (sub-questions), each with
+# its OWN NGU CANH block (see build_multi_part_user_prompt). Without this instruction the model
+# has no reason not to "borrow" a Dieu retrieved for one PHAN to answer a different PHAN that
+# didn't retrieve it - the whole point of Buoc 1+2's independent retrieval (see requirements.md
+# muc A/B: embedding dilution meant a combined single-vector retrieval crowded out the correct
+# Dieu for several sub-questions) would be undone at the generation step if the model still had
+# free rein to mix contexts across PHAN.
+RAG_MULTI_PART_ADDENDUM = """
+
+HƯỚNG DẪN KHI CÂU HỎI CÓ NHIỀU PHẦN ĐỘC LẬP:
+Câu hỏi bên dưới đã được chia thành nhiều PHẦN độc lập, mỗi PHẦN có NGỮ CẢNH RIÊNG đã được tìm \
+kiếm ứng CHÍNH XÁC cho PHẦN đó. Hãy trả lời LẦN LƯỢT từng PHẦN theo đúng thứ tự, dùng tiêu đề rõ \
+ràng cho mỗi phần (ví dụ "Phần 1:", "Phần 2:"). TUYỆT ĐỐI:
+- Khi trả lời một PHẦN, CHỈ được dùng NGỮ CẢNH được gán riêng cho ĐÚNG PHẦN đó - KHÔNG được dùng \
+Điều luật/nội dung từ NGỮ CẢNH của một PHẦN KHÁC để trả lời cho phần này, kể cả khi Điều đó nghe \
+có vẻ liên quan hoặc bạn nhớ đã thấy nó ở phần khác trong cùng câu hỏi.
+- Nếu một PHẦN có NGỮ CẢNH ghi "(không tìm thấy nội dung liên quan)", áp dụng đúng quy tắc số 4 \
+(thông báo không tìm thấy) CHỈ cho riêng PHẦN đó - các PHẦN khác vẫn phải trả lời substantive bình \
+thường bằng đúng NGỮ CẢNH của chúng, một PHẦN thiếu dữ liệu không được kéo theo việc từ chối trả \
+lời toàn bộ câu hỏi."""
+
+
+def build_system_prompt(is_long_question: bool, needs_anonymization: bool = False,
+                         multi_part: bool = False) -> str:
     prompt = RAG_SYSTEM_PROMPT
     if is_long_question:
         prompt += RAG_LONG_QUESTION_COT_ADDENDUM
     if needs_anonymization:
         prompt += RAG_ANONYMIZATION_ADDENDUM
+    if multi_part:
+        prompt += RAG_MULTI_PART_ADDENDUM
     return prompt
 
 
@@ -219,6 +245,31 @@ def build_user_prompt(question: str, context_blocks: list[str], recent_turns: li
         "---\n\n"
         f"Câu hỏi của sinh viên: {question}"
     )
+
+
+def build_multi_part_user_prompt(sub_questions: list[str], context_blocks_per_part: list[list[str]],
+                                  recent_turns: list[dict[str, str]] | None = None) -> str:
+    """requirements.md "Viec 3" Buoc 3 - counterpart of build_user_prompt for the split-retrieval
+    path: each sub_questions[i] is paired with its OWN independently-retrieved
+    context_blocks_per_part[i] (from retrieve_context_for_subquestions - Buoc 2), labeled "PHAN i"
+    so RAG_MULTI_PART_ADDENDUM's per-part isolation instruction has something concrete to point
+    at. A part with no retrieved context gets the same "(khong tim thay...)" marker
+    build_user_prompt uses for the single-question no-context case, so the per-part fallback rule
+    (system prompt rule 4) still applies naturally to just that part."""
+    history_part = ""
+    if recent_turns:
+        history_part = (
+            "LỊCH SỬ HỘI THOẠI GẦN ĐÂY (chỉ để tham khảo mạch hội thoại, KHÔNG dùng làm nguồn nội "
+            "dung pháp lý - mọi nội dung pháp lý vẫn phải lấy từ NGỮ CẢNH của từng PHẦN bên dưới):\n"
+            f"{_format_recent_turns(recent_turns)}\n\n---\n\n"
+        )
+
+    parts: list[str] = []
+    for index, (sub_question, context_blocks) in enumerate(zip(sub_questions, context_blocks_per_part), start=1):
+        joined_context = "\n\n---\n\n".join(context_blocks) if context_blocks else "(không tìm thấy nội dung liên quan)"
+        parts.append(f"PHẦN {index}:\nCâu hỏi: {sub_question}\n\nNGỮ CẢNH:\n\n{joined_context}")
+
+    return f"{history_part}" + "\n\n===\n\n".join(parts)
 
 
 def format_legal_context_block(source_document: str, law_version: str | None, dieu_number: str,

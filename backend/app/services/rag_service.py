@@ -50,6 +50,7 @@ from app.prompts.rag_prompts import (
     ANONYMIZATION_DISCLAIMER,
     ANONYMIZATION_LEAK_FALLBACK_ANSWER,
     RULE9_VIOLATION_FALLBACK_ANSWER,
+    build_multi_part_user_prompt,
     build_system_prompt,
     build_user_prompt,
     format_academic_context_block,
@@ -223,13 +224,23 @@ class RagAnswer:
     # 1) - never sent over SSE (see stream_answer_question's docstring), only logged to
     # chat_query_logs for Lượt 2 grading (not built yet). None for every other intent/branch.
     scenario_key_points: list[str] | None = None
-    # requirements.md RAG_SYSTEM_PROMPT rule 9 grounding audit - log-only (see
-    # _rule9_ungrounded_dieu_numbers's docstring for why this isn't a fail-closed guard). Never
-    # sent over SSE, only logged to chat_query_logs for continuous monitoring. Empty list (not
-    # None) when the check ran and found nothing; only None for branches that don't generate a
-    # legal-content answer at all (greeting, summarize_previous, etc - same "not applicable" style
-    # as scenario_key_points above).
+    # requirements.md RAG_SYSTEM_PROMPT rule 9 grounding audit - fail-closed on the selective-
+    # buffer/multi-part paths, log-only on the plain-streamed path (see
+    # _rule9_ungrounded_dieu_numbers's docstring for the split). Never sent over SSE, only logged
+    # to chat_query_logs for continuous monitoring. Empty list (not None) when the check ran and
+    # found nothing; only None for branches that don't generate a legal-content answer at all
+    # (greeting, summarize_previous, etc - same "not applicable" style as scenario_key_points
+    # above).
     rule9_ungrounded_dieu_numbers: list[str] | None = None
+    # requirements.md "Viec 3" Buoc 3 completeness guard: which 1-indexed PHAN labels (of the
+    # sub_questions sent to the multi-part branch) never appeared in the generated answer -
+    # discovered when the multi-part prompt's fallback model (see stream_generate_answer's
+    # fallback_model docstring) was observed silently skipping the first N-2 PHAN of a 5-part
+    # answer despite each PHAN having correct, isolated context. A fail-closed guard, same pattern
+    # as rule9_ungrounded_dieu_numbers's buffer_for_rule9_risk path - see
+    # _multipart_missing_parts's docstring. None for every branch except the multi-part one
+    # (nothing to check); [] means the check ran and every PHAN was present.
+    multipart_missing_parts: list[int] | None = None
 
 
 @dataclass
@@ -689,6 +700,29 @@ def _rule9_ungrounded_dieu_numbers(answer_text: str, legal_primary: list[Retriev
     return sorted(mentioned - allowed)
 
 
+_MULTIPART_LABEL_PATTERN = re.compile(r"ph[aầ]n\s*(\d+)(?!\d)", re.IGNORECASE)
+
+
+def _multipart_missing_parts(answer_text: str, num_parts: int) -> list[int]:
+    """requirements.md "Viec 3" Buoc 3 completeness guard: returns the 1-indexed PHAN numbers (of
+    num_parts total, matching build_multi_part_user_prompt's own "PHAN {index}" labeling) that
+    never appear anywhere in answer_text. Found via testing: on a 5-part UAT case, the model
+    (running on stream_generate_answer's fallback_model after gemini-3.1-pro-preview's first-token
+    timeout - see that function's docstring) consistently answered ONLY the last 2 PHAN and
+    silently dropped the first 3, despite each PHAN's own retrieved context being correct and
+    isolated (verified via a 2-part version of the same case answering both parts correctly, 2/2
+    runs) - a real completeness failure the rule 9 grounding guard was never designed to catch (it
+    only checks WHICH Dieu numbers appear, not whether every PHAN was addressed at all). Matches
+    loosely on "Phan N"/"PHAN N" (case-insensitive, tolerant of "**PHẦN 1:**"/"### Phần 4:"/etc
+    formatting) rather than requiring the exact bolded/heading style the system prompt suggests -
+    a false negative here (missing a genuinely-skipped PHAN) is the risk this function exists to
+    eliminate, so the match is deliberately loose; a false positive (flagging a PHAN that WAS
+    answered but under different wording) only costs an unnecessary fail-closed reroute, the safer
+    direction to err in."""
+    found_numbers = {int(m.group(1)) for m in _MULTIPART_LABEL_PATTERN.finditer(answer_text)}
+    return [i for i in range(1, num_parts + 1) if i not in found_numbers]
+
+
 async def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient) -> RetrievalResult:
     # embed_query calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded to a
     # thread for the same reason the sync QdrantClient calls just below are: without this it
@@ -741,11 +775,9 @@ async def retrieve_context_for_subquestions(
     concurrent calls inside retrieve_context itself - N sub-questions costs N embed+Qdrant round
     trips, but they overlap in wall-clock time rather than serializing.
 
-    Buoc 1+2 ONLY (per requirements.md staging) - returns the list of independent RetrievalResult,
-    one per sub-question, in the same order as `sub_questions`. Deliberately NOT wired into
-    stream_answer_question yet: merging these into one generation call with per-part context
-    labeling is Buoc 3, a separate, not-yet-built step so this increment stays independently
-    reviewable/testable.
+    Returns the list of independent RetrievalResult, one per sub-question, in the same order as
+    `sub_questions`. Consumed by stream_answer_question's multi-part branch (Buoc 3 - see
+    build_multi_part_user_prompt) to build one generation call with per-PHAN context labeling.
     """
     return list(await asyncio.gather(
         *(retrieve_context(sub_question, settings, qdrant_client) for sub_question in sub_questions)
@@ -756,7 +788,7 @@ async def stream_answer_question(
     question: str, conversation_id: uuid.UUID, settings: Settings, qdrant_client: QdrantClient, result: RagAnswer,
     recent_turns: list[dict[str, str]] | None = None, intent: str = "legal_question",
     last_turn: dict[str, Any] | None = None, needs_anonymization: bool = False,
-    anonymized_names: list[str] | None = None
+    anonymized_names: list[str] | None = None, sub_questions: list[str] | None = None
 ) -> AsyncIterator[tuple[str, ChatStreamCitationsEvent | ChatStreamAnswerDeltaEvent |
                           ChatStreamGradingEvent | ChatStreamSuggestedFollowupsEvent | ChatStreamDoneEvent]]:
     """Streaming counterpart of the old answer_question (Phase 4 Extension - see
@@ -843,6 +875,23 @@ async def stream_answer_question(
     a Dieu number leaked from academic_reference text (20/20 violations, well past the >10-15%
     threshold that was pre-agreed to require a code-level guard instead of a prompt-only fix). See
     _rule9_ungrounded_dieu_numbers's docstring for the fail-closed vs log-only split.
+
+    `sub_questions` (requirements.md "Viec 3", only ever non-empty alongside intent="legal_question"
+    with >=2 elements - query_understanding_service already enforces this) triggers the multi-part
+    branch just above the aggregate-structure check: retrieve_context_for_subquestions runs
+    retrieval INDEPENDENTLY per sub-question (fixing the embedding-dilution root cause from muc A/B
+    - a Dieu that ranks #1 alone got crowded out to rank in the hundreds when embedded together
+    with unrelated sub-questions), then build_multi_part_user_prompt labels each sub-question's
+    own retrieved context as its own "PHAN" so RAG_MULTI_PART_ADDENDUM can instruct the model not
+    to borrow one PHAN's Dieu to answer another. Generation here is ALWAYS buffered (not token-
+    streamed), same trade-off as needs_anonymization/buffer_for_rule9_risk, so rule 9 grounding can
+    be checked against the UNION of every sub-question's own legal_primary BEFORE anything reaches
+    the client - a decided (not measured) trade-off for this branch specifically, since one PHAN
+    citing a Dieu retrieved only for another PHAN is exactly the kind of ungrounded citation rule 9
+    exists to catch, and this path is a small slice of total traffic. Falls through to the ordinary
+    single-question path when needs_anonymization is also true (see the inline comment there for
+    why) or when sub_questions
+    has fewer than 2 elements (nothing to split).
     """
     if intent == "out_of_scope":
         result.answer = FALLBACK_ANSWER
@@ -1018,6 +1067,137 @@ async def stream_answer_question(
             missing_points_display=missing_points_display
         ))
         yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
+        yield ("done", ChatStreamDoneEvent())
+        return
+
+    # requirements.md "Viec 3" Buoc 3: sub_questions + needs_anonymization together is deliberately
+    # NOT supported yet - muc C's absolute "never repeat the real name" guarantee (leak-check +
+    # buffered generation, see the needs_anonymization branch below) is only verified for the
+    # single-question path. Rather than extend that safety-critical logic to an unverified
+    # per-part path, a message that triggers both falls through to the normal single-question path
+    # below (anonymization still applied correctly, just without the multi-part retrieval
+    # improvement for that one message - a deliberate, documented trade-off, not an oversight).
+    if sub_questions and len(sub_questions) >= 2 and not needs_anonymization:
+        retrieval_results = await retrieve_context_for_subquestions(sub_questions, settings, qdrant_client)
+        result.retrieved_chunks = [chunk for r in retrieval_results for chunk in r.all_retrieved]
+
+        if not any(r.context_blocks for r in retrieval_results):
+            logger.info("No context passed threshold for any sub-question, returning fallback answer")
+            result.answer = FALLBACK_ANSWER
+            result.is_fallback = True
+            result.used_academic_reference = False
+            yield ("citations", ChatStreamCitationsEvent(
+                citations=[], related_articles=[], conversation_id=conversation_id, rewritten_question=question
+            ))
+            yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=FALLBACK_ANSWER))
+            yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
+            yield ("done", ChatStreamDoneEvent())
+            return
+
+        user_prompt = build_multi_part_user_prompt(
+            sub_questions, [r.context_blocks for r in retrieval_results], recent_turns
+        )
+        is_long_question = len(question) > LONG_QUESTION_CHAR_THRESHOLD
+        system_prompt = build_system_prompt(is_long_question, multi_part=True)
+        generation_model = settings.resolved_complex_chat_model if is_long_question else settings.gemini_chat_model
+        fallback_model = settings.gemini_chat_model if is_long_question else None
+        first_token_timeout = LONG_QUESTION_FIRST_TOKEN_TIMEOUT_SECONDS if is_long_question else None
+
+        all_legal_primary = [chunk for r in retrieval_results for chunk in r.legal_primary]
+        all_legal_related = [chunk for r in retrieval_results for chunk in r.legal_related]
+
+        # requirements.md RAG_SYSTEM_PROMPT rule 9 grounding audit, applied to the multi-part path:
+        # ALWAYS buffered (unlike the single-question path, where buffering is selective based on
+        # used_academic_reference) - a decided trade-off, not a measured one, since this branch is
+        # a small slice of total traffic and per-PHAN grounding is materially harder to get right
+        # (the model has 2-6x more Dieu numbers across PHAN in context, more surface for the same
+        # "borrow a Dieu that sounds relevant" failure mode rule 9 already guards against on the
+        # single-question path). Buffer first, guard against the UNION of every sub-question's OWN
+        # legal_primary (a PHAN citing a Dieu retrieved for a DIFFERENT PHAN is just as ungrounded
+        # for rule 9's purposes as citing an academic_reference-only Dieu - both are "not backed by
+        # the sub-question's own retrieval"), then send once, same fail-closed pattern as
+        # buffer_for_rule9_risk above.
+        answer_parts: list[str] = []
+        async for text_chunk in stream_generate_answer(
+            system_prompt, user_prompt, settings, model=generation_model,
+            fallback_model=fallback_model, first_token_timeout=first_token_timeout
+        ):
+            answer_parts.append(text_chunk)
+
+        answer_text = "".join(answer_parts)
+        rule9_fail_closed = False
+        rule9_ungrounded: list[str] = []
+        if answer_text and not _is_fallback_answer(answer_text):
+            rule9_ungrounded = _rule9_ungrounded_dieu_numbers(answer_text, all_legal_primary)
+            if rule9_ungrounded:
+                logger.warning(
+                    "RAG_SYSTEM_PROMPT rule 9 violation caught pre-send (multi-part path): answer "
+                    "cited Dieu %s not grounded in the union of any sub-question's own legal_primary "
+                    "- failing closed to the generic safe-answer fallback (question=%r)",
+                    rule9_ungrounded, question
+                )
+                answer_text = RULE9_VIOLATION_FALLBACK_ANSWER
+                rule9_fail_closed = True
+
+        # requirements.md "Viec 3" Buoc 3 completeness guard - only meaningful if rule 9 hasn't
+        # already replaced answer_text wholesale (a replaced answer has no PHAN labels by design,
+        # checking it would always report every PHAN missing). See _multipart_missing_parts's
+        # docstring for how this was discovered (fallback_model silently dropping the first N-2 of
+        # 5 PHAN despite each having correct, isolated context - a failure mode rule 9's grounding
+        # check was never designed to catch, since it only checks WHICH Dieu appear, not whether
+        # every PHAN was addressed).
+        multipart_missing_parts: list[int] = []
+        if not rule9_fail_closed and answer_text and not _is_fallback_answer(answer_text):
+            multipart_missing_parts = _multipart_missing_parts(answer_text, len(sub_questions))
+            if multipart_missing_parts:
+                logger.warning(
+                    "Multi-part completeness guard caught pre-send: answer is missing PHAN %s of "
+                    "%d - failing closed to the generic safe-answer fallback (question=%r)",
+                    multipart_missing_parts, len(sub_questions), question
+                )
+                answer_text = RULE9_VIOLATION_FALLBACK_ANSWER
+
+        completeness_fail_closed = bool(multipart_missing_parts)
+
+        # Whole-text substring check, same as the single-question path - a genuinely mixed
+        # answer (some PHAN answered, one PHAN fell back) still reports is_fallback=True here,
+        # but requirements.md "Viec 1"'s fix already means that no longer wipes citations for the
+        # PHAN that DID cite something real (see actually_cited_primary below) - exactly the
+        # scenario Viec 1 was built to support (see its docstring reference to muc C hoan bo). A
+        # rule 9 or completeness fail-closed replacement counts as a fallback too, same reasoning
+        # as the single-question path.
+        is_fallback = rule9_fail_closed or completeness_fail_closed or _is_fallback_answer(answer_text)
+
+        cited_dieu_numbers = _extract_cited_dieu_numbers(answer_text)
+        actually_cited_primary = [c for c in all_legal_primary if c.payload["dieu_number"] in cited_dieu_numbers]
+        citations = _build_citations(actually_cited_primary)
+        related_articles = [] if is_fallback else _build_related_articles(all_legal_related)
+
+        yield ("citations", ChatStreamCitationsEvent(
+            citations=citations, related_articles=related_articles,
+            conversation_id=conversation_id, rewritten_question=question
+        ))
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
+
+        suggested_followups: list[SuggestedFollowup] = []
+        if not is_fallback and actually_cited_primary:
+            cited_keys = {(c.dieu_number, c.law_version) for c in citations}
+            suggested_followups = _build_suggested_followups(
+                qdrant_client, settings.qdrant_collection, actually_cited_primary[0], cited_keys
+            )
+
+        result.answer = answer_text
+        result.citations = citations
+        result.related_articles = related_articles
+        result.suggested_followups = suggested_followups
+        result.is_fallback = is_fallback
+        result.used_academic_reference = (
+            not is_fallback and any(r.used_academic_reference for r in retrieval_results)
+        )
+        result.rule9_ungrounded_dieu_numbers = rule9_ungrounded
+        result.multipart_missing_parts = multipart_missing_parts
+
+        yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=suggested_followups))
         yield ("done", ChatStreamDoneEvent())
         return
 
