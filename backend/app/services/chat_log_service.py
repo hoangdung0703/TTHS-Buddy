@@ -256,6 +256,11 @@ def log_chat_query(supabase_client: Client, user_id: str, conversation_id: uuid.
         "related_articles": [r.model_dump() for r in result.related_articles],
         "retrieved_chunks": [_serialize_retrieved_chunk(c) for c in result.retrieved_chunks],
         "scenario_key_points": result.scenario_key_points,
+        # requirements.md RAG_SYSTEM_PROMPT rule 9 grounding audit - see
+        # migrations/0008_chat_query_logs_rule9_grounding.sql and
+        # rag_service._rule9_ungrounded_dieu_numbers's docstring. None for branches that never ran
+        # the check (not a legal-content answer at all); [] means it ran and found nothing.
+        "rule9_ungrounded_dieu_numbers": result.rule9_ungrounded_dieu_numbers,
     }
     try:
         supabase_client.table(CHAT_QUERY_LOGS_TABLE).insert(row).execute()
