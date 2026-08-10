@@ -49,6 +49,7 @@ from app.prompts.conversational_prompts import (
 from app.prompts.rag_prompts import (
     ANONYMIZATION_DISCLAIMER,
     ANONYMIZATION_LEAK_FALLBACK_ANSWER,
+    RULE9_VIOLATION_FALLBACK_ANSWER,
     build_system_prompt,
     build_user_prompt,
     format_academic_context_block,
@@ -222,6 +223,13 @@ class RagAnswer:
     # 1) - never sent over SSE (see stream_answer_question's docstring), only logged to
     # chat_query_logs for Lượt 2 grading (not built yet). None for every other intent/branch.
     scenario_key_points: list[str] | None = None
+    # requirements.md RAG_SYSTEM_PROMPT rule 9 grounding audit - log-only (see
+    # _rule9_ungrounded_dieu_numbers's docstring for why this isn't a fail-closed guard). Never
+    # sent over SSE, only logged to chat_query_logs for continuous monitoring. Empty list (not
+    # None) when the check ran and found nothing; only None for branches that don't generate a
+    # legal-content answer at all (greeting, summarize_previous, etc - same "not applicable" style
+    # as scenario_key_points above).
+    rule9_ungrounded_dieu_numbers: list[str] | None = None
 
 
 @dataclass
@@ -648,6 +656,39 @@ def _extract_cited_dieu_numbers(answer_text: str) -> set[str]:
     return {match.group(1) for match in DIEU_NUMBER_PATTERN.finditer(answer_text)}
 
 
+def _rule9_allowed_dieu_numbers(legal_primary: list[RetrievedChunk]) -> set[str]:
+    """RAG_SYSTEM_PROMPT rule 9's "danh sach so Dieu duoc phep neu" - the union of (a) each
+    legal_primary chunk's own dieu_number (its block-title Dieu) and (b) any Dieu number
+    appearing anywhere INSIDE that chunk's own retrieved text (a real legal_text Dieu routinely
+    cross-references other Dieu numbers in its own body, e.g. Dieu 155 BLTTHS: "toi pham quy dinh
+    tai khoan 1 cac dieu 134, 135, 136..." - quoting those back is legitimate, not the rule 9
+    violation this exists to catch). Mirrors evaluation/run_evaluation.py's
+    _compute_allowed_dieu_numbers exactly - see that function's docstring for how this
+    distinction was found (2/3 first-pass "violations" during the eval script's own build were
+    false positives from checking block-title Dieu alone)."""
+    allowed: set[str] = set()
+    for chunk in legal_primary:
+        allowed.add(chunk.payload["dieu_number"])
+        allowed.update(m.group(1) for m in DIEU_NUMBER_PATTERN.finditer(chunk.payload["chunk_text"]))
+    return allowed
+
+
+def _rule9_ungrounded_dieu_numbers(answer_text: str, legal_primary: list[RetrievedChunk]) -> list[str]:
+    """Code-level audit for RAG_SYSTEM_PROMPT rule 9 (requirements.md investigation - confirmed
+    via the official eval suite that the model occasionally leaks a Dieu number that only appears
+    inside an academic_reference chunk's own text, e.g. citing "Dieu 298 BLTTHS" when only Dieu
+    298's *mention inside an academic passage* was ever retrieved, never Dieu 298's own legal_text
+    block). Used two ways in stream_answer_question: as a fail-closed pre-send check on the
+    selective-buffer path (buffer_for_rule9_risk - 20/20 repeated violations measured even with a
+    strengthened rule 9 prompt forced this from log-only to a real guard, see requirements.md), and
+    as a log-only check (persisted via RagAnswer.rule9_ungrounded_dieu_numbers -> chat_query_logs)
+    on the ordinary streamed path, where the answer has already reached the client by the time this
+    runs and buffering ALL legal_question traffic isn't justified by the measured risk there."""
+    mentioned = _extract_cited_dieu_numbers(answer_text)
+    allowed = _rule9_allowed_dieu_numbers(legal_primary)
+    return sorted(mentioned - allowed)
+
+
 async def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient) -> RetrievalResult:
     # embed_query calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded to a
     # thread for the same reason the sync QdrantClient calls just below are: without this it
@@ -794,6 +835,14 @@ async def stream_answer_question(
     have ANONYMIZATION_DISCLAIMER appended in code - both BEFORE anything reaches the client -
     trading true streaming latency for the "never repeat the real name" guarantee on this
     intentionally rare path.
+
+    RAG_SYSTEM_PROMPT rule 9 grounding audit (requirements.md): the same buffer-then-check trade-
+    off is applied, on top of `needs_anonymization`, to any question whose retrieval used
+    academic_reference (`buffer_for_rule9_risk` below) - measured via 20 repeated runs of a known
+    eval-suite question that a strengthened rule 9 prompt alone did NOT stop the model from citing
+    a Dieu number leaked from academic_reference text (20/20 violations, well past the >10-15%
+    threshold that was pre-agreed to require a code-level guard instead of a prompt-only fix). See
+    _rule9_ungrounded_dieu_numbers's docstring for the fail-closed vs log-only split.
     """
     if intent == "out_of_scope":
         result.answer = FALLBACK_ANSWER
@@ -1030,6 +1079,18 @@ async def stream_answer_question(
     fallback_model = settings.gemini_chat_model if is_long_question else None
     first_token_timeout = LONG_QUESTION_FIRST_TOKEN_TIMEOUT_SECONDS if is_long_question else None
 
+    # requirements.md RAG_SYSTEM_PROMPT rule 9 grounding audit: buffer generation (instead of
+    # token-streaming live) for questions whose retrieval used academic_reference - measured via
+    # 20 repeated runs of a real eval-suite question that a legal_primary chunks and an expanded
+    # rule 9 prompt did NOT stop the model from leaking a Dieu number that only appeared inside an
+    # academic_reference chunk's own text (20/20 violations even with legal_primary non-empty and
+    # substantial - "weak/no legal_primary" is NOT the actual risk signal, used_academic_reference
+    # is). Buffering here (same trade-off already accepted for needs_anonymization below) lets the
+    # fail-closed check run BEFORE anything reaches the client, on exactly the subset of questions
+    # that actually needs it - direct-citation/legal_text-only questions (the majority of traffic)
+    # keep true live token streaming, unaffected.
+    buffer_for_rule9_risk = retrieval.used_academic_reference and not needs_anonymization
+
     # requirements.md muc C: needs_anonymization buffers the whole answer instead of forwarding
     # each token as it arrives (unlike the normal path) so the leak check + disclaimer below can
     # run BEFORE anything reaches the client - see this function's docstring.
@@ -1039,11 +1100,13 @@ async def stream_answer_question(
         fallback_model=fallback_model, first_token_timeout=first_token_timeout
     ):
         answer_parts.append(text_chunk)
-        if not needs_anonymization:
+        if not (needs_anonymization or buffer_for_rule9_risk):
             yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=text_chunk))
 
     answer_text = "".join(answer_parts)
     leaked_real_name = False
+    rule9_fail_closed = False
+    rule9_ungrounded_before_fail_closed: list[str] = []
 
     if needs_anonymization:
         if answer_text and not _is_fallback_answer(answer_text):
@@ -1057,14 +1120,27 @@ async def stream_answer_question(
             else:
                 answer_text = f"{answer_text.rstrip()}\n\n{ANONYMIZATION_DISCLAIMER}"
         yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
+    elif buffer_for_rule9_risk:
+        if answer_text and not _is_fallback_answer(answer_text):
+            rule9_ungrounded_before_fail_closed = _rule9_ungrounded_dieu_numbers(answer_text, retrieval.legal_primary)
+            if rule9_ungrounded_before_fail_closed:
+                logger.warning(
+                    "RAG_SYSTEM_PROMPT rule 9 violation caught pre-send: answer cited Dieu %s not "
+                    "grounded in any retrieved legal_text chunk - failing closed to the generic "
+                    "safe-answer fallback (question=%r)", rule9_ungrounded_before_fail_closed, question
+                )
+                answer_text = RULE9_VIOLATION_FALLBACK_ANSWER
+                rule9_fail_closed = True
+        yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
     # Same trust-the-model's-own-refusal reasoning as the old answer_question: the retrieval
     # threshold is intentionally lenient (see LEGAL_SCORE_THRESHOLD), so weakly-related chunks
     # sometimes get passed as context even though none of them actually answer the question -
     # when the model refuses anyway, clear citations/related_articles so the final logged/served
     # answer never shows "sources" for a response that admits it found nothing relevant. A leaked-
-    # name safety fallback (leaked_real_name) counts as a fallback too, for the same reason, even
-    # though its wording doesn't match _is_fallback_answer's usual "not found" phrase.
-    is_fallback = leaked_real_name or _is_fallback_answer(answer_text)
+    # name safety fallback (leaked_real_name) or a rule 9 fail-closed replacement counts as a
+    # fallback too, for the same reason, even though their wording doesn't match
+    # _is_fallback_answer's usual "not found" phrase.
+    is_fallback = leaked_real_name or rule9_fail_closed or _is_fallback_answer(answer_text)
 
     # Restrict citations to the legal_primary chunks the model actually cited (per the system
     # prompt's rule 2, a legal_text citation always names its Dieu as "Theo Dieu [so]...") rather
@@ -1097,12 +1173,33 @@ async def stream_answer_question(
             qdrant_client, settings.qdrant_collection, actually_cited_primary[0], cited_keys
         )
 
+    # requirements.md RAG_SYSTEM_PROMPT rule 9 grounding audit: reuse the pre-fail-closed result
+    # for the buffered path (the answer text has already been replaced by the time we'd re-check
+    # it here, so re-running the check would always find nothing) - needs_anonymization's path
+    # never generates a legal_text-cited answer worth checking (question is about an anonymized
+    # scenario, not a Dieu lookup), and the plain-streamed path is checked fresh here since it was
+    # never buffered/checked before reaching the client (log-only monitoring, not a guard - see
+    # _rule9_ungrounded_dieu_numbers's docstring).
+    if buffer_for_rule9_risk:
+        rule9_ungrounded = rule9_ungrounded_before_fail_closed
+    elif needs_anonymization:
+        rule9_ungrounded = []
+    else:
+        rule9_ungrounded = _rule9_ungrounded_dieu_numbers(answer_text, retrieval.legal_primary) if not is_fallback else []
+        if rule9_ungrounded:
+            logger.warning(
+                "RAG_SYSTEM_PROMPT rule 9 violation detected post-stream (already sent to client): "
+                "answer cited Dieu %s not grounded in any retrieved legal_text chunk "
+                "(question=%r)", rule9_ungrounded, question
+            )
+
     result.answer = answer_text
     result.citations = citations
     result.related_articles = related_articles
     result.suggested_followups = suggested_followups
     result.is_fallback = is_fallback
     result.used_academic_reference = (not is_fallback) and retrieval.used_academic_reference
+    result.rule9_ungrounded_dieu_numbers = rule9_ungrounded
 
     yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=suggested_followups))
     yield ("done", ChatStreamDoneEvent())

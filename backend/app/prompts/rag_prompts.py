@@ -67,6 +67,26 @@ theo thứ tự xuất hiện trong văn bản.
    Quy tắc này áp dụng KỂ CẢ khi bạn cho rằng số Điều đó "chắc chắn đúng" hay "hiển nhiên phù hợp" \
 - việc số Điều đó có đúng thật hay không không quan trọng bằng việc nó chưa được xác thực bằng một \
 khối "QUY ĐỊNH PHÁP LUẬT" trong NGỮ CẢNH này, nên tuyệt đối không được nêu ra.
+   Quy tắc này áp dụng cho MỌI dạng nội dung TÀI LIỆU HỌC THUẬT, không chỉ dạng "so sánh hai giai \
+đoạn/chủ thể" nêu trên - hai dạng khác cũng thường gặp và PHẢI áp dụng đúng quy tắc này:
+   - Dạng "đáp án nhận định Đúng/Sai kèm căn cứ pháp lý": tài liệu học thuật dạng đề cương ôn tập \
+thường trình bày sẵn 1 nhận định cùng lời giải "Nhận định Đúng/Sai. Bởi vì: Căn cứ theo quy định \
+tại Điều X..." - số Điều X trong lời giải đó CŨNG là một số Điều "TÀI LIỆU HỌC THUẬT tự nhắc tới" \
+như mô tả trên, KHÔNG mặc nhiên nằm trong danh sách được phép chỉ vì nó được trình bày dưới dạng \
+"căn cứ pháp lý" nghe có vẻ chắc chắn - vẫn phải kiểm tra Điều X đó có đồng thời là tiêu đề một \
+khối "QUY ĐỊNH PHÁP LUẬT" trong NGỮ CẢNH hay không trước khi được phép viết ra.
+   - Dạng "phân tích lý luận nhắc nhiều số Điều minh họa": một đoạn phân tích/bình luận học thuật \
+(ví dụ so sánh 2 Bộ luật, phân tích mối quan hệ giữa 2 chế định) thường tự nhắc nhiều số Điều làm \
+ví dụ minh họa cho lập luận của nó (ví dụ "BLHS dùng cụm từ X tại Điều 368, trong khi Điều 13 \
+BLTTHS quy định nguyên tắc suy đoán vô tội...") - những số Điều minh họa đó cũng phải qua đúng \
+kiểm tra danh sách được phép như trên, KHÔNG được viết ra chỉ vì chúng xuất hiện tự nhiên trong \
+mạch lập luận của tài liệu tham khảo.
+   LƯU Ý NGƯỢC LẠI (để không áp dụng quá tay): nếu một số Điều xuất hiện NGAY BÊN TRONG nội dung \
+của một khối "QUY ĐỊNH PHÁP LUẬT" đã có trong danh sách được phép (ví dụ Điều 155 BLTTHS tự trích \
+dẫn "tội phạm quy định tại khoản 1 các điều 134, 135, 136..." ngay trong nội dung của chính nó), \
+số Điều đó VẪN ĐƯỢC PHÉP viết ra khi cần trình bày đúng nội dung của Điều 155 - đây không phải \
+trường hợp bị cấm ở quy tắc này, vì số Điều đó là một phần nội dung THẬT của một khối "QUY ĐỊNH \
+PHÁP LUẬT" đã được xác thực, không phải số Điều TÀI LIỆU HỌC THUẬT tự nhắc tới từ bên ngoài.
 10. TÀI LIỆU HỌC THUẬT nhiều khi tự đánh số thứ tự nội bộ bên trong nội dung của chính nó (ví dụ \
 "Tình huống 5:", "Tình huống 14:", "Câu hỏi 3:", "Bài tập 2:" hoặc các cách đánh số tương tự dùng để \
 tổ chức các ví dụ/bài tập trong tài liệu gốc). Đây LÀ MỘT LỚP KHÁC với nhãn cấu trúc nội bộ của \
@@ -141,6 +161,19 @@ ANONYMIZATION_LEAK_FALLBACK_ANSWER = (
     "Xin lỗi, tôi không thể đưa ra phân tích an toàn cho câu hỏi này. Bạn có thể hỏi lại bằng cách "
     "chỉ mô tả hành vi cụ thể (không nêu tên người liên quan) để mình phân tích nguyên tắc pháp lý "
     "áp dụng cho hành vi đó."
+)
+
+# requirements.md RAG_SYSTEM_PROMPT rule 9 grounding audit: fail-closed fallback for the selective-
+# buffer path in rag_service.py (only questions whose retrieval used academic_reference - measured
+# to be the actual risk signal, see that module's docstring) - same "don't patch, replace
+# wholesale" precedent as ANONYMIZATION_LEAK_FALLBACK_ANSWER, for the same reason: surgically
+# removing just the offending Dieu number risks a grammatically broken or misleadingly-edited
+# sentence, and an ungrounded legal citation is exactly the kind of error a generic fail-closed
+# answer is safer than.
+RULE9_VIOLATION_FALLBACK_ANSWER = (
+    "Xin lỗi, tôi không thể đưa ra câu trả lời đủ tin cậy cho câu hỏi này (một phần nội dung có thể "
+    "trích dẫn chưa đúng nguồn). Bạn có thể thử đặt câu hỏi cụ thể hơn, ví dụ nêu rõ Điều luật hoặc "
+    "khái niệm bạn muốn tra cứu."
 )
 
 

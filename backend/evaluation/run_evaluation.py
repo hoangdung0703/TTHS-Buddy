@@ -13,6 +13,20 @@ A 4th, secondary check covers the 2 analytical cases whose expected_dieu_numbers
 intentionally empty (they test academic_reference retrieval on a cross-topic question, not
 citation of a single Dieu) - see test_set.json comments in the accompanying report.
 
+A 5th metric, citation_grounding_rate (requirements.md - RAG_SYSTEM_PROMPT rule 9 compliance
+audit), runs for EVERY question, not just the 2 academic-only cases above: it independently
+re-derives legal_primary for each question (same retrieval call the live pipeline made - see
+_compute_allowed_dieu_numbers) and checks whether every Dieu number the model actually wrote in
+its answer text is one of the Dieu that was genuinely fed into its NGU CANH. Rule 9 already
+forbids citing a Dieu that only appears INSIDE an academic_reference chunk's own text (as
+opposed to being a retrieved legal_text block's own title) - this check catches the model
+violating that rule with real numbers, which the academic_reference_usage check above cannot
+(it only confirms academic_reference was used at all, not whether the model then leaked an
+ungrounded Dieu number from inside it). Found via direct investigation (requirements.md): the
+official academic-only case "Phân tích mối quan hệ và tính thống nhất giữa Luật Hình sự..." was
+citing Dieu 13/298/33 - none of which were ever retrieved - and passed academic_reference_usage
+100% every single prior eval run because that check never looked at grounding, only usage.
+
 Two fields needed for groundedness/academic-usage are not exposed on the public API response
 (is_fallback, used_academic_reference), so this script reads them back from chat_query_logs
 (service-role client) right after each call - that table is written synchronously inside the
@@ -26,6 +40,7 @@ Optional:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -41,8 +56,14 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = BACKEND_ROOT.parent
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.core.config import create_supabase_client, get_settings  # noqa: E402
-from app.services.rag_service import FALLBACK_ANSWER  # noqa: E402
+from app.core.config import create_qdrant_client, create_supabase_client, get_settings  # noqa: E402
+from app.services.query_understanding_service import rewrite_question  # noqa: E402
+from app.services.rag_service import (  # noqa: E402
+    DIEU_NUMBER_PATTERN,
+    FALLBACK_ANSWER,
+    retrieve_context,
+    retrieve_context_for_subquestions,
+)
 
 TEST_SET_PATH = Path(__file__).resolve().parent / "test_set.json"
 RESULTS_PATH = Path(__file__).resolve().parent / "results.json"
@@ -128,8 +149,52 @@ def _is_fallback_text(answer: str) -> bool:
     return answer.strip() == FALLBACK_ANSWER
 
 
-def run_one(api_base_url: str, token: str, user_id: str, service_client: Any,
-            case: dict[str, Any]) -> dict[str, Any]:
+async def _compute_allowed_dieu_numbers(settings: Any, qdrant_client: Any, question: str) -> set[str]:
+    """Independently re-derives the set of Dieu numbers that were genuinely available as
+    legal_primary context for `question` - i.e. the Dieu numbers RAG_SYSTEM_PROMPT rule 9 permits
+    the model to write out. Mirrors rag_service.stream_answer_question's own branching
+    (query_understanding_service.rewrite_question -> either retrieve_context_for_subquestions for
+    a multi-part message, or a single retrieve_context call otherwise) so the "allowed" set
+    matches what the live pipeline actually built, not a simplified approximation.
+
+    Deliberately NOT just the retrieved chunks' own dieu_number field (their block-title Dieu) -
+    a real legal_text Dieu routinely cross-references OTHER Dieu numbers inside its own body text
+    (e.g. Dieu 155 BLTTHS: "tội phạm quy định tại khoản 1 các điều 134, 135, 136...") and quoting
+    those numbers back is a legitimate, necessary part of answering correctly, NOT the rule 9
+    violation this check exists to catch (a Dieu number that ONLY appears inside an
+    academic_reference chunk's own text, never in any retrieved legal_text). Confirmed by direct
+    investigation: without this, the check false-positived on 2/3 first-run "violations" (Dieu 134
+    inside Dieu 155's own retrieved text, Dieu 123 inside Dieu 12's own retrieved text) - both
+    legitimate quotes, not leaks. So "allowed" here is the union of every Dieu number appearing
+    ANYWHERE in a legal_primary chunk's own retrieved text (block title AND in-body
+    cross-references), not just the block title alone.
+
+    This re-runs query understanding + retrieval a second time (the live /api/chat/query call
+    already did its own) - a deliberate, low-cost choice: legal_primary isn't exposed on the
+    public API response (same reason is_fallback/used_academic_reference are read from
+    chat_query_logs instead), and retrieval alone (no LLM generation) is cheap. The one accepted
+    trade-off: query_understanding is not perfectly deterministic call-to-call, so the
+    independently-recomputed sub_questions/rewritten_question can occasionally differ slightly
+    from what the logged answer was actually generated against - acceptable noise for an
+    aggregate audit metric, not exact per-question ground truth.
+    """
+    qu = rewrite_question(question, [], settings)
+    if qu.sub_questions and len(qu.sub_questions) >= 2 and not qu.needs_anonymization:
+        retrieval_results = await retrieve_context_for_subquestions(qu.sub_questions, settings, qdrant_client)
+        legal_primary_chunks = [c for r in retrieval_results for c in r.legal_primary]
+    else:
+        retrieval = await retrieve_context(qu.rewritten_question, settings, qdrant_client)
+        legal_primary_chunks = list(retrieval.legal_primary)
+
+    allowed: set[str] = set()
+    for chunk in legal_primary_chunks:
+        allowed.add(chunk.payload["dieu_number"])
+        allowed.update(m.group(1) for m in DIEU_NUMBER_PATTERN.finditer(chunk.payload["chunk_text"]))
+    return allowed
+
+
+def run_one(api_base_url: str, token: str, user_id: str, service_client: Any, settings: Any,
+            qdrant_client: Any, case: dict[str, Any]) -> dict[str, Any]:
     api_response = _call_chat_query(api_base_url, token, case["question"])
     log_fields = _read_log_fields(service_client, user_id, case["question"])
 
@@ -142,6 +207,11 @@ def run_one(api_base_url: str, token: str, user_id: str, service_client: Any,
     expected = set(case["expected_dieu_numbers"])
     returned = set(returned_dieu_numbers)
 
+    answer_text = api_response.get("answer", "")
+    allowed_dieu_numbers = asyncio.run(_compute_allowed_dieu_numbers(settings, qdrant_client, case["question"]))
+    mentioned_dieu_numbers = {m.group(1) for m in DIEU_NUMBER_PATTERN.finditer(answer_text)}
+    ungrounded_dieu_numbers = mentioned_dieu_numbers - allowed_dieu_numbers
+
     result = {
         "question": case["question"],
         "category": case["category"],
@@ -150,8 +220,17 @@ def run_one(api_base_url: str, token: str, user_id: str, service_client: Any,
         "returned_dieu_numbers": sorted(returned),
         "is_fallback": is_fallback,
         "used_academic_reference": log_fields["used_academic_reference"],
-        "answer": api_response.get("answer", ""),
+        "answer": answer_text,
         "grounded": has_citations or is_fallback,
+        "allowed_dieu_numbers": sorted(allowed_dieu_numbers),
+        "mentioned_dieu_numbers": sorted(mentioned_dieu_numbers),
+        "ungrounded_dieu_numbers": sorted(ungrounded_dieu_numbers),
+        # rule 9 compliance for THIS question - fraction of Dieu numbers actually written that
+        # were genuinely in legal_primary; 1.0 (vacuously) when no Dieu number was written at all.
+        "citation_grounding_rate": (
+            (len(mentioned_dieu_numbers) - len(ungrounded_dieu_numbers)) / len(mentioned_dieu_numbers)
+            if mentioned_dieu_numbers else 1.0
+        ),
     }
 
     if case["should_refuse"]:
@@ -199,6 +278,29 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
             "rate": sum(r["correctly_refused"] for r in refusal_cases) / len(refusal_cases),
             "failures": [r["question"] for r in refusal_cases if not r["correctly_refused"]],
         }
+
+    # Citation grounding (RAG_SYSTEM_PROMPT rule 9 compliance) - over ALL 29 cases, not just the
+    # 2 academic-only ones. mean_rate is the mean of each question's own citation_grounding_rate
+    # (same "mean per-question" style as citation_accuracy's mean_recall/mean_precision above);
+    # pooled_rate additionally weights by how many Dieu numbers each question actually mentioned
+    # (a question citing 5 Dieu wrong counts more than one citing 1 Dieu wrong), giving a second,
+    # differently-weighted view of the same underlying violations.
+    total_mentioned = sum(len(r["mentioned_dieu_numbers"]) for r in results)
+    total_ungrounded = sum(len(r["ungrounded_dieu_numbers"]) for r in results)
+    summary["citation_grounding"] = {
+        "n": len(results),
+        "mean_rate": sum(r["citation_grounding_rate"] for r in results) / len(results),
+        "pooled_rate": 1 - (total_ungrounded / total_mentioned) if total_mentioned else 1.0,
+        "total_dieu_mentioned": total_mentioned,
+        "total_dieu_ungrounded": total_ungrounded,
+        "violations": [
+            {
+                "question": r["question"], "ungrounded_dieu_numbers": r["ungrounded_dieu_numbers"],
+                "allowed_dieu_numbers": r["allowed_dieu_numbers"],
+            }
+            for r in results if r["ungrounded_dieu_numbers"]
+        ],
+    }
 
     # Academic-reference-usage check - the 2 cross-topic analytical cases.
     academic_cases = [r for r in results if "academic_reference_used" in r]
@@ -267,12 +369,28 @@ def print_report(results: list[dict[str, Any]], summary: dict[str, Any]) -> None
             status = "OK" if d["used_academic_reference"] else "KHÔNG dùng academic_reference"
             print(f"      - [{status}] {d['question']}")
 
+    cg = summary["citation_grounding"]
+    print(f"\n[5] CITATION GROUNDING - RAG_SYSTEM_PROMPT rule 9 (n={cg['n']}, TOÀN BỘ bộ test)")
+    print("    Điều kiện: MỌI số Điều model viết ra trong câu trả lời phải nằm trong legal_primary")
+    print("    thực sự được retrieve cho câu hỏi đó (rule 9: cấm viết số Điều chỉ xuất hiện trong nội")
+    print("    dung TÀI LIỆU HỌC THUẬT, không phải tiêu đề khối QUY ĐỊNH PHÁP LUẬT).")
+    print(f"    mean_rate (trung bình từng câu) = {cg['mean_rate']:.0%}")
+    print(f"    pooled_rate (theo tổng số Điều)  = {cg['pooled_rate']:.0%} "
+          f"({cg['total_dieu_mentioned'] - cg['total_dieu_ungrounded']}/{cg['total_dieu_mentioned']} Điều)")
+    if cg["violations"]:
+        print(f"    VI PHẠM ({len(cg['violations'])} câu):")
+        for v in cg["violations"]:
+            print(f"      - {v['question']}")
+            print(f"        Điều KHÔNG được phép nhưng vẫn viết ra: {v['ungrounded_dieu_numbers']}")
+            print(f"        (Điều được phép: {v['allowed_dieu_numbers']})")
+
     print("\n" + "-" * 78)
     print("CHI TIẾT TỪNG CÂU FAIL (nếu có):")
     any_fail = False
     for r in results:
         failed = (not r["grounded"]) or (r.get("all_expected_cited") is False) or \
-                 (r.get("correctly_refused") is False) or (r.get("academic_reference_used") is False)
+                 (r.get("correctly_refused") is False) or (r.get("academic_reference_used") is False) or \
+                 bool(r["ungrounded_dieu_numbers"])
         if not failed:
             continue
         any_fail = True
@@ -280,6 +398,9 @@ def print_report(results: list[dict[str, Any]], summary: dict[str, Any]) -> None
         print(f"    expected_dieu_numbers = {r['expected_dieu_numbers']}")
         print(f"    returned_dieu_numbers = {r['returned_dieu_numbers']}")
         print(f"    is_fallback = {r['is_fallback']}, grounded = {r['grounded']}")
+        if r["ungrounded_dieu_numbers"]:
+            print(f"    ungrounded_dieu_numbers = {r['ungrounded_dieu_numbers']} "
+                  f"(allowed = {r['allowed_dieu_numbers']})")
         print(f"    answer (rút gọn) = {r['answer'][:200]}")
     if not any_fail:
         print("  (không có câu nào fail)")
@@ -304,6 +425,7 @@ def main() -> None:
 
     settings = get_settings()
     service_client = create_supabase_client(settings)
+    qdrant_client = create_qdrant_client(settings)
 
     token, user_id = _sign_in_eval_user(supabase_url, anon_key, eval_email, eval_password)
 
@@ -313,7 +435,7 @@ def main() -> None:
     results: list[dict[str, Any]] = []
     for i, case in enumerate(test_set, start=1):
         print(f"  [{i}/{len(test_set)}] {case['question'][:70]}...")
-        result = run_one(api_base_url, token, user_id, service_client, case)
+        result = run_one(api_base_url, token, user_id, service_client, settings, qdrant_client, case)
         results.append(result)
         # Must clear app.core.rate_limit.LLM_ROUTE_RATE_LIMIT (10/minute, per authenticated user)
         # on /api/chat/query, not just "light pacing against the Gemini API" - one eval case is
