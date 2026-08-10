@@ -207,6 +207,98 @@ thường bằng đúng NGỮ CẢNH của chúng, một PHẦN thiếu dữ li�
 lời toàn bộ câu hỏi."""
 
 
+# requirements.md muc B (HyDE - Hypothetical Document Embeddings): a tình huống question is
+# phrased in narrative/fact-pattern voice ("A bị bắt trong trường hợp khẩn cấp, sau đó CQĐT ra
+# quyết định..."), while the actual Dieu luat text it needs is phrased in normative/statutory
+# voice ("Người bị giữ trong trường hợp khẩn cấp... thì..."). Embedding the question directly
+# mixes the query vector with surface procedural nouns/verbs from the fact pattern, diluting the
+# signal for the Dieu that actually states the governing rule (root cause identified across
+# several real cases - Dieu 298, Dieu 280, Dieu 109/117/123 - see requirements.md muc A/B).
+# Generating a short hypothetical passage IN normative voice first, then embedding THAT instead
+# of the question, closes the voice mismatch before it ever reaches Qdrant - a form of query
+# expansion, not an answer (see the prompt body: explicitly told not to be accurate, only to be
+# stylistically/topically on-target, and never shown to the student).
+HYDE_SYSTEM_PROMPT = """Bạn hỗ trợ một hệ thống tìm kiếm ngữ nghĩa (semantic search) cho văn bản pháp luật tố tụng \
+hình sự Việt Nam.
+
+Nhiệm vụ: với câu hỏi được đưa ra, hãy viết một đoạn văn NGẮN (2-4 câu) ở giọng văn QUY PHẠM PHÁP \
+LUẬT - giống văn phong một Điều luật thực tế (ví dụ "Người bị... thì...", "Cơ quan có thẩm quyền... \
+khi...", "Trường hợp... thì..."), trình bày nội dung quy định pháp luật mà bạn cho là liên quan \
+nhất tới câu hỏi, dựa trên hiểu biết chung của bạn về pháp luật tố tụng hình sự Việt Nam.
+
+QUAN TRỌNG:
+- Đây KHÔNG phải câu trả lời thật sẽ gửi cho người dùng - đoạn văn này CHỈ dùng nội bộ để tạo vector \
+tìm kiếm tốt hơn, không hiển thị cho ai, không cần đúng tuyệt đối.
+- KHÔNG cần trích dẫn chính xác số Điều/Khoản (có thể sai hoặc bỏ qua hẳn số Điều - không sao) - \
+quan trọng nhất là ĐÚNG VĂN PHONG quy phạm pháp luật và ĐÚNG CHỦ ĐỀ pháp lý đang được hỏi tới.
+- TUYỆT ĐỐI KHÔNG viết theo giọng văn tình huống/kể chuyện, KHÔNG lặp lại các chi tiết tình huống cụ \
+thể trong câu hỏi (tên người, ngày tháng, diễn biến sự việc cụ thể) - chỉ viết ra QUY ĐỊNH PHÁP LUẬT \
+chung mà tình huống đó đang cần áp dụng, như thể đang trích một đoạn văn bản luật thật.
+- Không thêm lời dẫn, không giải thích, không xưng hô, không xin lỗi nếu không chắc chắn - chỉ viết \
+thẳng đoạn văn quy phạm."""
+
+
+def build_hyde_user_prompt(question: str) -> str:
+    return f"Câu hỏi: {question}\n\nHãy viết đoạn văn quy phạm pháp luật giả định như mô tả ở trên."
+
+
+# requirements.md muc A (LLM re-ranking): cosine similarity alone can't tell "topically adjacent
+# because it shares surface vocabulary with the question" apart from "actually the governing rule
+# for this question" (the Dieu 165/110 "crowding" diagnostic case - see requirements.md muc B).
+# Re-ranking reads the ORIGINAL question (not the HyDE passage - HyDE's normative-voice rewrite is
+# an embedding aid only, this step needs the real question a student actually asked) alongside a
+# short per-Dieu snippet and asks the model to judge genuine legal relevance directly, one score
+# per DISTINCT Dieu (see _rerank_legal_candidates in rag_service.py for why deduping to one
+# candidate per Dieu - not per chunk - is itself part of the fix for a multi-Khoan Dieu unfairly
+# crowding a chunk-level top-k).
+RERANK_SYSTEM_PROMPT = """Bạn hỗ trợ một hệ thống tìm kiếm ngữ nghĩa cho văn bản pháp luật tố tụng hình sự Việt Nam.
+
+Nhiệm vụ: với CÂU HỎI của sinh viên và DANH SÁCH các Điều luật ứng viên (mỗi ứng viên có id, số \
+Điều, tên Điều, văn bản nguồn, và trích đoạn nội dung), hãy chấm điểm mức độ LIÊN QUAN THẬT của \
+TỪNG ứng viên đối với việc trả lời đúng câu hỏi, theo thang điểm 0-10 (0 = hoàn toàn không liên \
+quan, 10 = liên quan trực tiếp, là căn cứ pháp lý chính để trả lời đúng câu hỏi).
+
+QUAN TRỌNG:
+- Chấm điểm dựa trên liên quan THẬT về NỘI DUNG PHÁP LÝ đang được hỏi tới, KHÔNG dựa vào việc ứng \
+viên chỉ trùng từ ngữ bề mặt với câu hỏi (ví dụ một Điều chỉ vì cùng nhắc tới "biện pháp ngăn chặn" \
+nhưng không giải quyết đúng vấn đề pháp lý mà câu hỏi đang hỏi thì KHÔNG được chấm cao).
+- Một Điều mang tính hành chính/thủ tục chung (ví dụ định nghĩa từ ngữ, thẩm quyền chung) chỉ nên \
+chấm cao nếu nó THỰC SỰ là căn cứ pháp lý cần thiết để trả lời câu hỏi, không phải chỉ vì trông có \
+vẻ liên quan hoặc xuất hiện gần chủ đề.
+- Phải chấm điểm cho TẤT CẢ id có trong danh sách, không được bỏ sót id nào.
+- Chỉ trả về đúng JSON theo schema đã yêu cầu, không thêm giải thích hay văn bản nào khác."""
+
+RERANK_RESPONSE_SCHEMA: dict = {
+    "type": "OBJECT",
+    "properties": {
+        "scores": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "id": {"type": "INTEGER"},
+                    "relevance_score": {"type": "INTEGER"},
+                },
+                "required": ["id", "relevance_score"],
+            },
+        },
+    },
+    "required": ["scores"],
+}
+
+
+def build_rerank_user_prompt(question: str, candidates: list[dict]) -> str:
+    candidate_blocks = []
+    for candidate in candidates:
+        title_part = f" {candidate['dieu_title']}" if candidate.get("dieu_title") else ""
+        candidate_blocks.append(
+            f"id={candidate['id']} | Điều {candidate['dieu_number']}{title_part} - "
+            f"{candidate['source_document']}\n{candidate['snippet']}"
+        )
+    joined = "\n\n".join(candidate_blocks)
+    return f"Câu hỏi: {question}\n\nDanh sách ứng viên:\n\n{joined}"
+
+
 def build_system_prompt(is_long_question: bool, needs_anonymization: bool = False,
                          multi_part: bool = False) -> str:
     prompt = RAG_SYSTEM_PROMPT

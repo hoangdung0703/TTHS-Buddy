@@ -12,6 +12,7 @@ content never appears in the `citations` field (which is legal-citation-shaped o
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import re
 import uuid
@@ -49,8 +50,13 @@ from app.prompts.conversational_prompts import (
 from app.prompts.rag_prompts import (
     ANONYMIZATION_DISCLAIMER,
     ANONYMIZATION_LEAK_FALLBACK_ANSWER,
+    HYDE_SYSTEM_PROMPT,
+    RERANK_RESPONSE_SCHEMA,
+    RERANK_SYSTEM_PROMPT,
     RULE9_VIOLATION_FALLBACK_ANSWER,
+    build_hyde_user_prompt,
     build_multi_part_user_prompt,
+    build_rerank_user_prompt,
     build_system_prompt,
     build_user_prompt,
     format_academic_context_block,
@@ -146,6 +152,19 @@ LEGAL_PRIMARY_COUNT = 8
 # empirically resolves the reproduced case - see _retrieve_legal for how it's applied.
 MAX_PRIMARY_PER_SOURCE_DOCUMENT = 3
 LEGAL_RELATED_COUNT = 2
+
+# requirements.md muc A (LLM re-ranking): only worth an extra Gemini call when there's more than
+# one distinct Dieu to actually choose between - a single-candidate pool has nothing to reorder.
+RERANK_MIN_CANDIDATES = 2
+# Candidate snippet length sent to the re-rank prompt - short on purpose (requirements.md muc A:
+# "Điều + Khoản liên quan, không cần toàn văn để tiết kiệm token"), just enough for the model to
+# judge topical relevance, not a substitute for the full chunk_text used at generation time.
+RERANK_SNIPPET_CHARS = 220
+# Sort key given to a non-exact candidate the re-rank call didn't return a score for (missing id
+# in a malformed response) - sinks it below every candidate that WAS scored (0-10 scale) without
+# discarding it outright, so a partial/malformed re-rank response degrades gracefully instead of
+# silently dropping a candidate from consideration.
+RERANK_MISSING_SCORE_FALLBACK = -1.0
 ACADEMIC_TOP_K = 3
 LEGAL_SCORE_THRESHOLD = 0.5
 ACADEMIC_SCORE_THRESHOLD = 0.5
@@ -575,43 +594,136 @@ def _build_suggested_followups(client: QdrantClient, collection: str, top_chunk:
     return followups
 
 
+def _rerank_legal_candidates(question: str, non_exact_candidates: list[RetrievedChunk],
+                              settings: Settings) -> dict[tuple[str, str | None], float]:
+    """requirements.md muc A (LLM re-ranking): dedupes `non_exact_candidates` (chunk-level,
+    score-ordered - may contain several Khoan chunks of the same Dieu) down to ONE row per
+    distinct (dieu_number, law_version) BEFORE sending to the model - this is what fixes the "Dieu
+    15 has 5 Khoan chunks and eats 5 of the raw top-25 pool slots" crowding problem HyDE's own
+    diagnostic surfaced (see requirements.md muc B, tinhhuong-q4 case): a multi-Khoan Dieu now
+    competes as ONE candidate, not as many, so it can no longer win purely by chunk count. The
+    snippet sent per candidate is the single highest-scored chunk's own text, truncated to
+    RERANK_SNIPPET_CHARS - short by design (requirements.md muc A: "không cần toàn văn để tiết
+    kiệm token"), just enough signal for a relevance judgment, not a substitute for the full
+    chunk_text used later at generation time.
+
+    Reads the question the student actually asked (never the HyDE passage - see RERANK_SYSTEM_PROMPT's
+    docstring) alongside each candidate and asks for a real 0-10 relevance judgment, meant to catch
+    exactly the failure cosine similarity can't: high surface lexical overlap with the question but
+    the wrong governing rule (the Dieu 165/110 crowding diagnostic case).
+
+    Returns {} on ANY failure (API error, malformed JSON, schema violation) - the caller then keeps
+    the original similarity-score ordering entirely unchanged (see _retrieve_legal's sort_key),
+    same "degrade gracefully instead of breaking the request" contract as _generate_hyde_passage."""
+    candidates_by_key: dict[tuple[str, str | None], dict] = {}
+    id_to_key: dict[int, tuple[str, str | None]] = {}
+    for chunk in non_exact_candidates:
+        key = (chunk.payload["dieu_number"], chunk.payload["law_version"])
+        if key in candidates_by_key:
+            continue
+        candidate_id = len(candidates_by_key) + 1
+        id_to_key[candidate_id] = key
+        candidates_by_key[key] = {
+            "id": candidate_id, "dieu_number": chunk.payload["dieu_number"],
+            "dieu_title": chunk.payload["dieu_title"],
+            "source_document": get_display_name(chunk.payload["source_document"]),
+            "snippet": chunk.payload["chunk_text"][:RERANK_SNIPPET_CHARS],
+        }
+
+    if len(candidates_by_key) < RERANK_MIN_CANDIDATES:
+        return {}
+
+    try:
+        response_text = generate_answer(
+            RERANK_SYSTEM_PROMPT, build_rerank_user_prompt(question, list(candidates_by_key.values())),
+            settings, response_json=True, response_schema=RERANK_RESPONSE_SCHEMA
+        )
+        parsed = json.loads(response_text)
+        scores: dict[tuple[str, str | None], float] = {}
+        for entry in parsed["scores"]:
+            key = id_to_key.get(int(entry["id"]))
+            if key is not None:
+                scores[key] = float(entry["relevance_score"])
+        return scores
+    except Exception:
+        logger.exception("LLM re-ranking failed - falling back to plain similarity-score ordering")
+        return {}
+
+
+def _merge_semantic_pools(pool_a: list[RetrievedChunk], pool_b: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """requirements.md "Union pool": merges two top-K semantic result sets (e.g. one fetched
+    against the HyDE vector, one against the raw-question vector) by point_id, keeping whichever
+    instance scored higher when a chunk appears in both - a chunk found by either search is a
+    legitimate candidate, and if both found it, its better-supported score should win. Returns the
+    union sorted by score descending, same ordering convention _retrieve_semantic's raw Qdrant
+    results already have."""
+    by_point_id: dict[str, RetrievedChunk] = {}
+    for chunk in pool_a + pool_b:
+        existing = by_point_id.get(chunk.point_id)
+        if existing is None or (chunk.score or 0.0) > (existing.score or 0.0):
+            by_point_id[chunk.point_id] = chunk
+    return sorted(by_point_id.values(), key=lambda c: c.score or 0.0, reverse=True)
+
+
 def _retrieve_legal(client: QdrantClient, collection: str, question: str,
-                     vector: list[float]) -> tuple[list[RetrievedChunk], list[RetrievedChunk]]:
+                     semantic_chunks: list[RetrievedChunk],
+                     settings: Settings) -> tuple[list[RetrievedChunk], list[RetrievedChunk]]:
     """Returns (primary_chunks, related_chunks). Exact Dieu-number matches (if the question names
     one) always take priority over semantic search results for the primary slots.
 
-    Semantic pool width (LEGAL_SEMANTIC_TOP_K/LEGAL_PRIMARY_COUNT) is the same for every
-    question - see those constants' comment for why a length-based proxy for "does this question
-    need a wider pool" was tried first and replaced. Exact-match and academic_reference retrieval
-    are untouched - only the legal_text semantic branch is affected by pool width.
+    `semantic_chunks` is the already-fetched legal_text candidate pool (see retrieve_context's
+    "Union pool" comment for why it's fetched by the caller against TWO vectors and merged, not a
+    single vector fetched inside this function) - LEGAL_SEMANTIC_TOP_K/LEGAL_PRIMARY_COUNT still
+    govern how wide each underlying fetch was and how many Dieu ultimately reach legal_primary,
+    see those constants' comment for why a length-based proxy for "does this question need a wider
+    pool" was tried first and replaced. Exact-match and academic_reference retrieval are
+    untouched - only the legal_text semantic branch is affected by pool width.
     """
     dieu_number = detect_dieu_number(question)
     source_document = detect_source_document(question) if dieu_number else None
     exact_chunks = _retrieve_legal_exact(client, collection, dieu_number, source_document) if dieu_number else []
 
-    semantic_chunks = _retrieve_semantic(client, collection, vector, "legal_text", LEGAL_SEMANTIC_TOP_K)
-
     merged = _dedup_by_point_id(exact_chunks + semantic_chunks)
     above_threshold = [c for c in merged if c.is_exact_match or (c.score or 0.0) >= LEGAL_SCORE_THRESHOLD]
+
+    # requirements.md muc A: re-order the non-exact candidates by LLM-judged relevance instead of
+    # raw similarity score - exact-Dieu matches are excluded from re-ranking and always keep first
+    # priority (see _retrieve_legal_exact's own precedence, unchanged). A candidate missing from
+    # the re-rank result (call failed, or fewer than RERANK_MIN_CANDIDATES to begin with) falls
+    # back to RERANK_MISSING_SCORE_FALLBACK, and an EMPTY rerank_scores dict (whole call failed)
+    # makes every non-exact candidate tie on the re-rank key, so the stable sort's tertiary key
+    # (original similarity score) reconstructs the exact pre-A ordering - a no-op fallback, not a
+    # degraded one.
+    non_exact = [c for c in above_threshold if not c.is_exact_match]
+    rerank_scores = _rerank_legal_candidates(question, non_exact, settings)
+
+    def _sort_key(chunk: RetrievedChunk) -> tuple[int, float, float]:
+        if chunk.is_exact_match:
+            return (1, 0.0, 0.0)
+        key = (chunk.payload["dieu_number"], chunk.payload["law_version"])
+        return (0, rerank_scores.get(key, RERANK_MISSING_SCORE_FALLBACK), chunk.score or 0.0)
+
+    ordered = sorted(above_threshold, key=_sort_key, reverse=True)
 
     # Group by (dieu_number, law_version) rather than slicing the flat chunk list, so a long
     # Dieu split into several Khoan chunks (see ingestion/chunking.py) counts as ONE Dieu
     # towards primary_count instead of eating multiple primary slots with itself.
     #
     # Diversity-aware selection (see MAX_PRIMARY_PER_SOURCE_DOCUMENT's comment): still walk
-    # above_threshold in the SAME score order as before (a single source's own internal ranking
-    # is untouched), but once a source_document has filled its per-source cap, further Dieu from
-    # that SAME source are deferred rather than immediately consuming a primary slot - giving a
-    # competitive Dieu from a DIFFERENT source room to be picked up first. Deferred keys backfill
-    # any slots still empty after one full pass, so a question that genuinely has no competing
-    # source in the pool (e.g. asking broadly about one specific Thông tư/Nghị định) still fills
-    # up to LEGAL_PRIMARY_COUNT instead of being short-changed by a cap with nothing to trade off
-    # against - the cap is a tie-breaker among competing sources, not a hard ceiling.
+    # `ordered` in the SAME order as before (a single source's own internal ranking - now re-rank
+    # order rather than raw similarity order, see muc A above - is untouched), but once a
+    # source_document has filled its per-source cap, further Dieu from that SAME source are
+    # deferred rather than immediately consuming a primary slot - giving a competitive Dieu from a
+    # DIFFERENT source room to be picked up first. Deferred keys backfill any slots still empty
+    # after one full pass, so a question that genuinely has no competing source in the pool (e.g.
+    # asking broadly about one specific Thông tư/Nghị định) still fills up to LEGAL_PRIMARY_COUNT
+    # instead of being short-changed by a cap with nothing to trade off against - the cap is a
+    # tie-breaker among competing sources, not a hard ceiling.
     primary_keys_ordered: list[tuple[str, str | None]] = []
     deferred_keys: list[tuple[str, str | None]] = []
     seen_keys: set[tuple[str, str | None]] = set()
     source_counts: dict[str, int] = {}
-    for chunk in above_threshold:
+    for chunk in ordered:
         key = (chunk.payload["dieu_number"], chunk.payload["law_version"])
         if key in seen_keys:
             continue
@@ -627,9 +739,9 @@ def _retrieve_legal(client: QdrantClient, collection: str, question: str,
         primary_keys_ordered.extend(deferred_keys[:LEGAL_PRIMARY_COUNT - len(primary_keys_ordered)])
     primary_keys = set(primary_keys_ordered[:LEGAL_PRIMARY_COUNT])
 
-    primary = [c for c in above_threshold
+    primary = [c for c in ordered
                if (c.payload["dieu_number"], c.payload["law_version"]) in primary_keys]
-    remaining = [c for c in above_threshold
+    remaining = [c for c in ordered
                  if (c.payload["dieu_number"], c.payload["law_version"]) not in primary_keys]
     related = _dedup_by_dieu_number(remaining, primary_keys)[:LEGAL_RELATED_COUNT]
 
@@ -769,21 +881,68 @@ def _multipart_missing_parts(answer_text: str, num_parts: int) -> list[int]:
     return [i for i in range(1, num_parts + 1) if i not in found_numbers]
 
 
-async def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient) -> RetrievalResult:
-    # embed_query calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded to a
-    # thread for the same reason the sync QdrantClient calls just below are: without this it
-    # blocks the single event loop for every other in-flight request during the round-trip.
-    vector = await asyncio.to_thread(embed_query, question, settings)
+def _generate_hyde_passage(question: str, settings: Settings) -> str:
+    """requirements.md muc B (HyDE): see HYDE_SYSTEM_PROMPT's docstring for the voice-mismatch
+    rationale. Falls back to returning the question itself (pre-HyDE behavior - embed the
+    question directly) if the generation call fails, so a Gemini hiccup on this extra lightweight
+    call degrades retrieval quality rather than breaking the request - same resilience pattern as
+    summarize_previous/explain_simpler's try/except fallback in stream_answer_question."""
+    try:
+        passage = generate_answer(HYDE_SYSTEM_PROMPT, build_hyde_user_prompt(question), settings)
+        return passage or question
+    except Exception:
+        logger.exception("HyDE passage generation failed - falling back to embedding the question directly")
+        return question
 
-    # legal_text and academic_reference answer different kinds of questions (a legal rule vs a
-    # concept/theory explanation) - a high legal_text score is not evidence academic_reference is
-    # unneeded, since it can come from incidental keyword overlap with a Dieu that doesn't
-    # actually answer the question (e.g. "phuong phap dieu chinh cua LTTHS" matching "Dieu 1.
-    # Pham vi dieu chinh" on the word "dieu chinh" alone - see requirements.md). So both are
-    # always queried, concurrently via asyncio.to_thread since qdrant_client is a sync client.
-    (legal_primary, legal_related), academic_chunks = await asyncio.gather(
-        asyncio.to_thread(_retrieve_legal, qdrant_client, settings.qdrant_collection, question, vector),
-        asyncio.to_thread(_retrieve_academic, qdrant_client, settings.qdrant_collection, vector),
+
+async def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient) -> RetrievalResult:
+    # requirements.md muc B (HyDE): legal_text retrieval embeds a generated hypothetical
+    # normative-voice passage instead of the question itself (see _generate_hyde_passage),
+    # academic_reference retrieval keeps embedding the question directly (HyDE's voice-mismatch
+    # rationale is specific to legal_text's statutory phrasing - academic_reference is itself
+    # written in explanatory/analytical prose closer to how a question is phrased, so there's no
+    # comparable mismatch to fix there, and mục B was scoped to legal_text only). The HyDE
+    # generation call and the academic embed don't depend on each other, so they run concurrently
+    # - only the legal embed (which needs the HyDE passage as input) has to wait for it, keeping
+    # the added latency to roughly one extra Gemini round trip rather than two serialized ones.
+    hyde_task = asyncio.to_thread(_generate_hyde_passage, question, settings)
+    academic_vector_task = asyncio.to_thread(embed_query, question, settings)
+    hyde_passage, academic_vector = await asyncio.gather(hyde_task, academic_vector_task)
+    legal_vector = await asyncio.to_thread(embed_query, hyde_passage, settings)
+
+    # requirements.md "Union pool": muc A's own Dieu 109 diagnostic found HyDE can exclude a
+    # genuinely-correct Dieu from the raw top-K pool entirely (a Dieu that scores better under
+    # HyDE's normative-voice framing crowds it out before re-ranking ever runs) - re-ranking alone
+    # can't rescue a candidate Qdrant never returned. Fetching top-K against BOTH the HyDE vector
+    # AND the raw-question vector (reusing academic_vector - same embed_query(question) call
+    # already made for academic_reference just below, no extra Gemini call) and merging recaptures
+    # whatever the raw-question search alone would have found, without giving up HyDE's own win on
+    # cases where its normative-voice passage ranks the correct Dieu higher than the raw question
+    # would have. Both legal_text fetches run concurrently with each other AND with the
+    # academic_reference fetch - three concurrent Qdrant calls instead of two, kept cheap since
+    # Qdrant's own per-call latency is small relative to the two Gemini calls this whole function
+    # already makes.
+    legal_pool_hyde, legal_pool_baseline, academic_chunks = await asyncio.gather(
+        asyncio.to_thread(_retrieve_semantic, qdrant_client, settings.qdrant_collection, legal_vector,
+                           "legal_text", LEGAL_SEMANTIC_TOP_K),
+        asyncio.to_thread(_retrieve_semantic, qdrant_client, settings.qdrant_collection, academic_vector,
+                           "legal_text", LEGAL_SEMANTIC_TOP_K),
+        asyncio.to_thread(_retrieve_academic, qdrant_client, settings.qdrant_collection, academic_vector),
+    )
+    # requirements.md "Union pool" follow-up: sending the FULL merged union (measured 32-38
+    # distinct Dieu, vs ~17-19 for a single pool) into _rerank_legal_candidates made the re-rank
+    # call itself the dominant latency cost (3-8.6s observed, vs 2.1-2.5s for a single pool) -
+    # Gemini's own generateContent latency scales with how many candidates it has to score, and
+    # doubling the candidate count doubled-to-quadrupled that one call. Capping back to
+    # LEGAL_SEMANTIC_TOP_K by score AFTER merging (not before - the whole point of fetching both
+    # pools is to let a Dieu that ranks well in EITHER search survive the cut, not just the HyDE
+    # one) keeps re-rank's input size the same as the pre-union A+B config while still recapturing
+    # Dieu 109 (it ranked in the baseline pool's own top-25, so survives this cut easily - the
+    # problem this whole change fixes was HyDE's pool excluding it, not the union being too wide).
+    legal_semantic_pool = _merge_semantic_pools(legal_pool_hyde, legal_pool_baseline)[:LEGAL_SEMANTIC_TOP_K]
+
+    legal_primary, legal_related = await asyncio.to_thread(
+        _retrieve_legal, qdrant_client, settings.qdrant_collection, question, legal_semantic_pool, settings
     )
 
     context_blocks: list[str] = []
