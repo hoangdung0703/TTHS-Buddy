@@ -34,6 +34,12 @@ FILTERABLE_PAYLOAD_FIELDS = ("source_type", "dieu_number", "source_document", "c
 # neighbor expansion range-filters on it, which Qdrant only accepts against a numeric-typed index.
 FILTERABLE_INTEGER_PAYLOAD_FIELDS = ("chunk_index",)
 
+# requirements.md muc C ("Audit chu dong toan corpus tim quy dinh da bai bo"): is_repealed is a
+# separate BOOL-typed index - rag_service.py must_not-filters legal_text retrieval on it to keep
+# fully-repealed Dieu (e.g. Dieu 63/79/82 of Luat To chuc TAND) out of legal_primary regardless of
+# similarity score, the same way extraction_quality="unusable" chunks are kept out of embedding.
+FILTERABLE_BOOL_PAYLOAD_FIELDS = ("is_repealed",)
+
 
 def create_qdrant_client() -> QdrantClient:
     settings = get_ingestion_settings()
@@ -45,6 +51,8 @@ def _ensure_payload_indexes(client: QdrantClient, collection: str) -> None:
         client.create_payload_index(collection, field_name=field_name, field_schema=PayloadSchemaType.KEYWORD)
     for field_name in FILTERABLE_INTEGER_PAYLOAD_FIELDS:
         client.create_payload_index(collection, field_name=field_name, field_schema=PayloadSchemaType.INTEGER)
+    for field_name in FILTERABLE_BOOL_PAYLOAD_FIELDS:
+        client.create_payload_index(collection, field_name=field_name, field_schema=PayloadSchemaType.BOOL)
 
 
 def ensure_collection(client: QdrantClient) -> None:
@@ -87,7 +95,14 @@ def chunk_to_point(chunk: dict[str, Any], vector: list[float]) -> PointStruct:
         "section_heading": chunk["section_heading"],
         "chunk_text": chunk["chunk_text"],
         "extraction_method": chunk["extraction_method"],
-        "extraction_quality": chunk["extraction_quality"]
+        "extraction_quality": chunk["extraction_quality"],
+        # requirements.md muc C: optional, only set (True + a note) on the small number of chunks
+        # the audit confirmed are repealed - absent (not False) on every other chunk, which is
+        # exactly what a must_not={"is_repealed": True} Qdrant filter needs to pass them through.
+        "is_repealed": chunk.get("is_repealed", False),
+        "repealed_note": chunk.get("repealed_note"),
+        "has_repealed_clause": chunk.get("has_repealed_clause", False),
+        "repealed_clause_note": chunk.get("repealed_clause_note"),
     }
     return PointStruct(id=build_point_id(chunk), vector=vector, payload=payload)
 

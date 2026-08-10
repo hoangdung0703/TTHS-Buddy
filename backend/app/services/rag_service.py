@@ -202,6 +202,11 @@ FALLBACK_ANSWER = (
     "câu hỏi này."
 )
 
+# requirements.md muc C: a fully-repealed Dieu (is_repealed=True - see ingestion/vector_store.py's
+# payload docstring) must never be used as a legal_primary/legal_related citation basis regardless
+# of similarity score, so every legal_text retrieval query excludes it with this must_not filter.
+REPEALED_FILTER_CONDITION = FieldCondition(key="is_repealed", match=MatchValue(value=True))
+
 
 @dataclass
 class RetrievedChunk:
@@ -343,6 +348,15 @@ def build_aggregate_structure_answer(source_document: str, law_version: str | No
     return body + note
 
 
+def build_repealed_dieu_answer(dieu_number: str, source_document: str, repealed_note: str | None) -> str:
+    display_name = get_display_name(source_document)
+    note = repealed_note or "Điều này đã bị bãi bỏ, chưa xác định rõ văn bản/ngày hiệu lực thay thế."
+    return (
+        f"Điều {dieu_number} {display_name} đã bị bãi bỏ, không còn là căn cứ pháp luật hiện hành. {note} "
+        "Bạn có thể hỏi về văn bản thay thế nếu văn bản đó đã có trong dữ liệu của hệ thống."
+    )
+
+
 def _retrieve_legal_exact(client: QdrantClient, collection: str, dieu_number: str,
                            source_document: str | None) -> list[RetrievedChunk]:
     must_conditions = [
@@ -354,7 +368,7 @@ def _retrieve_legal_exact(client: QdrantClient, collection: str, dieu_number: st
 
     points, _ = client.scroll(
         collection_name=collection,
-        scroll_filter=Filter(must=must_conditions),
+        scroll_filter=Filter(must=must_conditions, must_not=[REPEALED_FILTER_CONDITION]),
         limit=10,
         with_payload=True,
     )
@@ -362,12 +376,44 @@ def _retrieve_legal_exact(client: QdrantClient, collection: str, dieu_number: st
             for p in points]
 
 
+def _retrieve_repealed_dieu(client: QdrantClient, collection: str, dieu_number: str,
+                             source_document: str | None) -> RetrievedChunk | None:
+    """requirements.md muc C ("dung metadata is_repealed de bao ve chu dong"): mirrors
+    _retrieve_legal_exact's filter but INVERTED (must is_repealed=True instead of must_not) - a
+    direct question naming a fully-repealed Dieu (e.g. "Dieu 63 Luat To chuc TAND") must never
+    silently fall through to ordinary semantic retrieval (which would either find nothing, or
+    worse, surface a topically-similar but different Dieu) - it needs its own explicit "this Dieu
+    was abolished" answer instead of citing stale content as if it were current law."""
+    must_conditions = [
+        FieldCondition(key="source_type", match=MatchValue(value="legal_text")),
+        FieldCondition(key="dieu_number", match=MatchValue(value=dieu_number)),
+        REPEALED_FILTER_CONDITION,
+    ]
+    if source_document:
+        must_conditions.append(FieldCondition(key="source_document", match=MatchValue(value=source_document)))
+
+    points, _ = client.scroll(
+        collection_name=collection,
+        scroll_filter=Filter(must=must_conditions),
+        limit=1,
+        with_payload=True,
+    )
+    if not points:
+        return None
+    return RetrievedChunk(point_id=str(points[0].id), score=None, is_exact_match=True, payload=points[0].payload)
+
+
 def _retrieve_semantic(client: QdrantClient, collection: str, vector: list[float], source_type: str,
                         limit: int) -> list[RetrievedChunk]:
+    # is_repealed only ever appears on legal_text chunks (see ingestion/vector_store.py), but the
+    # must_not is scoped to that source_type anyway so an academic_reference call never carries a
+    # filter condition that has nothing to do with it.
+    query_filter_conditions = [FieldCondition(key="source_type", match=MatchValue(value=source_type))]
+    must_not = [REPEALED_FILTER_CONDITION] if source_type == "legal_text" else []
     result = client.query_points(
         collection_name=collection,
         query=vector,
-        query_filter=Filter(must=[FieldCondition(key="source_type", match=MatchValue(value=source_type))]),
+        query_filter=Filter(must=query_filter_conditions, must_not=must_not),
         limit=limit,
         with_payload=True,
     )
@@ -746,7 +792,8 @@ async def retrieve_context(question: str, settings: Settings, qdrant_client: Qdr
         context_blocks.append(format_legal_context_block(
             source_document=payload["source_document"], law_version=payload["law_version"],
             dieu_number=payload["dieu_number"], dieu_title=payload["dieu_title"],
-            chunk_text=payload["chunk_text"]
+            chunk_text=payload["chunk_text"],
+            repealed_clause_note=payload.get("repealed_clause_note") if payload.get("has_repealed_clause") else None,
         ))
     for chunk in academic_chunks:
         payload = chunk.payload
@@ -1226,6 +1273,38 @@ async def stream_answer_question(
             # dieu_count == 0: named document has no legal_text data under that name (unexpected -
             # e.g. a stale/mistyped source_document match) - fall through to normal retrieval
             # rather than surfacing a hard "0 dieu" answer that's more likely a bug than a fact.
+
+    # requirements.md muc C: a question naming a Dieu that mục C's audit confirmed is fully
+    # repealed (is_repealed=True) short-circuits straight to an explicit "bãi bỏ" notice instead of
+    # falling through to retrieve_context - _retrieve_legal_exact/_retrieve_semantic already
+    # exclude these chunks via REPEALED_FILTER_CONDITION so retrieval would just silently miss the
+    # Dieu (or worse, surface an unrelated but topically-similar one from semantic search); a
+    # direct question deserves a direct "this was abolished" answer, not a generic not-found.
+    direct_dieu_number = detect_dieu_number(question)
+    if direct_dieu_number:
+        repealed_chunk = await asyncio.to_thread(
+            _retrieve_repealed_dieu, qdrant_client, settings.qdrant_collection,
+            direct_dieu_number, detect_source_document(question)
+        )
+        if repealed_chunk is not None:
+            answer_text = build_repealed_dieu_answer(
+                direct_dieu_number, repealed_chunk.payload["source_document"],
+                repealed_chunk.payload.get("repealed_note")
+            )
+            result.answer = answer_text
+            result.citations = []
+            result.related_articles = []
+            result.suggested_followups = []
+            result.is_fallback = False
+            result.used_academic_reference = False
+            result.retrieved_chunks = [repealed_chunk]
+            yield ("citations", ChatStreamCitationsEvent(
+                citations=[], related_articles=[], conversation_id=conversation_id, rewritten_question=question
+            ))
+            yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
+            yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=[]))
+            yield ("done", ChatStreamDoneEvent())
+            return
 
     retrieval = await retrieve_context(question, settings, qdrant_client)
     result.retrieved_chunks = retrieval.all_retrieved

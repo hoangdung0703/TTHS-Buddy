@@ -98,7 +98,14 @@ viết "theo Tình huống 14", "như trong Tình huống 5", "theo Câu hỏi 3
 có tài liệu đó để đối chiếu số thứ tự. Chỉ được trình bày lại BẢN CHẤT PHÁP LÝ của nội dung đó bằng \
 lời của bạn (ví dụ: "Theo giáo trình/tài liệu tham khảo, khi Hội đồng xét xử phát hiện bị cáo còn \
 phạm thêm tội khác mà Viện kiểm sát chưa truy tố thì..." - KHÔNG viết "Theo Tình huống 14 trong tài \
-liệu tham khảo, khi Hội đồng xét xử...")."""
+liệu tham khảo, khi Hội đồng xét xử...").
+11. Một khối "QUY ĐỊNH PHÁP LUẬT" có thể kèm theo dòng "[CẢNH BÁO HIỆU LỰC: ...]" ngay dưới tiêu đề \
+- dòng này cho biết MỘT PHẦN cụ thể (một khoản/điểm) của chính Điều đó đã bị bãi bỏ bởi văn bản khác \
+(nêu rõ văn bản thay thế và ngày hiệu lực), trong khi phần còn lại của Điều vẫn còn hiệu lực. Nếu \
+câu hỏi động chạm đúng vào nội dung của phần đã bị bãi bỏ đó, TUYỆT ĐỐI không trích dẫn/trình bày \
+phần đó như một quy định hiện hành - phải nói rõ phần này đã bị bãi bỏ, nêu văn bản thay thế và \
+ngày hiệu lực lấy từ chính dòng cảnh báo đó. Các phần khác của cùng Điều không bị ảnh hưởng, vẫn \
+được trích dẫn bình thường như quy định hiện hành."""
 
 # requirements.md "Tăng impact LLM cho câu hỏi dài/phức tạp": appended ONLY when
 # is_long_question=true (see rag_service.py's LONG_QUESTION_CHAR_THRESHOLD) - a tình huống câu hỏi
@@ -273,17 +280,24 @@ def build_multi_part_user_prompt(sub_questions: list[str], context_blocks_per_pa
 
 
 def format_legal_context_block(source_document: str, law_version: str | None, dieu_number: str,
-                                dieu_title: str | None, chunk_text: str) -> str:
+                                dieu_title: str | None, chunk_text: str,
+                                repealed_clause_note: str | None = None) -> str:
     # requirements.md "Feature - Polish Chat" muc A: the model reads this block and can echo
     # source names back in its answer - display_name (not the raw filename) is what must reach
     # it, or a raw ".pdf" filename can leak straight into a generated answer.
     display_name = get_display_name(source_document)
     title_part = f" {dieu_title}" if dieu_title else ""
     version_part = f" ({law_version})" if law_version else ""
-    return (
-        f"[QUY ĐỊNH PHÁP LUẬT - Điều {dieu_number}{title_part} - {display_name}{version_part}]\n"
-        f"{chunk_text}"
+    header = f"[QUY ĐỊNH PHÁP LUẬT - Điều {dieu_number}{title_part} - {display_name}{version_part}]"
+    # requirements.md muc C: has_repealed_clause chunks (a Dieu still mostly in force, but with ONE
+    # khoan/diem already bãi bỏ - see ingestion/vector_store.py) are still usable as legal_primary,
+    # unlike a fully is_repealed Dieu (excluded from retrieval entirely, see rag_service.py's
+    # REPEALED_FILTER_CONDITION) - but the model must not cite the specific repealed part as if it
+    # were still current law, hence this inline warning (paired with RAG_SYSTEM_PROMPT rule 11).
+    warning_part = (
+        f"\n[CẢNH BÁO HIỆU LỰC: {repealed_clause_note}]" if repealed_clause_note else ""
     )
+    return f"{header}{warning_part}\n{chunk_text}"
 
 
 def format_academic_context_block(source_document: str, section_heading: str | None, chunk_text: str) -> str:
