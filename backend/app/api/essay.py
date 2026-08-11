@@ -7,6 +7,8 @@ from app.core.rate_limit import DEFAULT_RATE_LIMIT, LLM_ROUTE_RATE_LIMIT, limite
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
 from app.models.essay import (
+    EssayBankQuestionListItem,
+    EssayBankQuestionListResponse,
     EssayBanksResponse,
     EssayBankSummary,
     EssayQuestionOut,
@@ -16,6 +18,8 @@ from app.models.essay import (
 )
 from app.services.essay_service import grade_essay_answer
 from app.services.question_bank_service import (
+    ESSAY_CATEGORIES,
+    get_essay_bank_question_list,
     get_essay_banks_summary,
     get_essay_questions,
     save_essay_attempt,
@@ -33,6 +37,22 @@ async def get_essay_banks(
 ) -> EssayBanksResponse:
     banks = get_essay_banks_summary(request.app.state.supabase_client, current_user.user_id)
     return EssayBanksResponse(banks=[EssayBankSummary(**b) for b in banks])
+
+
+@router.get("/banks/{category}/questions", response_model=EssayBankQuestionListResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def get_essay_bank_questions(
+    category: str,
+    request: Request,
+    current_user: AuthUser = Depends(require_supabase_user),
+) -> EssayBankQuestionListResponse:
+    if category not in ESSAY_CATEGORIES:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown essay bank category: {category}")
+
+    questions = get_essay_bank_question_list(request.app.state.supabase_client, current_user.user_id, category)
+    return EssayBankQuestionListResponse(
+        category=category, questions=[EssayBankQuestionListItem(**q) for q in questions],
+    )
 
 
 @router.post("/question", response_model=EssayQuestionOut)

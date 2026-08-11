@@ -199,6 +199,59 @@ def select_essay_question(supabase_client: Client, user_id: str, category: str |
     return random.choice(pool)
 
 
+def _get_latest_essay_attempt_per_question(supabase_client: Client, user_id: str,
+                                            category: str) -> dict[str, dict[str, Any]]:
+    """Returns {question_id: {"missing_points": list}} for the user's most recent attempt at
+    each question in this category - same "latest row wins" pattern as
+    _get_latest_attempt_per_set, so the grid status can never disagree with what get_essay_banks_summary
+    counts as practiced."""
+    try:
+        response = (
+            supabase_client.table(ESSAY_ATTEMPTS_TABLE)
+            .select("question_id, missing_points, created_at")
+            .eq("user_id", user_id)
+            .eq("category", category)
+            .order("created_at", desc=True)
+            .execute()
+        )
+    except Exception:
+        logger.exception("Failed to read essay_attempts for question grid (user_id=%s, category=%s) - "
+                          "treating all questions as not done", user_id, category)
+        return {}
+
+    latest: dict[str, dict[str, Any]] = {}
+    for row in response.data or []:
+        question_id = row["question_id"]
+        if question_id not in latest:  # rows are already ordered newest-first
+            latest[question_id] = {"missing_points": row.get("missing_points") or []}
+    return latest
+
+
+def get_essay_bank_question_list(supabase_client: Client, user_id: str, category: str) -> list[dict[str, Any]]:
+    """All questions in one essay bank, in bank order, each tagged with the status derived from
+    the user's latest attempt at that question (or "not_done" if never attempted) - backs the
+    question grid (requirements.md "Doi luong Tu luan")."""
+    questions = get_essay_questions(category)
+    latest_by_question = _get_latest_essay_attempt_per_question(supabase_client, user_id, category)
+
+    result = []
+    for order, question in enumerate(questions, start=1):
+        attempt = latest_by_question.get(question["question_id"])
+        if attempt is None:
+            status = "not_done"
+        elif attempt["missing_points"]:
+            status = "needs_review"
+        else:
+            status = "done"
+        result.append({
+            "question_id": question["question_id"],
+            "order": order,
+            "question_text": question["question_text"],
+            "status": status,
+        })
+    return result
+
+
 def get_essay_banks_summary(supabase_client: Client, user_id: str) -> list[dict[str, Any]]:
     try:
         response = (

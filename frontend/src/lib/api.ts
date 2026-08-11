@@ -27,6 +27,7 @@ import type {
   ConversationSummary,
   DashboardStats,
   EssayBankCategory,
+  EssayBankQuestionListItem,
   EssayBankSummary,
   EssayBankV2,
   EssayQuestion,
@@ -388,12 +389,11 @@ export async function getEssayBanksV2(): Promise<EssayBankV2[]> {
   return banks.map(toEssayBankV2);
 }
 
-export async function getEssayBankQuestionV2(category: EssayBankCategory): Promise<EssayQuestionV2> {
-  const question = await apiFetch<EssayQuestionV2 & { category: EssayBankCategory }>("/api/essay/question", {
-    method: "POST",
-    body: JSON.stringify({ category })
-  });
-  return { ...question, bank_category: question.category };
+export async function getEssayBankQuestionListV2(category: EssayBankCategory): Promise<EssayBankQuestionListItem[]> {
+  const { questions } = await apiFetch<{ category: EssayBankCategory; questions: EssayBankQuestionListItem[] }>(
+    `/api/essay/banks/${category}/questions`
+  );
+  return questions;
 }
 
 export async function getPracticeQuestionV2(excludeQuestionId?: string): Promise<PracticeQuestionV2> {

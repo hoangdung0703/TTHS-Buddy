@@ -47,3 +47,21 @@ class EssayBankSummary(BaseModel):
 
 class EssayBanksResponse(BaseModel):
     banks: list[EssayBankSummary]
+
+
+class EssayBankQuestionListItem(BaseModel):
+    question_id: str
+    order: int
+    question_text: str
+    # KHÔNG có dieu_number ở đây dù đã có sẵn trong dữ liệu câu hỏi - dieu_number là "Căn cứ pháp
+    # lý" của đáp án (xem ingestion/question_bank.json), gửi kèm trong response của TOÀN BỘ danh
+    # sách trước khi user chọn/nộp bài sẽ lộ đáp án qua network payload dù UI không render, kể cả
+    # cho các câu chưa mở. Chỉ trả lại sau khi chấm (EssaySubmitResponse.suggested_dieu).
+    # "done": lần gần nhất không có missing_points. "needs_review": lần gần nhất có missing_points.
+    # "not_done": chưa từng làm.
+    status: str
+
+
+class EssayBankQuestionListResponse(BaseModel):
+    category: str
+    questions: list[EssayBankQuestionListItem]

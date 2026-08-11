@@ -245,6 +245,21 @@ export interface EssayQuestionV2 extends EssayQuestion {
   bank_category: EssayBankCategory;
 }
 
+// GET /api/essay/banks/{category}/questions - backs the "chọn tự do" grid (requirements.md
+// "Doi luong Tu luan"). status derived server-side from the latest essay_attempts row for that
+// question. Deliberately NO dieu_number field - that's the answer's legal basis (see
+// ingestion/question_bank.json's "explanation"), and this endpoint returns the whole bank's list
+// in one response before the user has opened/answered any of them, so including it would leak
+// every question's answer over the wire even though the UI never renders it pre-submit.
+export type EssayBankQuestionStatus = "done" | "needs_review" | "not_done";
+
+export interface EssayBankQuestionListItem {
+  question_id: string;
+  order: number;
+  question_text: string;
+  status: EssayBankQuestionStatus;
+}
+
 // Minigame "Tôi hỏi bạn trả lời" - lấy ngẫu nhiên 1 câu từ TOÀN BỘ pool tự luận
 // (POST /api/essay/question không kèm category), không giới hạn theo category.
 // Nút "Câu khác" gọi lại endpoint này với exclude_question_id = câu hiện tại,
