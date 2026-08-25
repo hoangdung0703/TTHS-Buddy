@@ -5,10 +5,10 @@
     Buoc B). The UI shows sets 01-15 with persisted per-set status, not a randomly-regenerated
     subset each time, so an attempt is simply "all 5 questions of the chosen set" - no
     pool-vs-attempt-size rotation is needed any more (the whole set IS the attempt).
-  - Essay (select_essay_question): 4 categories (ban_trac_nghiem/ly_thuyet/van_dung/tinh_huong -
-    111 questions total). Rotation is scoped to whichever category the caller picked (bank
-    practice), or the whole pool when no category is given (the "Toi hoi ban tra loi" minigame,
-    which explicitly draws from all 4 categories per requirements.md).
+  - Essay (select_essay_question): only ly_thuyet remains (20 questions) - van_dung/
+    ban_trac_nghiem/tinh_huong were removed at the instructor's request (copyrighted source
+    material) both from question_bank.json and from ESSAY_CATEGORIES below, so any request for
+    those categories 404s at the API layer rather than relying on the frontend not showing them.
 """
 from __future__ import annotations
 
@@ -30,10 +30,11 @@ MCQ_QUESTION_TYPES = ("mcq_4choice",)
 
 QUIZ_SET_COUNT = 15
 
-# Essay bank categories, in the order the UI displays them (see frontend mockDataV2.ts /
-# essayBankPresentation.ts - kept in sync manually since the order is a presentation decision,
-# not derivable from the data itself).
-ESSAY_CATEGORIES = ("ly_thuyet", "van_dung", "ban_trac_nghiem", "tinh_huong")
+# Essay bank categories exposed via the API. Only ly_thuyet is offered - van_dung/
+# ban_trac_nghiem/tinh_huong were pulled at the instructor's request, and are deliberately
+# absent here (not just hidden in the frontend) so /banks and /banks/{category}/questions
+# reject them outright even if called directly.
+ESSAY_CATEGORIES = ("ly_thuyet",)
 
 
 @lru_cache(maxsize=1)
@@ -147,11 +148,10 @@ def save_quiz_attempt(supabase_client: Client, user_id: str, quiz_set: int,
 
 ESSAY_ATTEMPTS_TABLE = "essay_attempts"
 
-# 111 essay questions total (50 ban_trac_nghiem + 20 ly_thuyet + 26 van_dung + 15 tinh_huong).
-# Avoiding the last 5 distinct questions served (scoped to whichever pool is in play - a single
-# category for bank practice, or the whole 111-pool for the "Toi hoi ban tra loi" minigame)
-# leaves enough fresh candidates even for the smallest category (tinh_huong, 15 questions) to
-# make rotation meaningful without exhausting the pool.
+# 20 essay questions total (ly_thuyet only). Avoiding the last 5 distinct questions served
+# (scoped to whichever pool is in play - a single category for bank practice, or the whole pool
+# for the "Toi hoi ban tra loi" minigame, which is now the same 20-question pool since ly_thuyet
+# is the only remaining category) still leaves enough fresh candidates for rotation to matter.
 RECENT_ESSAY_QUESTIONS_TO_AVOID = 5
 
 
