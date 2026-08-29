@@ -869,6 +869,191 @@ Phần B — Điều tra văn bản hợp nhất BLTTHS mới (104/VBHN-VPQH, 27
 - Trùng khớp với audit is_repealed/has_repealed_clause đã làm trước đây: 4/5 Điều đã gắn cờ `has_repealed_clause` (Điều 4, 39, 161, 326) chính là các Điều VBHN mới xác nhận có thay đổi — audit cũ đã phát hiện ĐÚNG nhưng chỉ vá tạm bằng cờ, chưa cập nhật nội dung gốc; VBHN mới cho phép thay hẳn bằng nguồn cập nhật, bỏ cách vá tạm.
 - Quyết định: giữ nguyên hiện trạng, CHƯA thay thế BLTTHS trong corpus — chờ xác nhận từ người phụ trách trước khi hành động (tác động lớn, văn bản trung tâm nhất của corpus).
 
+Phần B (tiếp, 2026-08-30) — Kế hoạch chi tiết thay thế BLTTHS bằng VBHN 104/VBHN-VPQH — CHƯA THỰC THI, trình bày để duyệt từng phần trước khi làm bất kỳ thay đổi nào lên corpus/ground truth:
+
+B.1 — Bảng đầy đủ 137 mục có chú thích sửa đổi (136 Điều thực + 1 mục "Căn cứ ban hành" không gắn với Điều cụ thể, không liệt kê trong bảng). Tái sử dụng nguyên dữ liệu 238 chú thích đã trích xuất ở lần điều tra trước (`vbhn_all_footnotes.json`, `vbhn_newer_law_changes.json` — file làm việc tạm, chưa commit), không trích xuất lại từ đầu. Cột "Tóm tắt thay đổi" suy ra trực tiếp bằng pattern-match trên CHÍNH VĂN BẢN chú thích, không tự diễn giải thêm: `Thay "X" -> "Y"` / `Thêm "..." sau "..."` / `Bỏ cụm từ "..."` = chú thích tự nêu đích danh cụm từ cũ/mới, đáng tin cậy 100%, không cần đọc thêm thân Điều; `Bãi bỏ điểm/khoản` = điểm/khoản bị xoá hẳn; `Bổ sung điểm/khoản mới (xem VBHN)` và `Sửa đổi, bổ sung nội dung (xem VBHN)` = chú thích CHỈ nêu căn cứ pháp lý (khoản nào của luật sửa đổi), không tự nêu lại nội dung — muốn biết chính xác đổi gì bắt buộc phải đọc thân Điều trong VBHN (đã làm thủ công cho các case liên quan tới B.2 bên dưới).
+
+| Điều | Luật sửa đổi | Tóm tắt thay đổi (theo chú thích VBHN) | Số chú thích |
+|---|---|---|---|
+| 4 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN); Bãi bỏ điểm/khoản; Thay "thành phố trực thuộc Trung ương" -> "thành phố"; Bổ sung điểm/khoản mới (xem VBHN) | 8 |
+| 7 | Luật TPNCTN 59/2024 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 20 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 35 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 6 |
+| 36 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 37 | Luật TPNCTN 59/2024, Luật 99/2025 | Bỏ cụm từ "quyết định giao người dưới 18 tuổi cho cơ quan, tổ chức, cá nhân có trách nhiệm giám sát; quyết định thay đổi người giám sát người dưới 18 tuổi phạm tội;"; Bổ sung điểm/khoản mới (xem VBHN) | 2 |
+| 39 | Luật TPNCTN 59/2024 | Bãi bỏ điểm/khoản | 1 |
+| 41 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN); Bổ sung điểm/khoản mới (xem VBHN) | 2 |
+| 42 | Luật TPNCTN 59/2024, Luật 99/2025 | Bỏ cụm từ "quyết định giao người dưới 18 tuổi cho cơ quan, tổ chức, cá nhân có trách nhiệm giám sát; quyết định thay đổi người giám sát người dưới 18 tuổi phạm tội;"; Bổ sung điểm/khoản mới (xem VBHN) | 2 |
+| 44 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN); Bổ sung điểm/khoản mới (xem VBHN) | 2 |
+| 45 | Luật TPNCTN 59/2024, Luật 99/2025 | Bỏ cụm từ "thay đổi người giám sát người dưới 18 tuổi phạm tội;"; Bổ sung điểm/khoản mới (xem VBHN) | 2 |
+| 75 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 90 | Luật 99/2025 | Thay "chính quyền địa phương" -> "Ủy ban nhân dân" | 1 |
+| 110 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 3 |
+| 111 | Luật 99/2025 | Thay "Công an xã, phường, thị trấn" -> "Công an cấp xã" | 1 |
+| 112 | Luật 99/2025 | Thay "Công an xã, phường, thị trấn" -> "Công an cấp xã" | 1 |
+| 113 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN); Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 3 |
+| 114 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 2 |
+| 116 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 2 |
+| 117 | Luật 99/2025 | Bỏ cụm từ "Viện kiểm sát cùng cấp hoặc" | 1 |
+| 118 | Luật 99/2025 | Bỏ cụm từ "Viện kiểm sát cùng cấp hoặc" | 1 |
+| 119 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền"; Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 2 |
+| 120 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 1 |
+| 121 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã"; Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 2 |
+| 122 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 123 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 4 |
+| 124 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 128 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền"; Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 4 |
+| 129 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 2 |
+| 131 | Luật 99/2025 | Bổ sung điểm/khoản mới (xem VBHN) | 1 |
+| 132 | Luật 99/2025 | Bổ sung điểm/khoản mới (xem VBHN) | 1 |
+| 134 | Luật 99/2025 | Thêm ", Trưởng phân trại thuộc trại tạm giam" sau "Trưởng Nhà tạm giữ" | 1 |
+| 135 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN); Bổ sung điểm/khoản mới (xem VBHN) | 2 |
+| 137 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 138 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 2 |
+| 140 | Luật 99/2025 | Thay "Ủy ban nhân dân xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 1 |
+| 141 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 146 | Luật 99/2025 | Thay "Công an xã, phường, thị trấn" -> "Công an cấp xã"; Bỏ cụm từ "Viện kiểm sát cùng cấp hoặc" | 2 |
+| 147 | Luật 99/2025 | Bỏ cụm từ "Viện trưởng Viện kiểm sát cùng cấp hoặc"; Bỏ cụm từ "Viện kiểm sát cùng cấp hoặc" | 2 |
+| 148 | Luật 99/2025 | Bỏ cụm từ "Viện kiểm sát cùng cấp hoặc" | 1 |
+| 149 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN); Bỏ cụm từ "Viện kiểm sát cùng cấp hoặc" | 2 |
+| 150 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 152 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 153 | Luật TCTAND 34/2024 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 154 | Luật TCTAND 34/2024 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 156 | Luật 99/2025 | Bỏ cụm từ "Viện kiểm sát cùng cấp hoặc" | 1 |
+| 158 | Luật 99/2025 | Bỏ cụm từ "Viện kiểm sát cùng cấp hoặc" | 1 |
+| 161 | Luật TCTAND 34/2024 | Bãi bỏ điểm/khoản | 1 |
+| 163 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN); Thay "thành phố trực thuộc Trung ương" -> "thành phố" | 3 |
+| 169 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền"; Thay "thành phố trực thuộc Trung ương" -> "thành phố" | 2 |
+| 170 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 171 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 2 |
+| 172 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 3 |
+| 173 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 179 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 180 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 182 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 1 |
+| 185 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 2 |
+| 189 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 190 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 191 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 193 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN); Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 2 |
+| 195 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 4 |
+| 197 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 2 |
+| 198 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã"; Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 2 |
+| 201 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 202 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền"; Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 2 |
+| 204 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 208 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 225 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 229 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 230 | Luật TPNCTN 59/2024 | Khác (xem chú thích gốc) | 1 |
+| 231 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 2 |
+| 232 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 233 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 235 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 2 |
+| 239 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 243 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 248 | Luật TPNCTN 59/2024 | Khác (xem chú thích gốc) | 1 |
+| 262 | Luật 99/2025 | Thay "Cơ quan điều tra cùng cấp" -> "Cơ quan điều tra có thẩm quyền"; Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã"; Thay "Ủy ban nhân dân xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã"; Sửa đổi, bổ sung nội dung (xem VBHN) | 4 |
+| 268 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 269 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 274 | Luật 99/2025 | Thay "thành phố trực thuộc Trung ương" -> "thành phố" | 1 |
+| 275 | Luật 99/2025 | Thay "Tòa án nhân dân cấp huyện" -> "Tòa án nhân dân khu vực"; Thay "thành phố trực thuộc Trung ương" -> "thành phố" | 4 |
+| 282 | Luật TPNCTN 59/2024 | Bổ sung điểm/khoản mới (xem VBHN) | 1 |
+| 285 | Luật TPNCTN 59/2024 | Bỏ cụm từ "hoặc khoản 2 Điều 91" | 1 |
+| 286 | Luật 99/2025 | Thay "Ủy ban nhân dân xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 1 |
+| 290 | Luật 99/2025 | Thay "khỏi bệnh" -> "có kết luận khỏi bệnh hoặc có kết luận đủ khả năng nhận thức, đủ khả năng điều khiển hành vi"; Sửa đổi, bổ sung nội dung (xem VBHN) | 2 |
+| 326 | Luật TCTAND 34/2024 | Bãi bỏ điểm/khoản | 1 |
+| 330 | Luật TPNCTN 59/2024 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 332 | Luật 99/2025 | Thêm ", Trưởng phân trại thuộc trại tạm giam" sau "Trưởng Nhà tạm giữ" | 1 |
+| 333 | Luật 99/2025 | Thêm ", Trưởng phân trại thuộc trại tạm giam" sau "Trưởng Nhà tạm giữ" | 3 |
+| 341 | Luật 99/2025 | Thay "Viện kiểm sát nhân dân cấp cao" -> "Viện kiểm sát nhân dân tối cao" | 2 |
+| 344 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 2 |
+| 346 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 2 |
+| 347 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 2 |
+| 352 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 2 |
+| 364 | Luật 99/2025 | Thay "cơ quan thi hành án hình sự Công an cấp huyện" -> "cơ quan thi hành án hình sự Công an cấp tỉnh" | 1 |
+| 367 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN); Bổ sung điểm/khoản mới (xem VBHN) | 2 |
+| 368 | Luật 99/2025 | Thay "cơ quan thi hành án hình sự Công an cấp huyện" -> "cơ quan thi hành án hình sự Công an cấp tỉnh"; Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 4 |
+| 369 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 2 |
+| 372 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 373 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 2 |
+| 380 | Luật 99/2025 | Thay "cấp cao" -> "cấp tỉnh" | 2 |
+| 382 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 395 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 1 |
+| 400 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 404 | Luật 99/2025 | Thay "Ủy ban Tư pháp của Quốc hội" -> "Ủy ban Pháp luật và Tư pháp của Quốc hội" | 2 |
+| 405 | Luật 99/2025 | Thay "Ủy ban Tư pháp của Quốc hội" -> "Ủy ban Pháp luật và Tư pháp của Quốc hội" | 3 |
+| 406 | Luật 99/2025 | Thay "Ủy ban Tư pháp của Quốc hội" -> "Ủy ban Pháp luật và Tư pháp của Quốc hội" | 2 |
+| 407 | Luật 99/2025 | Thay "Ủy ban Tư pháp của Quốc hội" -> "Ủy ban Pháp luật và Tư pháp của Quốc hội" | 3 |
+| 408 | Luật 99/2025 | Thay "Ủy ban Tư pháp của Quốc hội" -> "Ủy ban Pháp luật và Tư pháp của Quốc hội" | 2 |
+| 411 | Luật 99/2025 | Thay "Ủy ban Tư pháp của Quốc hội" -> "Ủy ban Pháp luật và Tư pháp của Quốc hội" | 1 |
+| 412 | Luật 99/2025, Luật TPNCTN 59/2024 | Thay "Ủy ban Tư pháp của Quốc hội" -> "Ủy ban Pháp luật và Tư pháp của Quốc hội"; xem ghi chú (*) dưới bảng | 2 |
+| 437 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 1 |
+| 439 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 2 |
+| 440 | Luật 99/2025 | Thay "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã" | 1 |
+| 449 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 452 | Luật 99/2025 | Thay "Tòa án nhân dân cấp tỉnh" -> "Tòa án nhân dân khu vực"; Thay "khỏi bệnh" -> "có kết luận khỏi bệnh hoặc có kết luận đủ khả năng nhận thức, đủ khả năng điều khiển hành vi" | 3 |
+| 454 | Luật 99/2025 | Thay "cơ sở bắt buộc chữa bệnh tâm thần" -> "cơ sở khám bệnh, chữa bệnh"; Thêm "hoặc có đủ khả năng nhận thức, đủ khả năng điều khiển hành vi" sau "đã khỏi bệnh"; Thay "cơ sở bắt buộc chữa bệnh" -> "cơ sở khám bệnh, chữa bệnh" | 5 |
+| 457 | Luật 99/2025 | Thay "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | 1 |
+| 467 | Luật TCTAND 34/2024 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 470 | Luật TPNCTN 59/2024 | Bổ sung điểm/khoản mới (xem VBHN) | 2 |
+| 474 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 2 |
+| 475 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 476 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 477 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 481 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN); Bỏ cụm từ "Viện trưởng Viện kiểm sát cùng cấp hoặc" | 2 |
+| 483 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 485 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 487 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 501 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 4 |
+| 502 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 503 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+| 506a | Luật 99/2025 | Bổ sung điểm/khoản mới (xem VBHN) | 1 |
+| 508 | Luật 99/2025 | Sửa đổi, bổ sung nội dung (xem VBHN) | 1 |
+
+(*) Điều 412: chú thích [203] gắn ngay sau thân Điều 412 trong VBHN không sửa đổi Điều 412 (Điều 412 chỉ đổi tên "Ủy ban Tư pháp" -> "Ủy ban Pháp luật và Tư pháp") mà đánh dấu toàn bộ "Chương XXVIII" NGAY SAU ĐÓ — nguyên là chương "Thủ tục tố tụng đối với người dưới 18 tuổi" (các Điều 413-430 theo đánh số cũ) — bị BÃI BỎ TOÀN CHƯƠNG theo điểm i khoản 2 Điều 177 Luật Tư pháp người chưa thành niên 59/2024/QH15, hiệu lực từ 01/01/2026 (đã qua, tính đến 30/8/2026). Phát hiện phụ quan trọng: kiểm tra `chunks.json` hiện tại cho thấy "Bộ luật TTHS.pdf" đang sống trong corpus CŨNG ĐÃ KHÔNG có Điều 413-430 (0/18 Điều xuất hiện) — tức bản PDF gốc dùng để ingest lần đầu vốn đã thiếu nguyên chương này từ trước (không phải lỗi phát sinh do VBHN), nhưng đồng thời corpus KHÔNG có bất kỳ văn bản nào thay thế nội dung đó (`document_registry.py` không có Luật Tư pháp người chưa thành niên 59/2024) — nghĩa là chủ đề "thủ tục tố tụng người dưới 18 tuổi" hiện đang là một khoảng trống hoàn toàn trong corpus, độc lập với quyết định thay BLTTHS. Đề xuất: cân nhắc ingest riêng "Luật Tư pháp người chưa thành niên 59/2024/QH15" như 1 tác vụ tách biệt (không phụ thuộc kế hoạch B này) — nêu ở đây vì tình cờ phát hiện qua footnote 203, chưa điều tra thêm.
+
+Đối chiếu luật sửa đổi (khớp số liệu đã báo cáo trước đây): 213 lượt chú thích từ Luật 99/2025 (chủ yếu đổi thuật ngữ theo tinh gọn bộ máy 2025 — bỏ "trực thuộc Trung ương"/gộp "xã, phường, thị trấn" thành "cấp xã", bỏ cấp huyện trong tư pháp thành "khu vực"/"cấp tỉnh", đổi "Viện kiểm sát/Cơ quan điều tra cùng cấp" -> "...có thẩm quyền" do tổ chức lại theo khu vực, đổi tên "Ủy ban Tư pháp" -> "Ủy ban Pháp luật và Tư pháp" của Quốc hội), 13 lượt từ Luật Tư pháp NCTN 59/2024 (chủ yếu bỏ quyền/thủ tục cũ liên quan người dưới 18 tuổi trong BLTTHS, chuyển hẳn sang luật chuyên biệt — đỉnh điểm là bãi bỏ toàn Chương XXVIII nêu ở ghi chú (*)), 5 lượt từ Luật TCTAND 34/2024 (bãi bỏ các điểm/khoản liên quan mô hình tổ chức toà án cũ, ví dụ cấp cao/cấp huyện).
+
+B.2 — Đối chiếu ground truth của 8 câu `question_bank.json` + 2 case `direct_citation` trong `test_set.json`: đã đọc kỹ đáp án mẫu hiện tại và đối chiếu trực tiếp với thân Điều thật trong VBHN (không chỉ dựa vào chú thích tóm tắt) cho mọi case có tóm tắt dạng "(xem VBHN)" ở B.1.
+
+| ID | Điều | Loại thay đổi thực tế (đã đọc thân Điều VBHN) | Đáp án mẫu hiện tại còn đúng? |
+|---|---|---|---|
+| mcq4-set1-q4 | 290 | Đổi cụm từ điều kiện tạm đình chỉ do bệnh tâm thần ("khỏi bệnh" -> "có kết luận khỏi bệnh hoặc có kết luận đủ khả năng nhận thức, đủ khả năng điều khiển hành vi") + 1 điểm khoản 2 sửa đổi câu chữ | ĐÚNG — đáp án mẫu là câu khái quát "tùy từng trường hợp có thể hoãn, áp giải hoặc xét xử vắng mặt", không trích cụm từ bị đổi, không cần sửa |
+| mcq4-set9-q1 | 333 | Bổ sung "Trưởng phân trại thuộc trại tạm giam" là 1 kênh nhận đơn kháng cáo hợp lệ mới (ngoài Giám thị Trại tạm giam, Trưởng Nhà tạm giữ) | ĐÚNG — đã đọc thân Điều 333 VBHN xác nhận "Thời hạn kháng cáo đối với bản án sơ thẩm là 15 ngày" không đổi; thay đổi chỉ ở khoản 3 (thủ tục xác định ngày kháng cáo), không liên quan câu hỏi. Không cần sửa |
+| lythuyet-q11 | 163 | Đã đọc thân Điều 163 VBHN: khoản 5 điểm a/b tái cấu trúc theo mô hình 2 cấp (bỏ cấp huyện) — "Cơ quan điều tra cấp tỉnh điều tra... Tòa án nhân dân cấp tỉnh, Tòa án nhân dân khu vực" (thay vì phân theo huyện/tỉnh cũ), cộng 1 term-sub hành chính | ĐÚNG (ở mức khái quát) — đáp án mẫu + 3 key_points hiện tại đều chỉ nói chung chung ("phát hiện tội phạm", "thu thập chứng cứ", "làm rõ tội phạm"), không đề cập cấu trúc phân cấp thẩm quyền nào cả nên không sai, nhưng đây vốn đã là 1 đáp án khá sơ sài cho câu hỏi có topic_category="Thẩm quyền điều tra" — không phải lỗi do VBHN, chỉ là không cần sửa GẤP theo VBHN |
+| lythuyet-q12 | 20 | Toàn bộ Điều 20 được viết lại (chú thích không nêu chi tiết, đã đọc thân Điều: nội dung cốt lõi VKS thực hành quyền công tố/kiểm sát tuân theo pháp luật giữ nguyên tinh thần, câu "Viện trưởng VKSNDTC quy định thẩm quyền VKS mỗi cấp" là diễn đạt mới phản ánh tổ chức lại theo cấp, không phải nội dung mới) | ĐÚNG — đáp án mẫu là diễn giải khái quát đúng tinh thần Điều mới, không cần sửa |
+| lythuyet-q15 | 111 | Term-sub hành chính thuần "Công an xã, phường, thị trấn" -> "Công an cấp xã" | ĐÚNG — đáp án mẫu không nhắc tới cơ quan này, không liên quan |
+| lythuyet-q16 | 118 | Bỏ cụm "Viện kiểm sát cùng cấp hoặc" — thuộc điều khoản về THẨM QUYỀN PHÊ CHUẨN gia hạn tạm giữ, không phải số ngày. Đã đọc thân Điều 118 VBHN xác nhận số ngày (03 ngày, gia hạn tối đa 2 lần x 03 ngày = tổng tối đa 09 ngày) không đổi | ĐÚNG — đáp án mẫu chỉ hỏi/trả lời về số ngày, không đề cập ai phê chuẩn, không cần sửa |
+| **lythuyet-q17** | **37** | **CẦN SỬA.** Đã đọc thân Điều 37 VBHN đầy đủ: (a) bỏ hẳn quyền "quyết định giao người dưới 18 tuổi cho cơ quan/tổ chức/cá nhân giám sát; quyết định thay đổi người giám sát" khỏi điểm đ) khoản 1 (điểm đ hiện tại chỉ còn "áp giải/dẫn giải") — quyền này KHÔNG có trong 7 key_points hiện tại nên việc bỏ không tạo sai sót; (b) BỔ SUNG khoản 1a HOÀN TOÀN MỚI: "Điều tra viên trung cấp, Điều tra viên cao cấp là Trưởng Công an cấp xã hoặc Phó Trưởng Công an cấp xã được Thủ trưởng Cơ quan điều tra cấp tỉnh phân công tiến hành hoạt động khởi tố, điều tra vụ án về tội ít nghiêm trọng, tội nghiêm trọng xảy ra trên địa bàn cấp xã có nhiệm vụ, quyền hạn quy định tại khoản 1 Điều này, các điểm a, c khoản 1 và khoản 2 Điều 36 của Bộ luật này, trừ quyết định áp dụng, thay đổi, hủy bỏ biện pháp điều tra tố tụng đặc biệt" — 1 loại quyền hạn hoàn toàn mới (Điều tra viên cấp xã), có hiệu lực từ 01/7/2025, hiện KHÔNG có trong 7 key_points | **THIẾU** — ground truth hiện tại bỏ sót 1 nhóm quyền hạn thật sự tồn tại kể từ 01/7/2025. Đề xuất bổ sung 1 key_point mới (nội dung nêu ở cột trái), CHƯA sửa file, chờ duyệt |
+| lythuyet-q19 | 189 | Term-sub hành chính thuần "Viện kiểm sát cùng cấp" -> "Viện kiểm sát có thẩm quyền" | ĐÚNG — đáp án mẫu không nhắc VKS, không liên quan |
+| test_set Điều 119 (direct_citation) | 119 | 2 term-sub hành chính ("Viện kiểm sát cùng cấp" -> "...có thẩm quyền", "chính quyền xã, phường, thị trấn" -> "Ủy ban nhân dân cấp xã") | ĐÚNG — `test_set.json` chỉ lưu `expected_dieu_numbers: ["119"]` (test truy hồi, không lưu văn bản đáp án), Điều không đổi số nên target truy hồi không đổi; nội dung tiêu chí phân loại tội phạm áp dụng tạm giam trong Điều 119 (không phải khoản bị term-sub) không đổi |
+| test_set Điều 173 (direct_citation) | 173 | 1 điểm khoản 3.a sửa đổi (thẩm quyền VKS gia hạn tạm giam theo cấp/khu vực mới) | ĐÚNG — đã đọc thân Điều 173 VBHN: khoản 1 (số tháng tạm giam theo loại tội — câu hỏi test hỏi đúng phần này, "04 tháng" cho tội rất nghiêm trọng) hoàn toàn không đổi; thay đổi chỉ ở khoản 3.a (ai có quyền phê duyệt gia hạn). `expected_dieu_numbers: ["173"]` vẫn đúng |
+
+Tóm lại: 9/10 case KHÔNG cần sửa ground truth (đáp án mẫu hiện tại ở mức khái quát đủ để không bị ảnh hưởng bởi các thay đổi thuật ngữ/thẩm quyền hành chính); DUY NHẤT 1 case (lythuyet-q17, Điều 37) có thiếu sót thực chất — thiếu 1 quyền hạn Điều tra viên cấp xã mới, cần bổ sung ground truth. Không có case nào ĐANG SAI (không có case nào đáp án mẫu hiện tại trích dẫn nội dung đã bị bãi bỏ/thay thế).
+
+B.3 — Kiểm chứng metadata is_repealed/has_repealed_clause đã audit trước đây: corpus hiện có đúng 5 điểm/khoản gắn cờ `has_repealed_clause=True` trên "Bộ luật TTHS.pdf" (Điều 4 khoản 2, Điều 39 khoản 1, Điều 39 khoản 2, Điều 161, Điều 326 khoản 6) — trải trên 4 Điều distinct (4, 39, 161, 326). Đối chiếu bảng B.1: cả 4 Điều này đều xuất hiện với tóm tắt "Bãi bỏ điểm/khoản" — khớp hướng 100%. Bảng B.1 có tổng cộng 5 dòng "Bãi bỏ điểm/khoản" (Điều 4, 39, 161, 326, 412) — dòng thứ 5 (Điều 412) chính là case "bãi bỏ toàn Chương XXVIII" ở ghi chú (*), không phải bãi bỏ khoản của riêng Điều 412, và KHÔNG được gắn cờ `has_repealed_clause` trong audit cũ vì audit cũ hoạt động ở mức khoản/Điều, còn case này là cấp Chương — đây chính là lời giải cho con số "4/5" đã báo cáo ở dòng phía trên (867-869): 4/5 điểm bãi bỏ có cờ tương ứng, điểm thứ 5 (chương) nằm ngoài phạm vi thiết kế của cờ `has_repealed_clause` (vốn gắn ở cấp chunk/khoản, không có khái niệm "cả chương bị xoá" — chunk cho Chương XXVIII đơn giản là không tồn tại). Sau khi thay bằng VBHN: nội dung điểm/khoản bị bãi bỏ sẽ không còn xuất hiện trong thân Điều mới (VBHN tự phản ánh trạng thái đã bãi bỏ), nên cờ `has_repealed_clause` trên nguồn "Bộ luật TTHS.pdf" (cũ) trở thành KHÔNG CẦN THIẾT cho nguồn VBHN mới — có thể bỏ khi ingest, không cần mang cờ warning sang chunk mới (đã kiểm tra toàn bộ 238 chú thích, không phát hiện case bãi bỏ nào khác ngoài 5 case đã liệt kê).
+
+B.4 — Quy trình thay thế corpus đề xuất (đúng khuôn mẫu đã áp dụng nhất quán trong toàn bộ các đợt ingest/regression của session này — không có ngoại lệ, không có bước tắt):
+1. Backup file VBHN vào `C:\Users\nguye\OneDrive\TTHS-Buddy-backups\ingestion-raw-documents\` NGAY — độc lập với quyết định ingest, không cần đợi.
+2. Archive (KHÔNG xoá) 623 chunk "Bộ luật TTHS.pdf" hiện có trước khi upsert VBHN — đề xuất thêm cờ `is_superseded=true` (+ `superseded_by`, `superseded_at`) vào payload Qdrant + `chunks.json` thay vì xoá điểm, tận dụng filter theo payload để ẩn khỏi retrieval mà vẫn giữ đường lùi nếu phát hiện vấn đề sau khi thay thế (an toàn hơn xoá thẳng — nhất quán với cách tiếp cận thận trọng đã dùng xuyên suốt session, ví dụ archive thay vì overwrite khi có nghi ngờ).
+3. Đăng ký "Văn bản hợp nhất BLTTHS 2025 (104_VBHN-VPQH) - CHƯA INGEST.pdf" vào `document_registry.py` — `source_type="legal_text"`, `law_version` mô tả đủ 4 lần sửa đổi (02/2021, 34/2024-TCTAND, 59/2024-TPNCTN, 99/2025). Đổi tên file bỏ hậu tố "- CHƯA INGEST" khi thực thi thật.
+4. Parse thật qua `parse_document()` (đã thử nghiệm thành công trước đó — xem B.5), spot-check ưu tiên TOÀN BỘ 136 Điều ở bảng B.1 (không lấy mẫu, theo đúng chuẩn "spot-check toàn bộ không chỉ mẫu 5-10" đã áp dụng ở Phần A) + 1 mẫu ngẫu nhiên trong 357 Điều còn lại (đối chiếu không đổi = đúng, xác nhận VBHN không âm thầm đổi thêm ngoài phạm vi 136 Điều đã biết qua chú thích).
+5. Test hồi quy dạng MỚI (không tái dùng được `regression_check_legal_text.py` cho riêng văn bản này, vì đây là thay THÂN VĂN BẢN có chủ đích, không phải case NO-OP như Phần A/C): viết script so khớp whitespace-normalized nội dung 357 Điều KHÔNG có trong bảng B.1 giữa "Bộ luật TTHS.pdf" (golden cũ) và VBHN mới — phải khớp tuyệt đối. Nếu phát hiện sai lệch ở bất kỳ Điều nào NGOÀI 136 Điều đã biết → DỪNG NGAY, báo cáo chi tiết, không tự vá (đúng chỉ đạo xuyên suốt session).
+6. Sau xác nhận sạch: embed + upsert 587 chunk mới. Point ID theo natural key `dieu_number`/`khoan_number` không đổi vì VBHN không renumber Điều (đã xác nhận: cả bản cũ và VBHN đều có 493 Điều distinct) → phần lớn là overwrite tại chỗ, cùng cơ chế đã dùng cho Nghị định 250/TTLT 01_2026 ở Phần C bước 8. Riêng 5 điểm/khoản bị bãi bỏ (B.3) không còn point tương ứng trong 587 chunk mới → cần XOÁ tường minh khỏi Qdrant (không để mồ côi), liệt kê rõ ID bị xoá trong báo cáo thực thi.
+7. Cập nhật `document_display_names.py`; áp dụng quyết định bỏ cờ `has_repealed_clause` theo B.3 cho chunk mới.
+8. Test qua chat thật: ưu tiên đúng 10 case ở B.2 (xác nhận trả lời đúng theo VBHN) + vài case đối chứng nằm ngoài 136 Điều (xác nhận không hồi quy).
+9. Cập nhật ground truth: CHỈ đúng 1 case `lythuyet-q17` (Điều 37) theo đề xuất ở B.2 — sửa `question_bank.json`, chờ duyệt riêng, KHÔNG gộp chung với bước ingest corpus (2 quyết định độc lập).
+
+B.5 — Ước tính khối lượng công việc (dựa trên số liệu THẬT — đã thử `parse_document()` thật ở lần điều tra trước với `DocumentConfig` tạm cho đúng file VBHN, không phải ước lượng suông):
+- Input: 1 file PDF, 250 trang, có text layer thật (đã xác nhận không cần OCR khi thử).
+- Kết quả thử nghiệm thật: 587 chunk / 493 Điều distinct (so với 623 chunk / 493 Điều distinct của bản cũ — ít hơn 36 chunk, khớp hướng với vài chục điểm/khoản bị bãi bỏ tìm thấy ở B.1/B.3), 100% `extraction_quality=ok`, chạy thành công ngay lần thử đầu qua đúng pipeline sản xuất (không phải script riêng biệt).
+- Phần việc CÒN LẠI không phải "làm cho parse chạy được" (đã xong, đã chứng minh) mà là: (a) spot-check kỹ 136 Điều thay đổi — nặng nhất về thời gian, quy mô tương đương hoặc hơn khối lượng spot-check Phần A (329 chunk mới mất khoảng 1 phiên làm việc tập trung, ở đây là 493 Điều với 136 Điều cần đọc đối chiếu VBHN kỹ như đã làm cho B.2); (b) viết + chạy script test hồi quy dạng mới (B.4 bước 5) — tái dùng phần lớn code có sẵn, không phức tạp; (c) embed + upsert 587 chunk — nhanh, cùng cấp độ khối lượng Phần A/C (vài phút thực thi thật, không tính thời gian người); (d) xử lý archive 623 chunk cũ + xoá 5 điểm mồ côi do bãi bỏ — nhỏ, đã xác định rõ danh sách.
+- Ước tính thời gian: tương đương quy mô 1 phiên làm việc tập trung dài (so sánh Phần A+C gộp) NẾU không phát sinh vấn đề ngoài dự kiến — nhưng lịch sử Phần C (Nghị định 250/TTLT 01_2026) cho thấy văn bản pháp luật dài luôn có khả năng phát sinh case OCR/edge-case bất ngờ dù bản này đã xác nhận có text layer sạch, nên nên dành dư thời gian, không ép deadline sát.
+- Rủi ro lớn nhất KHÔNG phải kỹ thuật (pipeline đã chứng minh chạy tốt qua thử nghiệm thật) mà là ĐỘ CHÍNH XÁC NỘI DUNG — BLTTHS là văn bản trung tâm nhất của corpus (623/toàn corpus chunk hiện tại), sai sót ở đây ảnh hưởng diện rộng hơn nhiều so với 10 văn bản phụ trợ ở Phần A.
+- Khuyến nghị thời điểm: cân nhắc thực hiện TRƯỚC đợt khảo sát tháng 9 nếu khảo sát có khả năng dùng thuật ngữ MỚI (ví dụ "cấp xã" thay vì "xã, phường, thị trấn", "Ủy ban Pháp luật và Tư pháp" thay vì "Ủy ban Tư pháp") — nếu người dùng/khảo sát dùng thuật ngữ mới mà corpus vẫn trả lời bằng thuật ngữ cũ, có thể bị đánh giá là lỗi thời dù bản chất pháp lý không sai; đây là đánh giá dựa trên rủi ro nội dung, quyết định thời điểm cuối cùng cần cân nhắc thêm tải công việc thực tế của việc chuẩn bị khảo sát — không tự quyết định thời điểm, chờ người phụ trách chọn.
+
 Phần C — Case study: chuỗi phát hiện qua file backup PDF thiếu/lỗi khi chạy test hồi quy cho Phần A
 
 Bối cảnh: sau khi hoàn thành Phần A, raw_documents/ của 6 văn bản legal_text CŨ (đã ingest từ trước, không liên quan Phần A) không còn PDF gốc trên máy (đã dọn sau ingest, đúng thiết kế .gitignore) — không chạy được `regression_check_legal_text.py` để xác nhận thay đổi code ở Phần A (đặc biệt: điểm ID theo `dieu_occurrence`, truncation marker mới) không phá vỡ dữ liệu cũ. Yêu cầu backup + khôi phục 6 file dẫn tới 1 chuỗi phát hiện ngoài dự tính ban đầu:
