@@ -119,6 +119,19 @@ def _aggregate_quality(offsets: list[tuple[int, int, PageExtraction]], start: in
 # chunk-size convention for this one-off case).
 KNOWN_NO_KHOAN_SPLIT_DIEU: set[tuple[str, str]] = {
     ("Luật tổ chức toà án nhân dân.pdf", "150"),
+    # Same root cause, 2026-08-29 batch: "Thong tu lien tich 29_2025...pdf" Dieu 1 amends
+    # several Dieu of Thong tu lien tich 10/2018 one at a time ("1. Sua doi... Dieu 3", "2. Sua
+    # doi... Dieu 7", ... "6. Sua doi... Dieu 22 nhu sau: 'Dieu 22. Trach nhiem thuc hien ... co
+    # trach nhiem: 1. Quan triet... 2. Thuc hien...'"). Item 6's quoted REPLACEMENT text for
+    # Dieu 22 itself starts a fresh "1.", "2." list, which collides with the outer amendment
+    # list's own "1.", "2." numbering the same way BLHS/Luat TCTAND excerpts did - confirmed by
+    # direct inspection: khoan-splitting produced 9 chunks with khoan "1" and "2" each appearing
+    # TWICE, and item 6's real content was truncated mid-sentence ("...co trach nhiem:") at the
+    # first bogus nested match, silently dropping the quoted Dieu 22's own two duty items. Kept
+    # as one ~8.5k-char chunk instead - large, but this Dieu's amendments are inherently
+    # cross-referential (each item only makes sense against the numbered original it modifies),
+    # so splitting on the wrong boundary is worse than not splitting at all.
+    ("Thông tư liên tịch 29_2025 BTP - BCA - BQP - BTC - TANDTC - VKSNDTC.pdf", "1"),
 }
 
 # "Van ban hop nhat BLHS 2015.pdf" Dieu 189 khoan 3 is printed TWICE in the source PDF itself
@@ -474,12 +487,83 @@ KNOWN_NON_KHOAN_TITLE_CONTINUATIONS: dict[tuple[str, str], str] = {
     ("Văn bản hợp nhất BLHS 2015.pdf", "181"): "bộ, cản trở ly hôn tự nguyện",
     ("Văn bản hợp nhất BLHS 2015.pdf", "347"): "trái phép",
     ("Thông tư liên tịch 01_2026 VKSND - BCA - BQP.pdf", "30"):
-        "trưởng, Kiểm sát viên trong trường hợp ủy thác điều tra",
+        # 2026-08-30: value recalibrated - a scanned no-text-layer copy of this file had
+        # temporarily replaced the original in raw_documents/ (see requirements.md ingestion
+        # log), and the current replacement - a clean text-layer copy from the official source,
+        # confirmed byte-different and independently re-verified against the source text image -
+        # wraps this exact line one word earlier: title line 1 now ends cleanly at "Pho Vien
+        # truong," (a complete word) instead of splitting "truong" itself across the line break.
+        # Same wording verbatim, only the PDF's own line-wrap point moved, confirmed by direct
+        # inspection of the raw body text. Golden (already upserted to Qdrant) was built from the
+        # original file's wrap shape and is unaffected - this only recalibrates fresh re-parses of
+        # the file now on disk.
+        "Kiểm sát viên trong trường hợp ủy thác điều tra",
+    ("Thông tư liên tịch 01_2026 VKSND - BCA - BQP.pdf", "37"):
+        # 2026-08-30: pre-existing bug in golden, NOT a regression - Dieu 37's title wraps across
+        # 4 physical lines, and no continuation entry for it ever existed in this table, so it has
+        # been truncated in the already-upserted/live corpus since the original ingestion (golden
+        # reads "...trong quan he phoi hop", missing everything from "giua co quan..." onward).
+        # Only surfaced now because raw_documents/ finally has a working text-layer copy of this
+        # file again (see the Dieu 30 entry above) letting regression_check_legal_text.py parse it
+        # at all. Confirmed by direct inspection: khoan 1-4 body text is identical between golden
+        # and a fresh parse - only the title was ever incomplete. Full corrected title verified
+        # against the real body text (it's exactly the text sitting between the title and "1.").
+        "quan được giao nhiệm vụ tiến hành một số hoạt động điều tra của Công an nhân dân, cơ\n"
+        "quan được giao nhiệm vụ tiến hành một số hoạt động điều tra trong Quân đội nhân dân,\n"
+        "Cơ quan điều tra và Viện kiểm sát",
+    # 2026-08-29 batch: same bug class, newly found on hand-review of the 10 freshly-ingested
+    # documents (see requirements.md ingestion log) - each verified against the real chunk_text
+    # second line onward (the un-merged continuation always survives intact right after the
+    # truncated title, since these are genuine trigger-word-fallback misses, not data loss).
+    ("Quyết định 06_QĐ-VKSTC.pdf", "1"): "việc khởi tố, điều tra và truy tố (kèm theo Phụ lục gồm 18 biểu mẫu).",
+    ("Quyết định 06_QĐ-VKSTC.pdf", "2"):
+        "111/QĐ-VKSTC ngày 17/4/2020 của Viện trưởng Viện kiểm sát nhân dân tối cao về việc ban\n"
+        "hành Quy chế công tác thực hành quyền công tố, kiểm sát việc khởi tố, điều tra và truy tố.",
+    ("Quyết định 06_QĐ-VKSTC.pdf", "3"):
+        "dân, Viện trưởng Viện kiểm sát quân sự các cấp chịu trách nhiệm thi hành Quyết định này./.",
+    ("Quyết định 06_QĐ-VKSTC.pdf", "72"): "nhân thương mại",
+    ("Quyết định 06_QĐ-VKSTC.pdf", "74"): "điều tra và truy tố",
+    ("Quyết định 06_QĐ-VKSTC.pdf", "75"): "pháp về hình sự của nước ngoài",
+    ("Quyết định 06_QĐ-VKSTC.pdf", "79"):
+        "truy tố với công tác giải quyết và kiểm sát việc giải quyết khiếu nại, tố cáo trong hoạt động\n"
+        "tư pháp",
+    ("Nghị quyết 05_2017_NQ-HĐTP.pdf", "1"): "định đã có hiệu lực pháp luật của Bộ luật Tố tụng hình sự",
+    ("Quyết định 505_QĐ-VKSTC.pdf", "1"):
+        "xử vụ án hình sự; 35 mẫu văn bản thực hiện trong giai đoạn thực hành quyền công tố, kiểm sát xét xử\n"
+        "hình sự; Phụ lục về thẩm quyền ký, ký thay, ký thừa lệnh, ký thừa ủy quyền văn bản tố tụng, văn bản\n"
+        "hành chính - tư pháp trong công tác thực hành quyền công tố, kiểm sát xét xử vụ án hình sự.",
+    ("Quyết định 505_QĐ-VKSTC.pdf", "2"):
+        "960/2007/QĐ-VKSTC ngày 17/09/2007 của Viện trưởng Viện kiểm sát nhân dân tối cao về công tác\n"
+        "thực hành quyền công tố và kiểm sát xét xử các vụ án hình sự.",
+    ("Quyết định 505_QĐ-VKSTC.pdf", "3"):
+        "Viện trưởng Viện kiểm sát nhân dân cấp cao, Viện trưởng Viện kiểm sát nhân dân tỉnh, thành phố trực\n"
+        "thuộc trung ương chịu trách nhiệm thi hành Quyết định này./.",
+    ("Quyết định 505_QĐ-VKSTC.pdf", "31"): "dưới thực hành quyền công tố, kiểm sát xét xử",
+    ("Quyết định 505_QĐ-VKSTC.pdf", "76"): "thẩm, giám đốc thẩm, tái thẩm",
+    ("Thông tư liên tịch 04_2025 BCA - VKSNDTC - TANDTC.pdf", "3"): "hành án hình sự",
+    ("Thông tư liên tịch 04_2025 BCA - VKSNDTC - TANDTC.pdf", "7"):
+        "về tội phạm, khởi tố, điều tra, truy tố vụ án hình sự; giải quyết và kiểm sát việc giải quyết\n"
+        "khiếu nại, tố cáo trong tiếp nhận, giải quyết nguồn tin về tội phạm, khởi tố, điều tra vụ án\n"
+        "hình sự",
+    ("Thông tư liên tịch 02_2018 BCA - VKSNDTC - TANDTC - BQP.pdf", "6"):
+        "luật của pháp nhân thương mại phạm tội",
 }
 
 
 def _apply_known_title_continuation(source_document: str, dieu_number: str, dieu_title: str,
-                                     body_after_title_line: str) -> tuple[str, int]:
+                                     body_after_title_line: str, occurrence_index: int) -> tuple[str, int]:
+    # A "Quyet dinh ban hanh kem theo Quy che" document (see KNOWN_TRAILING_BOILERPLATE_MARKERS
+    # below for the sibling bleed bug on the same document shape) restarts "Dieu 1." numbering
+    # for its attached Quy che right after the outer decision's own short Dieu 1/2/3 - so
+    # dieu_number alone is ambiguous between the two occurrences in these documents. Every fix
+    # added so far targets the FIRST occurrence only (the outer decision's Dieu, which is where
+    # the truncation actually happens - the inner Quy che's same-numbered Dieu already has a
+    # short, complete title of its own); every pre-existing entry in the table is for a document
+    # with no duplicate Dieu numbering at all, where occurrence_index is always 0 anyway, so this
+    # gate changes nothing for them.
+    if occurrence_index != 0:
+        return dieu_title, 0
+
     continuation = KNOWN_NON_KHOAN_TITLE_CONTINUATIONS.get((source_document, dieu_number))
     if continuation is None:
         return dieu_title, 0
@@ -561,12 +645,63 @@ def _filter_known_bogus_dieu_matches(source_document: str, matches: list[re.Matc
 # trimmed after, so the surviving text is correctly classified "ok" instead of "unusable".
 KNOWN_TRAILING_BOILERPLATE_MARKERS: dict[tuple[str, str], str] = {
     ("Thông tư liên tịch 01_2026 VKSND - BCA - BQP.pdf", "39"): "Nơi nhận",
+    # 2026-08-29 batch: a NEW shape of the same bleed bug, found on "Quyet dinh 06_QD-VKSTC.pdf"
+    # and "Quyet dinh 505_QD-VKSTC.pdf" - both are a Quyet dinh (decision) that ban hanh kem theo
+    # ("issues, attached") its own Quy che (regulation) as a nested document with its OWN
+    # "Dieu 1." numbering restarting right after. The outer decision's real Dieu 3 ("... chiu
+    # trach nhiem thi hanh Quyet dinh nay./.") is immediately followed - with no Chuong/Muc/Phan
+    # heading in between, so the existing heading_positions truncation never triggers - by a
+    # signing block (all-caps "VIEN TRUONG" + "Noi nhan:" + the signer's name) AND the nested Quy
+    # che's own cover page ("QUY CHE" title + "(Ban hanh kem theo Quyet dinh so ...)") before the
+    # inner Dieu 1 finally starts. Confirmed by direct inspection: outer Dieu 3's raw chunk_text
+    # otherwise ends with the entire cover page swept in. "VIEN TRUONG" (all-caps, its own line)
+    # is a safe marker - distinct by case from the lowercase-title "Vien truong" that appears
+    # earlier in this same Dieu's real prose ("Vien truong Vien kiem sat...").
+    ("Quyết định 06_QĐ-VKSTC.pdf", "3"): "VIỆN TRƯỞNG",
+    ("Quyết định 505_QĐ-VKSTC.pdf", "3"): "VIỆN TRƯỞNG",
+    # "Thong tu 02_2018_TT-TANDTC.pdf" page 6 (the last page) is genuinely blank - confirmed by
+    # direct visual rendering (pypdfium2, scale=2.5): pure white, no text, no watermark. Its real
+    # final content (Dieu 11 body + the full signing block, ending "...Luu: VT, Vu PC&QLKH
+    # TANDTC.") is entirely on page 5 and extracts cleanly via the text layer. But an empty/blank
+    # page still fails is_text_garbage (empty text IS garbage) and triggers the OCR fallback,
+    # which - given a blank image with nothing to transcribe - confabulated a plausible-looking
+    # but entirely fabricated paragraph about labor-contract notice-period compensation (a Bo
+    # luat Lao dong topic with zero relation to this Thong tu about criminal procedure for
+    # minors), landing at the tail of Dieu 11's chunk_text. finish_reason was STOP and the
+    # fabricated text is well-formed Vietnamese, so is_text_garbage doesn't catch it either - a
+    # vision-model confabulation on a blank page is a different failure mode than the
+    # under/mis-recognition case OCR fallback exists for, not one a text-quality heuristic can
+    # detect. Truncating at the fabricated paragraph's own opening words removes exactly the
+    # hallucinated tail and nothing else - real content, unaffected.
+    ("Thông tư 02_2018_TT-TANDTC.pdf", "11"): "Trong các trường hợp nêu trên, nếu người lao động",
+    # "Thong tu lien tich 29_2025...pdf" attaches its form-template appendix (Mau so 01 through
+    # 06C - blank forms, checklists, statistics tables) directly after the signing block, with
+    # NO "PHU LUC" heading line at all (unlike every other appendix-bearing document in this
+    # corpus) - so APPENDIX_HEADING_PATTERN never fires and dieu-search text runs straight
+    # through it. The real Dieu 3 ("Hieu luc thi hanh") is the LAST real Dieu, with no Dieu 4 to
+    # bound it, so its body was running all the way to end-of-document - and several of those
+    # Mau's OWN numbered items ("1. Nguoi co cong voi cach mang.", "2. Ong/ba co thuoc doi
+    # tuong...", etc., each Mau restarting its own "1.", "2." numbering from scratch) matched
+    # KHOAN_PATTERN and were mis-chunked as if they were khoan 1-8 (repeatedly, once per Mau) of
+    # Dieu 3 - the same "appendix content misread as body" failure APPENDIX_HEADING_PATTERN
+    # exists to prevent, just triggered by a heading shape it doesn't recognize. Confirmed by
+    # direct inspection: this produced 20 bogus chunks (some duplicate dieu+khoan keys colliding
+    # into the same deterministic Qdrant point ID) with zero real Dieu 3 content in any of them -
+    # the true Dieu 3 body is a single sentence, entirely before this marker.
+    ("Thông tư liên tịch 29_2025 BTP - BCA - BQP - BTC - TANDTC - VKSNDTC.pdf", "3"): "Mẫu số 01.",
 }
 
 
 def _truncate_known_trailing_boilerplate(
-    source_document: str, dieu_number: str, full_text: str, start: int, end: int
+    source_document: str, dieu_number: str, full_text: str, start: int, end: int, occurrence_index: int
 ) -> int:
+    # Same duplicate-Dieu-numbering ambiguity as _apply_known_title_continuation above (see its
+    # comment) - both current entries target the outer decision's Dieu 3, not the inner Quy che's
+    # own same-numbered Dieu 3, which has no signing block after it (its own next Dieu, Dieu 4,
+    # follows directly) and would otherwise fail this function's assert.
+    if occurrence_index != 0:
+        return end
+
     marker = KNOWN_TRAILING_BOILERPLATE_MARKERS.get((source_document, dieu_number))
     if marker is None:
         return end
@@ -608,10 +743,13 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
         + [p for p, _, _ in phan_events] + repealed_chuong_positions
     )
     chunks: list[dict[str, Any]] = []
+    dieu_occurrence_counts: dict[str, int] = {}
 
     for i, match in enumerate(matches):
         chuong_number, chuong_title, muc_number, muc_title = chuong_muc_assignments[i]
         dieu_number = match.group(1)
+        occurrence_index = dieu_occurrence_counts.get(dieu_number, 0)
+        dieu_occurrence_counts[dieu_number] = occurrence_index + 1
         # Strip a page number fused directly onto the captured line-1 title (e.g. "...hinh
         # su10") before any wrap-merge logic runs - same noise pattern as mid-title page
         # breaks, just landing on line 1 itself instead of a later line.
@@ -622,7 +760,9 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
         next_heading = next((p for p in heading_positions if start < p < end), None)
         if next_heading is not None:
             end = next_heading
-        end = _truncate_known_trailing_boilerplate(source_document, dieu_number, full_text, start, end)
+        end = _truncate_known_trailing_boilerplate(
+            source_document, dieu_number, full_text, start, end, occurrence_index
+        )
         raw_body = full_text[start:end]
         body = raw_body.strip()
         left_strip = len(raw_body) - len(raw_body.lstrip())
@@ -632,7 +772,7 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
         rest_offset_in_full_text: int | None = None
         if title_line_end != -1:
             dieu_title, skip = _apply_known_title_continuation(
-                source_document, dieu_number, dieu_title, body[title_line_end + 1:]
+                source_document, dieu_number, dieu_title, body[title_line_end + 1:], occurrence_index
             )
             if skip == 0:
                 dieu_title, skip = _merge_wrapped_title(dieu_title, body[title_line_end + 1:])
@@ -677,6 +817,14 @@ def chunk_legal_text(pages: list[PageExtraction], source_document: str, law_vers
                 "source_document": source_document,
                 "law_version": law_version,
                 "dieu_number": dieu_number,
+                # 0 for every normal document (a Dieu number appears exactly once). Only nonzero
+                # for the rare document where Dieu numbering genuinely restarts mid-document (a
+                # "Quyet dinh ban hanh kem theo Quy che" - see KNOWN_TRAILING_BOILERPLATE_MARKERS
+                # above - has its own short outer Dieu 1/2/3, then the attached Quy che restarts
+                # at its own Dieu 1) - both occurrences are real, distinct content that must both
+                # survive to Qdrant, so vector_store.build_point_id folds this into the point ID
+                # only when nonzero, leaving every other document's point IDs unchanged.
+                "dieu_occurrence": occurrence_index,
                 "dieu_title": dieu_title,
                 "khoan_number": khoan_number,
                 "chuong_number": chuong_number,

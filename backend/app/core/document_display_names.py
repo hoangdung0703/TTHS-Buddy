@@ -49,6 +49,34 @@ SOURCE_DOCUMENT_DISPLAY_NAMES: dict[str, str] = {
     ),
     "784492208-ĐỀ-CƯƠNG-LUẬT-TỐ-TỤNG-HINH-SỰ.pdf": "Đề cương Luật Tố tụng Hình sự",
     "Đề cương ôn tập LTTHS theo từng chương.pdf": "Đề cương ôn tập Luật Tố tụng Hình sự theo từng chương",
+    # 2026-08-29 batch (10 new legal_text documents - mirrors ingestion/document_registry.py)
+    "Quyết định 06_QĐ-VKSTC.pdf": (
+        "Quyết định 06/QĐ-VKSTC về Quy chế công tác thực hành quyền công tố, kiểm sát khởi tố, "
+        "điều tra và truy tố"
+    ),
+    "Nghị quyết 05_2017_NQ-HĐTP.pdf": "Nghị quyết 05/2017/NQ-HĐTP về biểu mẫu trong xét xử vụ án hình sự",
+    "Quyết định 505_QĐ-VKSTC.pdf": (
+        "Quyết định 505/QĐ-VKSTC về Quy chế công tác thực hành quyền công tố, kiểm sát xét xử vụ án hình sự"
+    ),
+    "Thông tư liên tịch 04_2025 BCA - VKSNDTC - TANDTC.pdf": (
+        "Thông tư liên tịch 04/2025/TTLT-BCA-VKSNDTC-TANDTC"
+    ),
+    "Thông tư liên tịch 02_2017 VKSNDTC - TANDTC - BCA - BQP.pdf": (
+        "Thông tư liên tịch 02/2017/TTLT-VKSNDTC-TANDTC-BCA-BQP về trả hồ sơ điều tra bổ sung"
+    ),
+    "Thông tư 02_2018_TT-TANDTC.pdf": "Thông tư 02/2018/TT-TANDTC về xét xử vụ án hình sự có người dưới 18 tuổi",
+    "Thông tư liên tịch 03_2018 BCA - VKSNDTC - TANDTC - BQP.pdf": (
+        "Thông tư liên tịch 03/2018/TTLT-BCA-VKSNDTC-TANDTC-BQP về ghi âm, ghi hình có âm thanh"
+    ),
+    "Thông tư liên tịch 08_2025 VKSNDTC - TANDTC - BCA - BTP - BYT.pdf": (
+        "Thông tư liên tịch 08/2025/TTLT-VKSNDTC-TANDTC-BCA-BTP-BYT"
+    ),
+    "Thông tư liên tịch 02_2018 BCA - VKSNDTC - TANDTC - BQP.pdf": (
+        "Thông tư liên tịch 02/2018/TTLT-BCA-VKSNDTC-TANDTC-BQP về đọc, ghi chép tài liệu vụ án"
+    ),
+    "Thông tư liên tịch 29_2025 BTP - BCA - BQP - BTC - TANDTC - VKSNDTC.pdf": (
+        "Thông tư liên tịch 29/2025/TTLT-BTP-BCA-BQP-BTC-TANDTC-VKSNDTC về trợ giúp pháp lý trong tố tụng"
+    ),
 }
 
 

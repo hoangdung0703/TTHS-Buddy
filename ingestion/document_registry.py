@@ -95,7 +95,65 @@ DOCUMENT_REGISTRY: list[DocumentConfig] = [
     DocumentConfig(
         filename="Đề cương ôn tập LTTHS theo từng chương.pdf",
         source_type="academic_reference"
-    )
+    ),
+    # 2026-08-29 batch: 10 of 12 newly-supplied PDFs (see requirements.md ingestion log).
+    # Excluded from this batch:
+    #  - "01_2026_TTLT-VKSNDTC-BCA-BQP_694946.pdf" (raw_documents/, unregistered on purpose):
+    #    same number/date/title as the already-ingested "Thông tư liên tịch 01_2026 VKSND -
+    #    BCA - BQP.pdf" above - confirmed duplicate, left un-renamed and un-parsed.
+    #  - "Văn bản hợp nhất BLTTHS 2025 (104_VBHN-VPQH) - CHƯA INGEST.pdf": candidate
+    #    replacement for "Bộ luật TTHS.pdf" above, pending a separate content-diff review
+    #    before any replace decision - not registered here yet.
+    DocumentConfig(
+        filename="Quyết định 06_QĐ-VKSTC.pdf",
+        source_type="legal_text",
+        law_version="Quyết định 06/QĐ-VKSTC ngày 23/3/2026 (Quy chế công tác THQCT, kiểm sát khởi tố, điều tra và truy tố)"
+    ),
+    DocumentConfig(
+        filename="Nghị quyết 05_2017_NQ-HĐTP.pdf",
+        source_type="legal_text",
+        law_version="Nghị quyết 05/2017/NQ-HĐTP"
+    ),
+    DocumentConfig(
+        filename="Quyết định 505_QĐ-VKSTC.pdf",
+        source_type="legal_text",
+        law_version="Quyết định 505/QĐ-VKSTC ngày 18/12/2017 (Quy chế công tác THQCT, kiểm sát xét xử vụ án hình sự)"
+    ),
+    DocumentConfig(
+        filename="Thông tư liên tịch 04_2025 BCA - VKSNDTC - TANDTC.pdf",
+        source_type="legal_text",
+        law_version="Thông tư liên tịch 04/2025/TTLT-BCA-VKSNDTC-TANDTC"
+    ),
+    DocumentConfig(
+        filename="Thông tư liên tịch 02_2017 VKSNDTC - TANDTC - BCA - BQP.pdf",
+        source_type="legal_text",
+        law_version="Thông tư liên tịch 02/2017/TTLT-VKSNDTC-TANDTC-BCA-BQP"
+    ),
+    DocumentConfig(
+        filename="Thông tư 02_2018_TT-TANDTC.pdf",
+        source_type="legal_text",
+        law_version="Thông tư 02/2018/TT-TANDTC"
+    ),
+    DocumentConfig(
+        filename="Thông tư liên tịch 03_2018 BCA - VKSNDTC - TANDTC - BQP.pdf",
+        source_type="legal_text",
+        law_version="Thông tư liên tịch 03/2018/TTLT-BCA-VKSNDTC-TANDTC-BQP"
+    ),
+    DocumentConfig(
+        filename="Thông tư liên tịch 08_2025 VKSNDTC - TANDTC - BCA - BTP - BYT.pdf",
+        source_type="legal_text",
+        law_version="Thông tư liên tịch 08/2025/TTLT-VKSNDTC-TANDTC-BCA-BTP-BYT"
+    ),
+    DocumentConfig(
+        filename="Thông tư liên tịch 02_2018 BCA - VKSNDTC - TANDTC - BQP.pdf",
+        source_type="legal_text",
+        law_version="Thông tư liên tịch 02/2018/TTLT-BCA-VKSNDTC-TANDTC-BQP"
+    ),
+    DocumentConfig(
+        filename="Thông tư liên tịch 29_2025 BTP - BCA - BQP - BTC - TANDTC - VKSNDTC.pdf",
+        source_type="legal_text",
+        law_version="Thông tư liên tịch 29/2025/TTLT-BTP-BCA-BQP-BTC-TANDTC-VKSNDTC"
+    ),
 ]
 
 

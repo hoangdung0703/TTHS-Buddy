@@ -69,10 +69,18 @@ def ensure_collection(client: QdrantClient) -> None:
 
 def build_point_id(chunk: dict[str, Any]) -> str:
     if chunk["source_type"] == "legal_text":
-        natural_key = "|".join([
+        key_parts = [
             "legal_text", chunk["source_document"], str(chunk["law_version"]),
             str(chunk["dieu_number"]), str(chunk["khoan_number"])
-        ])
+        ]
+        # Only ever nonzero for a document whose Dieu numbering genuinely restarts partway
+        # through (see chunking.py's "dieu_occurrence" comment) - appending it only when nonzero
+        # keeps every pre-existing point ID in Qdrant byte-for-byte unchanged; chunks read back
+        # from Qdrant (no "dieu_occurrence" in payload) default to 0 the same way.
+        occurrence = chunk.get("dieu_occurrence", 0)
+        if occurrence:
+            key_parts.append(str(occurrence))
+        natural_key = "|".join(key_parts)
     else:
         natural_key = "|".join(["academic_reference", chunk["source_document"], str(chunk["chunk_index"])])
 
@@ -85,6 +93,7 @@ def chunk_to_point(chunk: dict[str, Any], vector: list[float]) -> PointStruct:
         "source_document": chunk["source_document"],
         "law_version": chunk["law_version"],
         "dieu_number": chunk["dieu_number"],
+        "dieu_occurrence": chunk.get("dieu_occurrence", 0),
         "dieu_title": chunk["dieu_title"],
         "khoan_number": chunk["khoan_number"],
         "chuong_number": chunk.get("chuong_number"),

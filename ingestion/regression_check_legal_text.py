@@ -40,7 +40,10 @@ KNOWN_MANUAL_TESSERACT_PATCHES: set[tuple[str, str, str | None]] = {
 
 
 def _key_for(chunk: dict) -> tuple:
-    return (chunk["source_document"], chunk["dieu_number"], chunk["khoan_number"])
+    return (
+        chunk["source_document"], chunk["dieu_number"], chunk["khoan_number"],
+        chunk.get("dieu_occurrence", 0),
+    )
 
 
 def _sort_key(t: tuple) -> tuple:
@@ -76,7 +79,13 @@ def main() -> int:
             g = golden_by_key[k]
             f = fresh_by_key[k]
             if g["dieu_title"] != f["dieu_title"] or g["chunk_text"] != f["chunk_text"]:
-                if k in KNOWN_MANUAL_TESSERACT_PATCHES:
+                # k[:3] not k: _key_for grew a 4th element (dieu_occurrence, 2026-08-30 batch -
+                # see chunking.py's "dieu_occurrence" comment) for documents whose Dieu numbering
+                # genuinely restarts mid-document. KNOWN_MANUAL_TESSERACT_PATCHES predates that
+                # and only ever needs the original (doc, dieu, khoan) shape - none of its entries
+                # are for a duplicate-numbering document, so comparing on k[:3] is exact here, not
+                # an approximation.
+                if k[:3] in KNOWN_MANUAL_TESSERACT_PATCHES:
                     known_patch_hits.append(k)
                 else:
                     mismatches.append((k, g["dieu_title"], f["dieu_title"]))
