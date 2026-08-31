@@ -272,3 +272,24 @@ export interface PracticeQuestionV2 {
   question_text: string;
   legal_ref: string;
 }
+
+// Vở ghi cá nhân (requirements.md "Feature - Vở ghi cá nhân + Chat trả lời dựa trên nội dung ghi
+// chú"). This is the storage/CRUD foundation only - NOT yet read by Chat/retrieval.
+export interface Note {
+  id: string;
+  title: string | null;
+  content: string;
+  tag: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NoteListResponse {
+  notes: Note[];
+}
+
+export interface NoteUpsertRequest {
+  title: string | null;
+  content: string;
+  tag: string | null;
+}

@@ -36,6 +36,9 @@ import type {
   EssaySubmitResponse,
   KeywordYesterday,
   LegalArticle,
+  Note,
+  NoteListResponse,
+  NoteUpsertRequest,
   PracticeQuestionV2,
   QuizGenerateResponse,
   QuizQuestion,
@@ -394,6 +397,29 @@ export async function getEssayBankQuestionListV2(category: EssayBankCategory): P
     `/api/essay/banks/${category}/questions`
   );
   return questions;
+}
+
+// ============================================================================
+// Vở ghi cá nhân (requirements.md "Feature - Vở ghi cá nhân + Chat trả lời dựa trên nội dung ghi
+// chú"). Storage/CRUD foundation only - NOT wired into Chat yet, always hits the real backend
+// (no NEXT_PUBLIC_USE_MOCK_DATA branch, same as the V2 quiz/essay routes above).
+// ============================================================================
+
+export async function getNotes(): Promise<Note[]> {
+  const { notes } = await apiFetch<NoteListResponse>("/api/notes");
+  return notes;
+}
+
+export async function createNote(request: NoteUpsertRequest): Promise<Note> {
+  return apiFetch<Note>("/api/notes", { method: "POST", body: JSON.stringify(request) });
+}
+
+export async function updateNote(noteId: string, request: NoteUpsertRequest): Promise<Note> {
+  return apiFetch<Note>(`/api/notes/${noteId}`, { method: "PUT", body: JSON.stringify(request) });
+}
+
+export async function deleteNote(noteId: string): Promise<void> {
+  await apiFetch<void>(`/api/notes/${noteId}`, { method: "DELETE" });
 }
 
 export async function getPracticeQuestionV2(excludeQuestionId?: string): Promise<PracticeQuestionV2> {

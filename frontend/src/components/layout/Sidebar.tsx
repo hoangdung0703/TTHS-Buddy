@@ -5,6 +5,7 @@ import {
   MessageSquare,
   MessageSquareQuote,
   ListChecks,
+  NotebookPen,
   Pencil,
   PenLine,
   Plus,
@@ -30,7 +31,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Tổng quan", icon: LayoutGrid },
   { href: "/chat", label: "Trợ lý AI", icon: MessageSquare },
   { href: "/quiz", label: "Trắc nghiệm", icon: ListChecks },
-  { href: "/essay", label: "Tự luận", icon: PenLine }
+  { href: "/essay", label: "Tự luận", icon: PenLine },
+  { href: "/notes", label: "Vở ghi", icon: NotebookPen }
 ];
 
 // Coarse "Hom nay"/"Hom qua"/dd-mm label, computed client-side from the browser's local
