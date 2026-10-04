@@ -17,11 +17,12 @@ import random
 import re
 import uuid
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
+from supabase import Client
 
 from app.core.config import Settings
 from app.core.document_display_names import get_display_name
@@ -61,9 +62,11 @@ from app.prompts.rag_prompts import (
     build_user_prompt,
     format_academic_context_block,
     format_legal_context_block,
+    format_note_block,
 )
 from app.services.chat_suggestions_service import build_suggested_question
 from app.services.gemini_client import embed_query, generate_answer, stream_generate_answer
+from app.services.notes_service import RetrievedNote, retrieve_relevant_notes
 from app.services.scenario_grading_service import grade_scenario_answer
 from app.services.scenario_service import generate_scenario
 
@@ -278,6 +281,11 @@ class RetrievalResult:
     legal_related: list[RetrievedChunk]
     all_retrieved: list[RetrievedChunk]
     used_academic_reference: bool
+    # requirements.md "Feature - Vở ghi cá nhân...": the asking user's own matched notes, kept OUT
+    # of context_blocks on purpose - context_blocks' emptiness still decides the not-found fallback
+    # exactly as before (a note alone, with no legal/academic context to check it against, is never
+    # enough to answer from), and notes go into their own prompt section (see build_user_prompt).
+    notes: list[RetrievedNote] = field(default_factory=list)
 
 
 def detect_dieu_number(question: str) -> str | None:
@@ -858,6 +866,26 @@ def _rule9_ungrounded_dieu_numbers(answer_text: str, legal_primary: list[Retriev
     return sorted(mentioned - allowed)
 
 
+# Replacement text for a Dieu number a user's note mentions that isn't in rule 9's allowed list -
+# see _mask_unverified_dieu_numbers.
+UNVERIFIED_NOTE_DIEU_PLACEHOLDER = "[một Điều do bạn tự ghi, chưa được xác thực]"
+
+
+def _mask_unverified_dieu_numbers(note_text: str, allowed: set[str]) -> str:
+    """requirements.md "Feature - Vở ghi cá nhân..." + rule 9: replaces every "Dieu N" in a
+    user's note whose N is NOT in rule 9's allowed list (_rule9_allowed_dieu_numbers of this
+    question's legal_primary) with UNVERIFIED_NOTE_DIEU_PLACEHOLDER BEFORE the note reaches the
+    prompt. Found via E2E testing: a note citing a made-up "Dieu 412" for quyen bao chua got echoed
+    back ("ghi chu cua ban dan Dieu 412...") on 1/5 runs despite RAG_USER_NOTES_ADDENDUM (f) - the
+    pre-send rule 9 guard caught it, but its fail-closed fallback also threw away the contradiction
+    warning the student needed. The model can't echo a number it never saw, so the warning
+    survives; the post-generation guard stays as the backstop. Same DIEU_NUMBER_PATTERN the guard
+    itself extracts with, so anything the guard would flag from a note is masked here first."""
+    return DIEU_NUMBER_PATTERN.sub(
+        lambda m: m.group(0) if m.group(1) in allowed else UNVERIFIED_NOTE_DIEU_PLACEHOLDER, note_text
+    )
+
+
 _MULTIPART_LABEL_PATTERN = re.compile(r"ph[aầ]n\s*(\d+)(?!\d)", re.IGNORECASE)
 
 
@@ -895,7 +923,11 @@ def _generate_hyde_passage(question: str, settings: Settings) -> str:
         return question
 
 
-async def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient) -> RetrievalResult:
+async def retrieve_context(question: str, settings: Settings, qdrant_client: QdrantClient,
+                           notes_source: tuple[Client, str] | None = None) -> RetrievalResult:
+    """`notes_source` = (supabase_client, user_id of the ASKING user) enables retrieval of that
+    user's own notes (requirements.md "Feature - Vở ghi cá nhân..."); None (multi-part,
+    anonymized, and evaluation re-derivation callers) skips it entirely."""
     # requirements.md muc B (HyDE): legal_text retrieval embeds a generated hypothetical
     # normative-voice passage instead of the question itself (see _generate_hyde_passage),
     # academic_reference retrieval keeps embedding the question directly (HyDE's voice-mismatch
@@ -908,6 +940,17 @@ async def retrieve_context(question: str, settings: Settings, qdrant_client: Qdr
     hyde_task = asyncio.to_thread(_generate_hyde_passage, question, settings)
     academic_vector_task = asyncio.to_thread(embed_query, question, settings)
     hyde_passage, academic_vector = await asyncio.gather(hyde_task, academic_vector_task)
+    # Notes are scored against the same raw-question vector academic_reference uses (a student's
+    # note is explanatory prose, like academic text - not statutory voice, so HyDE's rationale
+    # doesn't apply). Started as a task here and only awaited at the end, so its Supabase fetch
+    # (+ batch-embedding any not-yet-cached notes) overlaps the legal embed, Qdrant and re-rank
+    # calls below instead of adding to wall-clock latency.
+    notes_task = (
+        asyncio.create_task(asyncio.to_thread(
+            retrieve_relevant_notes, notes_source[0], notes_source[1], academic_vector, settings
+        ))
+        if notes_source else None
+    )
     legal_vector = await asyncio.to_thread(embed_query, hyde_passage, settings)
 
     # requirements.md "Union pool": muc A's own Dieu 109 diagnostic found HyDE can exclude a
@@ -961,9 +1004,15 @@ async def retrieve_context(question: str, settings: Settings, qdrant_client: Qdr
             chunk_text=payload["chunk_text"]
         ))
 
+    notes = await notes_task if notes_task else []
+    if notes:
+        logger.info("Matched %d of the user's own notes (scores=%s)", len(notes),
+                    [round(n.score, 3) for n in notes])
+
     return RetrievalResult(
         context_blocks=context_blocks, legal_primary=legal_primary, legal_related=legal_related,
-        all_retrieved=legal_primary + legal_related + academic_chunks, used_academic_reference=bool(academic_chunks)
+        all_retrieved=legal_primary + legal_related + academic_chunks, used_academic_reference=bool(academic_chunks),
+        notes=notes
     )
 
 
@@ -994,7 +1043,8 @@ async def stream_answer_question(
     question: str, conversation_id: uuid.UUID, settings: Settings, qdrant_client: QdrantClient, result: RagAnswer,
     recent_turns: list[dict[str, str]] | None = None, intent: str = "legal_question",
     last_turn: dict[str, Any] | None = None, needs_anonymization: bool = False,
-    anonymized_names: list[str] | None = None, sub_questions: list[str] | None = None
+    anonymized_names: list[str] | None = None, sub_questions: list[str] | None = None,
+    notes_source: tuple[Client, str] | None = None
 ) -> AsyncIterator[tuple[str, ChatStreamCitationsEvent | ChatStreamAnswerDeltaEvent |
                           ChatStreamGradingEvent | ChatStreamSuggestedFollowupsEvent | ChatStreamDoneEvent]]:
     """Streaming counterpart of the old answer_question (Phase 4 Extension - see
@@ -1098,6 +1148,14 @@ async def stream_answer_question(
     single-question path when needs_anonymization is also true (see the inline comment there for
     why) or when sub_questions
     has fewer than 2 elements (nothing to split).
+
+    `notes_source` (requirements.md "Feature - Vở ghi cá nhân + Chat trả lời dựa trên nội dung ghi
+    chú") = (supabase_client, the ASKING user's user_id) - only used on the ordinary single-question
+    legal_question path below. The multi-part and needs_anonymization paths deliberately don't pass
+    it on (each has its own verified safety logic that was never tested with an unreviewed extra
+    source mixed in). When at least one note matches, generation is buffered and rule 9 is checked
+    fail-closed pre-send (same as buffer_for_rule9_risk's academic_reference case) - a note is an
+    UNREVIEWED source that may cite a wrong Dieu number, strictly riskier than academic_reference.
     """
     if intent == "out_of_scope":
         result.answer = FALLBACK_ANSWER
@@ -1465,7 +1523,9 @@ async def stream_answer_question(
             yield ("done", ChatStreamDoneEvent())
             return
 
-    retrieval = await retrieve_context(question, settings, qdrant_client)
+    retrieval = await retrieve_context(
+        question, settings, qdrant_client, notes_source=None if needs_anonymization else notes_source
+    )
     result.retrieved_chunks = retrieval.all_retrieved
 
     if not retrieval.context_blocks:
@@ -1481,7 +1541,15 @@ async def stream_answer_question(
         yield ("done", ChatStreamDoneEvent())
         return
 
-    user_prompt = build_user_prompt(question, retrieval.context_blocks, recent_turns)
+    allowed_dieu_numbers = _rule9_allowed_dieu_numbers(retrieval.legal_primary)
+    note_blocks = [
+        format_note_block(
+            n.title and _mask_unverified_dieu_numbers(n.title, allowed_dieu_numbers), n.tag,
+            _mask_unverified_dieu_numbers(n.content, allowed_dieu_numbers)
+        )
+        for n in retrieval.notes
+    ]
+    user_prompt = build_user_prompt(question, retrieval.context_blocks, recent_turns, note_blocks=note_blocks)
 
     # requirements.md "Tăng impact LLM cho câu hỏi dài/phức tạp": long/tình huống questions (same
     # threshold as Bước 1's retrieval widening, LONG_QUESTION_CHAR_THRESHOLD) get a stronger model
@@ -1492,7 +1560,9 @@ async def stream_answer_question(
     # wait indefinitely on a preview-tier model - see gemini_client.py's docstring for the exact
     # fallback contract.
     is_long_question = len(question) > LONG_QUESTION_CHAR_THRESHOLD
-    system_prompt = build_system_prompt(is_long_question, needs_anonymization=needs_anonymization)
+    system_prompt = build_system_prompt(
+        is_long_question, needs_anonymization=needs_anonymization, has_user_notes=bool(note_blocks)
+    )
     generation_model = settings.resolved_complex_chat_model if is_long_question else settings.gemini_chat_model
     fallback_model = settings.gemini_chat_model if is_long_question else None
     first_token_timeout = LONG_QUESTION_FIRST_TOKEN_TIMEOUT_SECONDS if is_long_question else None
@@ -1507,7 +1577,12 @@ async def stream_answer_question(
     # fail-closed check run BEFORE anything reaches the client, on exactly the subset of questions
     # that actually needs it - direct-citation/legal_text-only questions (the majority of traffic)
     # keep true live token streaming, unaffected.
-    buffer_for_rule9_risk = retrieval.used_academic_reference and not needs_anonymization
+    #
+    # requirements.md "Feature - Vở ghi cá nhân...": matched user notes trigger the same buffered
+    # fail-closed check - a note is an unreviewed source that may name a wrong Dieu, and
+    # RAG_USER_NOTES_ADDENDUM (f) tells the model not to echo a note's Dieu number unless it's in
+    # legal_primary; this enforces that in code. Questions with no matching note are unaffected.
+    buffer_for_rule9_risk = (retrieval.used_academic_reference or bool(note_blocks)) and not needs_anonymization
 
     # requirements.md muc C: needs_anonymization buffers the whole answer instead of forwarding
     # each token as it arrives (unlike the normal path) so the leak check + disclaimer below can

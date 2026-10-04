@@ -163,7 +163,11 @@ async def query_chat(
             intent=query_understanding.intent, last_turn=last_turn,
             needs_anonymization=query_understanding.needs_anonymization,
             anonymized_names=query_understanding.anonymized_names,
-            sub_questions=query_understanding.sub_questions
+            sub_questions=query_understanding.sub_questions,
+            # SECURITY: always the authenticated caller's own user_id (from the verified JWT) -
+            # never anything from the request body - so note retrieval can only ever read the
+            # asking user's own notes. See notes_service.retrieve_relevant_notes.
+            notes_source=(supabase_client, current_user.user_id)
         ):
             yield _sse_format(event_name, event_payload)
 

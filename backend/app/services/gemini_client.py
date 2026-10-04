@@ -22,7 +22,12 @@ STREAM_GENERATE_CONTENT_URL_TEMPLATE = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
 )
 
+BATCH_EMBED_CONTENTS_URL_TEMPLATE = (
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
+)
+
 QUERY_EMBEDDING_TASK_TYPE = "RETRIEVAL_QUERY"
+DOCUMENT_EMBEDDING_TASK_TYPE = "RETRIEVAL_DOCUMENT"
 OUTPUT_DIMENSIONALITY = 768  # must match the collection vector size and ingestion's embedding output
 REQUEST_TIMEOUT_SECONDS = 60.0
 MAX_TRANSIENT_RETRIES = 3
@@ -61,6 +66,30 @@ def embed_query(text: str, settings: Settings) -> list[float]:
     }
     response = _post_with_retry(url, settings.google_api_key, body)
     return response.json()["embedding"]["values"]
+
+
+def embed_documents(texts: list[str], settings: Settings) -> list[list[float]]:
+    """Batch counterpart of embed_query for the DOCUMENT side of a retrieval pair - used by
+    notes_service.py to embed a user's own notes at chat time (RETRIEVAL_DOCUMENT, same task type
+    ingestion/embedding_client.py uses for the Qdrant corpus, so a note is compared against the
+    question vector the same way a legal/academic chunk is). One request for all texts; caller
+    keeps the list small (see notes_service.NOTES_MAX_SCAN)."""
+    if not texts:
+        return []
+    url = BATCH_EMBED_CONTENTS_URL_TEMPLATE.format(model=settings.gemini_embedding_model)
+    body = {
+        "requests": [
+            {
+                "model": f"models/{settings.gemini_embedding_model}",
+                "content": {"parts": [{"text": text}]},
+                "taskType": DOCUMENT_EMBEDDING_TASK_TYPE,
+                "outputDimensionality": OUTPUT_DIMENSIONALITY
+            }
+            for text in texts
+        ]
+    }
+    response = _post_with_retry(url, settings.google_api_key, body)
+    return [embedding["values"] for embedding in response.json()["embeddings"]]
 
 
 def generate_answer(system_prompt: str, user_prompt: str, settings: Settings, response_json: bool = False,
