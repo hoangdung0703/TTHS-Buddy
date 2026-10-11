@@ -44,6 +44,27 @@ def get_quiz_set_ids() -> tuple[int, ...]:
     }))
 
 
+@lru_cache(maxsize=1)
+def get_question_ids() -> frozenset[str]:
+    """Every question_id the current bank contains - used to detect attempts left behind by a
+    previous question bank."""
+    return frozenset(q["question_id"] for q in load_question_bank())
+
+
+def is_stale_attempt(question_ids: list[str] | None) -> bool:
+    """True when a persisted attempt refers to questions the current bank no longer has. Replacing
+    the question bank does not renumber quiz_set, so an old attempt at "set 1" would otherwise make
+    a brand-new set 1 of entirely different questions look already-completed, and would fold its
+    score into the student's percentages. Any mismatch at all disqualifies the attempt: a set whose
+    contents changed cannot be meaningfully compared against a score for the old contents.
+
+    Attempts are only filtered out at read time; nothing is deleted from quiz_attempts.
+    """
+    if not question_ids:
+        return True
+    return not set(question_ids) <= get_question_ids()
+
+
 def get_mcq_questions_for_set(quiz_set: int, dieu_number: str | None = None,
                                topic_category: str | None = None) -> list[dict[str, Any]]:
     questions = [
@@ -65,7 +86,7 @@ def _get_latest_attempt_per_set(supabase_client: Client, user_id: str) -> dict[i
     try:
         response = (
             supabase_client.table(QUIZ_ATTEMPTS_TABLE)
-            .select("quiz_set, score, total, created_at")
+            .select("quiz_set, score, total, question_ids, created_at")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .execute()
@@ -76,6 +97,8 @@ def _get_latest_attempt_per_set(supabase_client: Client, user_id: str) -> dict[i
 
     latest: dict[int, dict[str, int]] = {}
     for row in response.data or []:
+        if is_stale_attempt(row.get("question_ids")):
+            continue
         quiz_set = row["quiz_set"]
         if quiz_set not in latest:  # rows are already ordered newest-first
             latest[quiz_set] = {"score": row["score"], "total": row["total"]}
@@ -102,6 +125,8 @@ def get_quiz_set_summaries(supabase_client: Client, user_id: str) -> list[dict[s
 
 
 def get_quiz_stats(supabase_client: Client, user_id: str) -> dict[str, Any]:
+    """Stale attempts are already excluded by _get_latest_attempt_per_set (see is_stale_attempt),
+    so these totals only ever describe questions the current bank still has."""
     latest_by_set = _get_latest_attempt_per_set(supabase_client, user_id)
     correct_total = sum(a["score"] for a in latest_by_set.values())
     questions_total = sum(a["total"] for a in latest_by_set.values())

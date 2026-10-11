@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from supabase import Client
 
 from app.core.logging import get_logger
+from app.services.question_bank_service import get_question_ids, is_stale_attempt
 
 logger = get_logger(__name__)
 
@@ -81,8 +82,14 @@ def _accumulate_quiz_topic_scores(supabase_client: Client, user_id: str,
         logger.exception("Failed to read quiz_attempts for weak-topics (user_id=%s)", user_id)
         return
 
+    live_question_ids = get_question_ids()
     for row in response.data or []:
         for answer in row.get("answers") or []:
+            # Scored per ANSWER rather than per attempt: a topic's percentage should only reflect
+            # questions the current bank still has, so answers left over from a replaced question
+            # bank are skipped (the rows themselves are never deleted).
+            if answer.get("question_id") not in live_question_ids:
+                continue
             topic = answer.get("topic_category")
             if not topic:
                 continue
@@ -116,9 +123,14 @@ def get_dashboard_stats(supabase_client: Client, user_id: str) -> dict[str, Any]
 
     try:
         quiz_response = (
-            supabase_client.table(QUIZ_ATTEMPTS_TABLE).select("score, total").eq("user_id", user_id).execute()
+            supabase_client.table(QUIZ_ATTEMPTS_TABLE)
+            .select("score, total, question_ids")
+            .eq("user_id", user_id)
+            .execute()
         )
         for row in quiz_response.data or []:
+            if is_stale_attempt(row.get("question_ids")):
+                continue
             total_quiz_attempts += 1
             if row["total"] > 0:
                 attempt_percentages.append(100 * row["score"] / row["total"])
