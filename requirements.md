@@ -1,9 +1,55 @@
 TTHS Buddy — Trợ lý AI học tập Luật Tố tụng Hình sự
 File ngữ cảnh gốc — đọc trước khi thực hiện bất kỳ tác vụ nào.
 
+ĐIỀU KIỆN BẮT BUỘC TRƯỚC KHI MỞ PUBLIC / CẤP QUYỀN NGƯỜI NGOÀI
+
+CHƯA THỰC HIỆN. Phải làm xong việc dưới đây TRƯỚC khi chuyển repo sang public, thêm
+collaborator ngoài nhóm, hoặc đưa link repo cho bất kỳ ai ngoài dự án.
+
+Vấn đề: `ingestion/question_bank.json` còn nằm trong TOÀN BỘ lịch sử git và đã được push lên
+GitHub. Phiên bản hiện tại của file là mảng rỗng, nhưng các commit cũ vẫn chứa:
+  - 20 câu tự luận (ngân hàng "Lý thuyết") — đã gỡ vì lý do bản quyền nguồn, cùng lý do đã gỡ
+    3 category Vận dụng/Bán trắc nghiệm/Tình huống trước đó
+  - 75 câu MCQ cũ — được thay bằng ngân hàng mới do nhóm luật biên soạn
+Xóa file ở commit mới KHÔNG xóa nội dung khỏi lịch sử: bất kỳ ai clone repo đều lấy lại được
+đầy đủ bằng `git show <commit cũ>:ingestion/question_bank.json`.
+
+Cách xử lý: dùng git-filter-repo xóa đường dẫn này khỏi mọi commit.
+
+    pip install git-filter-repo
+    # Chạy trên MỘT BẢN CLONE RIÊNG, không chạy trên thư mục làm việc hằng ngày.
+    # git-filter-repo từ chối chạy trên repo không phải clone sạch (đúng như vậy).
+    git clone https://github.com/hoangdung0703/TTHS-Buddy.git tths-filter
+    cd tths-filter
+    git filter-repo --invert-paths --path ingestion/question_bank.json
+    git remote add origin https://github.com/hoangdung0703/TTHS-Buddy.git
+    git push --force --all && git push --force --tags
+
+Trước khi chạy: sao lưu một bản mirror đầy đủ (`git clone --mirror`) ra ngoài máy, cất chỗ
+riêng. Thao tác này không hoàn tác được.
+
+Hệ quả phải lường trước:
+  - MỌI commit hash thay đổi. Mọi bản clone/worktree hiện có trở thành không tương thích —
+    cả nhóm phải clone lại, không pull được. Báo trước cho cả nhóm, chọn lúc không ai đang
+    có việc dở.
+  - Mọi link tới commit cụ thể (trong requirements.md, issue, PR, tin nhắn) sẽ hỏng.
+  - Vercel và Render đang deploy theo nhánh main của repo này. Sau force-push, kiểm tra lại
+    cả hai: deploy có thể tự chạy lại, có thể báo lỗi vì không còn tìm thấy commit cũ, hoặc
+    cần bấm redeploy thủ công. Xác nhận bản production vẫn chạy được trước khi coi là xong.
+  - File `ingestion/question_bank.json` sẽ biến mất khỏi lịch sử hoàn toàn — nếu lúc đó
+    ngân hàng đề mới đã nằm trong file này thì nó cũng bị xóa khỏi lịch sử. Cân nhắc chạy
+    việc này TRƯỚC khi nhập ngân hàng mới, hoặc chấp nhận mất lịch sử của ngân hàng mới.
+  - Nếu repo đã từng được fork, hoặc nội dung đã bị GitHub cache, phải liên hệ GitHub Support
+    để xóa triệt để. Force-push không xóa được dữ liệu trong fork của người khác.
+
+Ngoài git: 3 file PDF nguồn ("Tôi hỏi bạn trả lời.pdf", "(1).pdf", "(2).pdf") đã xóa khỏi
+máy phát triển (cả `ingestion/raw_documents/` lẫn `~/Downloads/`). Các PDF nguồn chưa bao giờ
+được commit vào git (`raw_documents/` chỉ track `.gitkeep`). Vẫn cần tự rà Google Drive, máy
+khác, USB, email/chat đính kèm nếu từng chép sang.
+
 1. Thông tin dự án
 Tên: TTHS Buddy — Trợ lý AI học tập Luật Tố tụng Hình sự (Bộ luật Tố tụng Hình sự 2015)
-Mục đích: Chatbot ứng dụng RAG (Retrieval-Augmented Generation) giúp sinh viên luật học tập Luật Tố tụng Hình sự. Người dùng đặt câu hỏi về luật (điều luật, quy trình, tình huống) và nhận câu trả lời có căn cứ, luôn kèm trích dẫn Điều/Khoản cụ thể, chỉ dựa trên nguồn dữ liệu pháp luật đã nạp vào hệ thống. Bao gồm module trắc nghiệm (MCQ), module tự luận (câu hỏi mở, hệ thống chấm và chỉ ra lỗi sai dựa trên rubric), và dashboard học tập cá nhân. Đây là dự án NCKH cấp trường, hướng tới đăng bài báo — độ chính xác, tính có căn cứ (groundedness) và khả năng đo lường quan trọng ngang với trải nghiệm người dùng.
+Mục đích: Chatbot ứng dụng RAG (Retrieval-Augmented Generation) giúp sinh viên luật học tập Luật Tố tụng Hình sự. Người dùng đặt câu hỏi về luật (điều luật, quy trình, tình huống) và nhận câu trả lời có căn cứ, luôn kèm trích dẫn Điều/Khoản cụ thể, chỉ dựa trên nguồn dữ liệu pháp luật đã nạp vào hệ thống. Bao gồm module trắc nghiệm (MCQ), vở ghi cá nhân, và dashboard học tập cá nhân. (Module tự luận đã được gỡ hẳn ngày 2026-10-11 vì vấn đề bản quyền tài liệu nguồn — xem mục "Feature — Gỡ module Tự luận + thay ngân hàng đề Trắc nghiệm" ở cuối file.) Đây là dự án NCKH cấp trường, hướng tới đăng bài báo — độ chính xác, tính có căn cứ (groundedness) và khả năng đo lường quan trọng ngang với trải nghiệm người dùng.
 Deadline: Hạn chót cứng 05/09/2026. Xây dựng đúng thứ tự các Phase bên dưới, cắt scope trước khi cắt deadline.
 Đối tượng người dùng:
 
@@ -980,3 +1026,39 @@ Case study (cho bài báo) - hai phát hiện chỉ lộ ra qua test thật, kh�
 Kết quả (run_evaluation.py qua HTTP endpoint thật, 2 lần với 2 tài khoản tạm):
 - User không có ghi chú (results.json đã commit): exact_match 100%, recall 100%, precision 73.7%, groundedness 100%, correct_refusal 100%, citation_grounding 100% (40/40), academic_usage 50% - so với baseline trước đó (95% / 95% / 69% / 100% / 100% / 100% / 50%): không hồi quy (câu thay đổi duy nhất chuyển từ fail sang pass, là dao động giữa các lần chạy - prompt luồng này giống hệt từng byte). academic_usage 50% là câu "Phân tích mối quan hệ LHS-LTTHS" vốn đã fail-closed từ baseline (trade-off đã chấp nhận).
 - User có 4 ghi chú ĐÚNG (suy đoán vô tội, phòng vệ chính đáng, chứng cứ, 1 ghi chú lịch học lạc đề): exact_match 100%, recall 100%, groundedness/refusal 100%; 6 câu eval khớp ghi chú, cả 6 gắn nhãn đúng và nhận xét ghi chú "phù hợp" với Điều tương ứng. citation_grounding 97.4%: 1 "vi phạm" là sai số đo của chính script eval, không phải vi phạm thật - Điều 25 (Quy chế 505/QĐ-VKSTC) nằm trong citations của câu trả lời live (citations chỉ được dựng từ legal_primary, tức Điều 25 đã được retrieve) và guard rule 9 trước khi gửi không báo gì; bước re-derive retrieval độc lập của run_evaluation.py không tất định, đúng như docstring `_compute_allowed_dieu_numbers` đã ghi. (Lần eval này chạy trước khi thêm rule (h); rule (h) chỉ nằm trong khối hướng dẫn ghi chú và 4 ghi chú eval không chứa số Điều nên placeholder không xuất hiện.)
+Feature — Gỡ module Tự luận + thay ngân hàng đề Trắc nghiệm (2026-10-11)
+Bối cảnh: nguồn tài liệu của ngân hàng tự luận ("Tôi hỏi bạn trả lời.pdf") có vấn đề bản quyền. Trước đó (commit bd98d90) đã gỡ 3/4 category Vận dụng/Bán trắc nghiệm/Tình huống theo yêu cầu của giáo viên hướng dẫn, chỉ giữ Lý thuyết (20 câu). Quyết định lần này: gỡ HẲN cả module thay vì tiếp tục duy trì với 1 category còn lại — vì rủi ro không nằm ở số lượng category mà ở chính nguồn tài liệu. Song song, ngân hàng 75 câu MCQ cũ được làm trống để nhóm luật nhập ngân hàng mới do chính họ biên soạn.
+
+Phạm vi đã gỡ:
+- Module Tự luận: 3 route frontend (/essay, /essay/[category], /essay/practice), 3 component riêng, lib/essayBankPresentation.ts; backend api/essay.py, models/essay.py, services/essay_service.py, prompts/essay_prompts.py; nửa essay trong question_bank_service.py và dashboard_service.py; field essay_bank_category khỏi weak-topics.
+- Minigame "Tôi hỏi · Bạn trả lời": gỡ cùng module (nó là 1 chế độ luyện tập bên trong Tự luận, không phải trang riêng).
+- 5 script ingestion (parse_question_bank.py, parse_question_bank_v2.py, add_essays_26_30.py, qb_llm_client.py, qb_prompts.py). Xóa hẳn chứ không gắn nhãn "DO NOT RUN": việc rút 111→20 câu ở bd98d90 là sửa tay JSON không có script nào đứng sau, nên chạy lại parse_question_bank_v2.py hôm nay sẽ âm thầm tái tạo đúng 3 category đã bị rút.
+- 3 file PDF nguồn: xóa khỏi ingestion/raw_documents/ và ~/Downloads/ (6 bản, tìm bằng cả tên lẫn hash). Các PDF nguồn chưa bao giờ được commit (raw_documents/ chỉ track .gitkeep).
+
+KHÔNG gỡ, cố ý: rubric_grading_service.py. File này được tách ra khỏi essay_service.py chính là để tính năng "Sinh tình huống minh họa" trong Chat tái dùng cùng một kỷ luật chấm theo vị trí rubric; scenario_grading_service.py vẫn phụ thuộc vào nó. Đã kiểm chứng bằng 3 lượt chat thật trên backend chạy thật sau khi gỡ: Lượt 1 sinh tình huống OK, Lượt 2 phát event grading_result với matched_points đầy đủ.
+
+Ngân hàng Trắc nghiệm:
+- question_bank.json để rỗng ([]), đúng schema, chờ ngân hàng mới. Thêm ingestion/question_bank.TEMPLATE.md mô tả định dạng cho nhóm luật (phải thêm ngoại lệ trong .gitignore vì *.md bị chặn). Template bỏ 3 field essay đã chết thay vì để null vô nghĩa.
+- Bỏ QUIZ_SET_COUNT = 15 hardcode, thay bằng get_quiz_set_ids() đọc từ chính dữ liệu, và bỏ 2 chỗ "?? 5" ở frontend — ngân hàng mới tự do chọn số bộ và số câu mỗi bộ, không cần sửa code. Một trong 2 chỗ đó còn là bug tiềm ẩn: tổng số câu tính bằng (số bộ đã làm × số câu của bộ ĐẦU TIÊN), sai ngay khi các bộ dài ngắn khác nhau.
+- Landing page: "5 bộ đề trắc nghiệm" vốn đã sai (thực tế 15 bộ) và còn quảng cáo câu Nhận định Đúng/Sai đã bỏ từ lâu.
+
+Chống attempt mồ côi (quan trọng khi ngân hàng mới vào):
+Thay ngân hàng KHÔNG đánh số lại quiz_set, và ngân hàng mới gần như chắc chắn cũng đánh số từ 1. Nếu đối chiếu lịch sử làm bài theo quiz_set thì "Bộ đề 01" mới toanh với câu hỏi hoàn toàn khác sẽ hiện "đã hoàn thành" kèm điểm cũ. Nên đối chiếu theo question_id: is_stale_attempt() loại một lượt làm bài trừ khi MỌI question_id nó ghi lại vẫn còn trong ngân hàng. Đây là bộ lọc lúc ĐỌC, không xóa dòng nào. Đã test 3 kịch bản trên backend thật: ngân hàng rỗng + attempt mồ côi → mọi số về 0; ngân hàng còn chứa question_id đó → vẫn tính bình thường 1/1 100% (không loại oan); ngân hàng mới dùng lại quiz_set 1 với question_id khác → bộ đề hiện "chưa làm".
+
+Xử lý dữ liệu người dùng (Supabase):
+- quiz_attempts (30 dòng, 14 user): GIỮ NGUYÊN. Câu MCQ do nhóm luật tự soạn, không có vấn đề bản quyền; is_stale_attempt đã xử lý đúng nên giữ lại không tốn gì.
+- essay_attempts (45 dòng, 16 user): ĐÃ XÓA SẠCH DÒNG (45 → 0), giữ nguyên bảng, không DROP TABLE. Lý do: module đã gỡ nên dữ liệu vĩnh viễn không đọc được qua app; đáng chú ý hơn, bảng này lưu NGUYÊN VĂN 172 ý rubric, trong đó 100 ý thuộc 3 category đã gỡ vì bản quyền — tức xóa khỏi question_bank.json và xóa PDF vẫn chưa gỡ hết, nội dung còn sống trong DB production. Trước khi xóa đã xuất bản RÚT GỌN để còn thống kê cho bài báo: chỉ 6 cột user_id/question_id/category/created_at/matched_count/missing_count, cố ý KHÔNG xuất user_answer/matched_points/missing_points/feedback (số ý đúng-thiếu vẫn giữ được bằng cách đếm độ dài mảng). Vị trí bản lưu trữ: ~/Documents/TTHS-Buddy-data-archive/ — NGOÀI repo có chủ đích, kèm README và SHA256 của từng file. Không commit, không chia sẻ rộng.
+- chat_query_logs (972 dòng): CHE nội dung, KHÔNG xóa dòng. Đối chiếu với bản ngân hàng đầy đủ nhất lấy từ git history (afc3997: 75 MCQ + 111 tự luận) tìm được 60 dòng có câu hỏi trùng/gần trùng ngân hàng đã gỡ — toàn bộ 60 đều là câu TỰ LUẬN, 0 câu MCQ; 49 dòng của tài khoản dev/test, 11 của user thật; tất cả nằm trong 3 ngày 2026-08-07 → 08-09, đúng giai đoạn xây module. Đặt question và rewritten_question = "[Nội dung đã được gỡ]". Sau đó phát hiện thêm 1 dòng thứ 61: câu hỏi gốc của user chỉ 15 ký tự nên không khớp, nhưng bước query-understanding viết lại nó thành câu khớp ngân hàng — bài học: nội dung có thể xuất hiện ở rewritten_question mà không xuất hiện ở question, phải quét cả hai cột. Dòng này chỉ che rewritten_question, giữ nguyên câu user tự gõ. Danh sách 61 id lưu ở thư mục archive (chỉ metadata, không nội dung).
+  Cố ý GIỮ NGUYÊN: answer, citations, related_articles, retrieved_chunks, conversation_id, created_at — nhờ vậy dieu_studied_count và Dashboard không đổi (đã đo trước/sau cho cả 5 user bị ảnh hưởng: 18/43/27/34/42 không đổi).
+
+Rủi ro còn lại — ghi đúng sắc thái, KHÔNG phải "đã xóa sạch":
+(1) Cột answer của chat_query_logs: 93 dòng có ≥12 từ liên tiếp trùng với đáp án mẫu/rubric của câu tự luận đã gỡ, sau khi đã loại các đoạn vốn là trích dẫn văn bản luật. Chuỗi trùng DÀI NHẤT toàn bảng là 22 từ; không dòng nào đạt 30+ từ; 56/93 chỉ ở mức 12-14 từ. Đánh giá: PHẦN LỚN là dương tính giả — văn phong pháp lý tiếng Việt rất khuôn mẫu, câu trả lời do RAG sinh ra từ điều luật còn rubric cũng viết từ chính điều luật đó, nên hội tụ vài chục từ là tự nhiên; ngoài ra phép loại trừ dùng corpus luật HIỆN TẠI trong khi corpus đã được nạp lại/thay nhiều lần, nên cách diễn đạt hồi tháng 8/2026 có thể không còn trong corpus hôm nay và bị gắn cờ oan. Quyết định: KHÔNG che, vì che answer sẽ phá lịch sử hội thoại của 11 user thật mà không giảm được rủi ro thực chất. Danh sách 93 id lưu ở thư mục archive để sau truy lại được.
+(2) citations và related_articles có 39 và 28 dòng khớp, nhưng khớp ở trường dieu_title — tức TIÊU ĐỀ ĐIỀU LUẬT (27-36 ký tự), là văn bản luật công khai, không phải nội dung ngân hàng. Một số câu tự luận ngắn được đặt gần giống tiêu đề Điều. Không xử lý.
+(3) Nội dung vẫn còn trong git history — xem mục "ĐIỀU KIỆN BẮT BUỘC TRƯỚC KHI MỞ PUBLIC / CẤP QUYỀN NGƯỜI NGOÀI" ở đầu file. CHƯA thực hiện.
+(4) 561/972 dòng chat_query_logs thuộc 21 tài khoản đã bị xóa khỏi Supabase Auth (dữ liệu mồ côi). Không liên quan bản quyền, chưa xử lý, chỉ ghi nhận.
+
+[x] Chạy lại 29 câu evaluation sau khi gỡ module — xác nhận không hồi quy (gỡ Tự luận không đụng gì tới RAG).
+
+Kết quả (run_evaluation.py qua HTTP endpoint thật, tài khoản tạm đã xóa sau khi chạy):
+exact_match 100%, recall 100%, groundedness 100% (cả 3 category), correct_refusal 100%, academic_usage 50% — tất cả bằng đúng baseline. mean_precision 73.7% → 77.3% (dao động giữa các lần chạy, không phải cải thiện thật).
+Khác biệt duy nhất: citation_grounding 100% → 99.3% (mean) / 97.6% (pooled), do 1/42 Điều bị đánh ungrounded ở câu "Phân tích vai trò của chứng cứ và nguồn chứng cứ...". ĐÃ KIỂM CHỨNG đây là sai số đo của chính script eval, không phải vi phạm thật: Điều 108 NẰM TRONG citations của câu trả lời live (returned_dieu_numbers = 108/3/86/87), mà citations chỉ được dựng từ legal_primary — tức Điều 108 thực sự đã được retrieve; chỉ có bước re-derive retrieval độc lập của run_evaluation.py (allowed_dieu_numbers) không chứa nó. Bước re-derive này không tất định (HyDE + LLM re-ranking), đúng như docstring _compute_allowed_dieu_numbers đã ghi, và hiện tượng y hệt đã xảy ra ở lần eval của feature Vở ghi.

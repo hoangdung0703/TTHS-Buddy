@@ -8,6 +8,21 @@ and includes a quiz module and a personal study dashboard.
 Stack: Next.js (TypeScript) frontend, FastAPI (Python) backend, Supabase (Postgres + Auth),
 Qdrant Cloud (vector search), Gemini (embeddings + generation).
 
+## ⚠️ Required before making this repo public or adding outside collaborators
+
+**Not done yet.** `ingestion/question_bank.json` is an empty array today, but its history still
+contains 20 essay questions withdrawn over source-copyright concerns, plus the 75 old MCQ
+questions. Deleting a file in a new commit does not remove it from history - anyone with a clone
+can recover it with `git show <old commit>:ingestion/question_bank.json`.
+
+Before this repo goes public, gains an outside collaborator, or is linked to anyone outside the
+project, that path must be stripped from every commit with `git filter-repo`, run on a separate
+clone with a full `--mirror` backup taken first. This rewrites every commit hash, so the whole
+team must re-clone, and the Vercel and Render deployments must be re-verified afterwards.
+
+See requirements.md ("ĐIỀU KIỆN BẮT BUỘC TRƯỚC KHI MỞ PUBLIC / CẤP QUYỀN NGƯỜI NGOÀI") for the
+exact commands and the full list of consequences.
+
 ## Project structure
 
 ```

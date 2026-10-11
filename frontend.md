@@ -1,6 +1,27 @@
 TTHS Buddy — Frontend Design Reference
 File tham chiếu thiết kế UI — đọc cùng với requirements.md khi build giao diện (Phase 8 và các phase liên quan UI).
 
+LƯU Ý (2026-10-11): module Tự luận (route /essay, /essay/[category], /essay/practice "Tôi hỏi ·
+Bạn trả lời") đã được GỠ HẲN khỏi sản phẩm — xem requirements.md mục "Feature — Gỡ module Tự
+luận + thay ngân hàng đề Trắc nghiệm". Các mục bên dưới có nhắc "Essay" là GHI CHÉP LỊCH SỬ của
+quyết định thiết kế lúc đó, cố ý giữ nguyên không sửa lại, vì chúng giải thích vì sao các
+component dùng chung (Card, Button, ProgressRing, quy tắc serif/sans) có hình dạng như hiện nay.
+Khi áp dụng cho trang mới, đọc chúng như quy tắc chung của design system, bỏ qua phần ví dụ trỏ
+tới màn Essay đã không còn.
+
+Thay đổi UI kèm theo việc gỡ module:
+- Sidebar: bỏ mục "Tự luận" và mục con "Tôi hỏi · Bạn trả lời". NAV_ITEMS còn 4 mục: Tổng quan,
+  Trợ lý AI, Trắc nghiệm, Vở ghi.
+- Dashboard: bỏ khối "Tự luận theo ngân hàng". Hero rotation 3 variant (essay/quiz/minigame) bị
+  gỡ hẳn thay vì rút còn 1 — còn đúng 1 variant thì bộ máy xoay vòng chỉ còn là code chết chạy
+  `% 1`. Hero giờ render thẳng, và tự đổi sang gợi ý Chat khi ngân hàng đề rỗng (không gợi ý
+  "làm bộ đề" khi không có bộ đề nào).
+- Quiz: thêm trạng thái trống "Ngân hàng đề đang được cập nhật" — không hiện lưới bộ đề, không
+  hiện vòng tiến độ 0/0. Số bộ đề và số câu mỗi bộ lấy từ dữ liệu, không hardcode; dòng "mỗi bộ
+  N câu" chỉ hiện khi mọi bộ thật sự cùng số câu.
+- ScenarioGradingResult.tsx (Chat) GIỮ NGUYÊN: ngôn ngữ thị giác matched/missing (emerald-600 /
+  amber-700, không điểm số) nay sống trong Chat, không còn là "tái dùng từ Essay".
+
 1. Định hướng phong cách
 Phong cách: Academic/legal-tech hiện đại — gọn gàng, đáng tin cậy, không phô trương. Cảm giác giống công cụ nghiên cứu pháp lý chuyên nghiệp, không phải app giải trí.
 
