@@ -27,8 +27,8 @@ def _rate_limit_key(request: Request) -> str:
 
 
 # Generic ceiling for every other route (mostly GET reads) - loose enough to never bother a real
-# user, tight enough to blunt naive scripted spam. Write routes that call an LLM (chat query,
-# essay submit) get a much stricter override. Applied via an explicit @limiter.limit(...) on
+# user, tight enough to blunt naive scripted spam. Write routes that call an LLM (chat query)
+# get a much stricter override. Applied via an explicit @limiter.limit(...) on
 # EVERY route (including DEFAULT_RATE_LIMIT ones) rather than Limiter's default_limits - see
 # add_rate_limit_middleware's docstring in core/middleware.py for why default_limits silently
 # doesn't work on this FastAPI version.

@@ -3,7 +3,7 @@
 TTHS Buddy is an AI study assistant for Vietnamese Criminal Procedure Law (Bộ luật Tố tụng
 Hình sự), built as an NCKH (student research) project. It answers student questions with
 citation-grounded RAG over the actual statute text (not the model's internal knowledge),
-and includes a quiz module, an essay-grading module, and a personal study dashboard.
+and includes a quiz module and a personal study dashboard.
 
 Stack: Next.js (TypeScript) frontend, FastAPI (Python) backend, Supabase (Postgres + Auth),
 Qdrant Cloud (vector search), Gemini (embeddings + generation).
@@ -13,8 +13,8 @@ Qdrant Cloud (vector search), Gemini (embeddings + generation).
 ```
 frontend/          Next.js app (App Router), Tailwind, Supabase Auth client
 backend/           FastAPI app
-  app/api/         Route handlers (chat, quiz, essay, dashboard, health)
-  app/services/     Business logic (RAG, quiz grading, essay grading, dashboard aggregation)
+  app/api/         Route handlers (chat, quiz, dashboard, health)
+  app/services/     Business logic (RAG, quiz grading, dashboard aggregation)
   app/models/       Pydantic request/response models
   app/core/         Settings, Supabase/Qdrant client setup, JWT auth, logging
   migrations/       Hand-written SQL, run manually in the Supabase SQL editor (no ORM/migration
@@ -77,13 +77,13 @@ This project has no ORM/migration runner - schema changes are plain `.sql` files
 
 ```
 0001_chat_query_logs.sql   Phase 4 - logs every chat query for Phase 9 evaluation
-0002_quiz_attempts.sql     Phase 5a - quiz submissions, feeds rotation + dashboard weak-topics
-0003_essay_attempts.sql    Phase 5b - essay submissions, same purpose for the essay module
+0002_quiz_attempts.sql     Phase 5a - quiz submissions, feeds dashboard weak-topics
+0003_essay_attempts.sql    Phase 5b - essay submissions (module removed; migration kept as history)
 ```
 All three tables have RLS enabled but no policies - the backend only ever accesses them via the
 Supabase service-role key, which bypasses RLS. Reads/writes degrade gracefully (log + continue)
-if a table doesn't exist yet, so the app still runs before migrations are applied - quiz/essay
-rotation and dashboard stats just report no history until the tables exist.
+if a table doesn't exist yet, so the app still runs before migrations are applied - quiz
+progress and dashboard stats just report no history until the tables exist.
 
 ## Running ingestion
 
@@ -109,14 +109,10 @@ committed - see `.gitignore`) and are listed in `ingestion/document_registry.py`
    points instead of duplicating them. Also ensures the 3 payload indexes the backend filters on
    (`source_type`, `dieu_number`, `source_document`) exist.
 
-3. **Parse the question bank** (`ingestion/question_bank.json`, committed - law-student-authored
-   content, not third-party copyrighted like the PDFs above):
-   ```
-   python -m ingestion.parse_question_bank
-   ```
-   Parses `Câu hỏi trắc nghiệm.pdf` (MCQ) and `Tôi hỏi bạn trả lời.pdf` (Đúng/Sai + essay) into
-   the unified schema used by the quiz and essay modules. Prints a full review dump - spot-check
-   before trusting a fresh run, per the Phase 5a methodology in `requirements.md`.
+3. **The question bank** (`ingestion/question_bank.json`, committed - law-student-authored
+   content, not third-party copyrighted like the PDFs above) is maintained by hand, not generated
+   by a script. The PDF parsers that produced the original bank were removed along with the essay
+   module; see the file's schema template before adding questions.
 
 ## Phase 9 evaluation
 
@@ -145,13 +141,11 @@ invalid/missing token returns 401.
 | GET | `/api/health` | Liveness check, `{"status": "ok"}` |
 | GET | `/api/chat/suggestions` | Static cold-start question chips |
 | POST | `/api/chat/query` | Ask a question; grounded RAG answer + citations + follow-up chips |
-| GET | `/api/quiz/sets` | List the 5 MCQ quiz sets |
+| GET | `/api/quiz/sets` | List the MCQ quiz sets |
 | POST | `/api/quiz/generate` | Get a rotation-selected batch of questions for a quiz set |
 | POST | `/api/quiz/submit` | Grade MCQ answers, persist the attempt |
-| POST | `/api/essay/question` | Get a rotation-selected essay question |
-| POST | `/api/essay/submit` | LLM-as-judge grading against the question's rubric, persist the attempt |
 | GET | `/api/dashboard/keywords-yesterday` | Điều asked about yesterday (VN time), grouped + counted |
-| GET | `/api/dashboard/weak-topics` | Topics scoring under 50% across quiz + essay attempts |
+| GET | `/api/dashboard/weak-topics` | Topics scoring under 50% across quiz attempts |
 | GET | `/api/dashboard/stats` | `{total_quiz_attempts, average_score, dieu_studied_count}` |
 
 See `requirements.md` for full request/response shapes and the design rationale behind each route.

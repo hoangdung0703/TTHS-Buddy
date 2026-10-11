@@ -13,7 +13,7 @@ interface AuthenticatedLayoutProps {
   children: ReactNode;
 }
 
-// Shared shell for every page behind login (chat, quiz, essay, dashboard):
+// Shared shell for every page behind login (chat, quiz, dashboard):
 // verifies the Supabase session, then renders the sidebar + top bar around the page content.
 //
 // Below the "md" breakpoint the fixed-width Sidebar (see requirements.md "Sidebar mobile

@@ -3,11 +3,9 @@
 import {
   LayoutGrid,
   MessageSquare,
-  MessageSquareQuote,
   ListChecks,
   NotebookPen,
   Pencil,
-  PenLine,
   Plus,
   Scale,
   Search,
@@ -31,7 +29,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Tổng quan", icon: LayoutGrid },
   { href: "/chat", label: "Trợ lý AI", icon: MessageSquare },
   { href: "/quiz", label: "Trắc nghiệm", icon: ListChecks },
-  { href: "/essay", label: "Tự luận", icon: PenLine },
   { href: "/notes", label: "Vở ghi", icon: NotebookPen }
 ];
 
@@ -188,23 +185,6 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
             </Link>
           );
         })}
-
-        {/* TODO: Phase 5a/5b v2 backend chưa xong, dùng mock tạm (xem requirements.md
-            "Phase 5a/5b v2") - entry point riêng cho minigame vì nó không phải 1 trang cùng
-            cấp với Trắc nghiệm/Tự luận mà là 1 chế độ luyện tập bên trong Tự luận. */}
-        <Link
-          href="/essay/practice"
-          onClick={onNavigate}
-          className={cn(
-            "ml-6 flex min-h-11 items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-            pathname === "/essay/practice"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          )}
-        >
-          <MessageSquareQuote className="h-3.5 w-3.5" />
-          Tôi hỏi · Bạn trả lời
-        </Link>
       </nav>
 
       <div className="px-3 pt-4">

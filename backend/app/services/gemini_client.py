@@ -97,8 +97,8 @@ def generate_answer(system_prompt: str, user_prompt: str, settings: Settings, re
     url = GENERATE_CONTENT_URL_TEMPLATE.format(model=settings.gemini_chat_model)
     generation_config: dict[str, object] = {"temperature": 0.1}
     if response_json:
-        # Used by essay_service.py's grading call and query_understanding_service.py's rewrite
-        # call - structured output means callers can rely on named fields (e.g. classify each
+        # Used by scenario_grading_service.py's grading call and query_understanding_service.py's
+        # rewrite call - structured output means callers can rely on named fields (e.g. classify each
         # rubric point by array position, or read is_out_of_scope as its own boolean) instead of
         # fuzzy-matching free text.
         generation_config["responseMimeType"] = "application/json"

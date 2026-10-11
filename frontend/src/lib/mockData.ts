@@ -7,8 +7,6 @@ import type {
   ConversationDetailResponse,
   ConversationSummary,
   DashboardStats,
-  EssayQuestion,
-  EssaySubmitResponse,
   KeywordYesterday,
   QuizAnswer,
   QuizQuestion,
@@ -230,81 +228,6 @@ export function gradeMockQuiz(answers: QuizAnswer[]): QuizSubmitResponse {
   return { score, total: results.length, results };
 }
 
-export const MOCK_ESSAY_QUESTIONS: EssayQuestion[] = [
-  {
-    question_id: "e-119-1",
-    question_text:
-      "Trình bày điều kiện áp dụng biện pháp tạm giam theo Điều 119 BLTTHS 2015 và ý nghĩa của việc giới hạn các điều kiện này.",
-    dieu_number: "119",
-    topic_category: "Biện pháp ngăn chặn"
-  },
-  {
-    question_id: "e-23-1",
-    question_text:
-      "Phân tích nội dung nguyên tắc suy đoán vô tội theo Điều 23 BLTTHS 2015 và các hệ quả pháp lý trực tiếp của nguyên tắc này.",
-    dieu_number: "23",
-    topic_category: "Nguyên tắc cơ bản"
-  }
-];
-
-const MOCK_ESSAY_KEY_POINTS: Record<string, { required: string[]; suggestedDieu: string[] }> = {
-  "e-119-1": {
-    required: [
-      "Tạm giam chỉ áp dụng đối với bị can, bị cáo về tội đặc biệt nghiêm trọng, tội rất nghiêm trọng",
-      "Đối với tội nghiêm trọng/ít nghiêm trọng chỉ áp dụng khi có thêm điều kiện cụ thể (bỏ trốn, cản trở điều tra, tiếp tục phạm tội...)",
-      "Mục đích là giới hạn việc hạn chế quyền tự do thân thể, tránh lạm dụng biện pháp ngăn chặn"
-    ],
-    suggestedDieu: ["119", "109"]
-  },
-  "e-23-1": {
-    required: [
-      "Người bị buộc tội được coi là không có tội cho đến khi có bản án kết tội có hiệu lực pháp luật",
-      "Nghĩa vụ chứng minh thuộc về cơ quan tiến hành tố tụng, không phải người bị buộc tội",
-      "Lời nhận tội không phải là căn cứ duy nhất để kết tội"
-    ],
-    suggestedDieu: ["23", "15", "98"]
-  }
-};
-
-// Simple keyword-overlap heuristic to demo the matched/missing structure without a real LLM judge.
-export function gradeMockEssay(questionId: string, userAnswer: string): EssaySubmitResponse {
-  const rubric = MOCK_ESSAY_KEY_POINTS[questionId];
-
-  if (rubric === undefined) {
-    return {
-      matched_points: [],
-      missing_points: [],
-      feedback: "Không tìm thấy rubric cho câu hỏi này.",
-      suggested_dieu: []
-    };
-  }
-
-  const normalizedAnswer = userAnswer.toLowerCase();
-  const matched: string[] = [];
-  const missing: string[] = [];
-
-  rubric.required.forEach((point) => {
-    const firstKeyword = point.split(" ").slice(0, 3).join(" ").toLowerCase();
-    if (normalizedAnswer.includes(firstKeyword.slice(0, 6))) {
-      matched.push(point);
-    } else {
-      missing.push(point);
-    }
-  });
-
-  const feedback =
-    missing.length === 0
-      ? "Câu trả lời đã bám sát các ý chính trong rubric. Làm rõ thêm ví dụ thực tiễn sẽ giúp bài làm đầy đủ hơn."
-      : "Câu trả lời đã nêu được một phần nội dung, còn thiếu một số ý quan trọng so với rubric. Xem lại các ý còn thiếu bên dưới.";
-
-  return {
-    matched_points: matched,
-    missing_points: missing,
-    feedback,
-    suggested_dieu: rubric.suggestedDieu
-  };
-}
-
 export const MOCK_KEYWORDS_YESTERDAY: KeywordYesterday[] = [
   { dieu_number: "119", keyword: "Tạm giam", count: 4 },
   { dieu_number: "120", keyword: "Điều kiện tạm giam", count: 3 },
@@ -315,9 +238,9 @@ export const MOCK_KEYWORDS_YESTERDAY: KeywordYesterday[] = [
 ];
 
 export const MOCK_WEAK_TOPICS: WeakTopic[] = [
-  { topic_category: "Biện pháp ngăn chặn", score_percentage: 42, essay_bank_category: "van_dung" },
-  { topic_category: "Thẩm quyền xét xử", score_percentage: 55, essay_bank_category: "tinh_huong" },
-  { topic_category: "Chứng cứ và chứng minh", score_percentage: 61, essay_bank_category: "ly_thuyet" }
+  { topic_category: "Biện pháp ngăn chặn", score_percentage: 42 },
+  { topic_category: "Thẩm quyền xét xử", score_percentage: 55 },
+  { topic_category: "Chứng cứ và chứng minh", score_percentage: 61 }
 ];
 
 export const MOCK_DASHBOARD_STATS: DashboardStats = {

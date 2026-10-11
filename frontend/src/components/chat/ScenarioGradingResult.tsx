@@ -3,10 +3,9 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import type { ChatStreamGradingEvent } from "@/lib/types";
 
 // Reuses the exact matched/missing visual language already built (and WCAG AA contrast-audited -
-// see EssayBankRunner.tsx / commit 69f1454) for the Essay module: emerald-600 for matched,
-// amber-700 (not amber-600) for missing, icon + plain text rows rather than a filled badge.
-// Deliberately no score/percentage anywhere - "Sinh tình huống minh họa" Lượt 2's core philosophy
-// (chữa bài, không chấm điểm), same as Essay grading already has no score field either.
+// commit 69f1454): emerald-600 for matched, amber-700 (not amber-600) for missing, icon + plain
+// text rows rather than a filled badge. Deliberately no score/percentage anywhere - "Sinh tình
+// huống minh họa" Lượt 2's core philosophy is chữa bài, không chấm điểm.
 interface ScenarioGradingResultProps {
   result: ChatStreamGradingEvent;
 }

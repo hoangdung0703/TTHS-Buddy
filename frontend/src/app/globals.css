@@ -6,7 +6,7 @@
   /* Editorial palette (design/figma-export reference), now the ONE theme for the whole
      app - was previously scoped to Welcome/Sign in/Sign up only via a separate
      tailwind.config.ts "editorial" namespace; that namespace has been folded into these
-     semantic tokens so every component (dashboard, chat, quiz, essay included) picks it
+     semantic tokens so every component (dashboard, chat, quiz included) picks it
      up automatically. Source hex, for reference when re-deriving these HSL triplets:
      background #F5F0E8, card #FAF7F2, foreground #1A1830, muted-foreground #6B6580,
      primary/navy #1E2460, accent/gold #B89A52, secondary #E8E2D6, muted #DDD8CE. */
@@ -24,7 +24,7 @@
   --muted-foreground: 253 12% 45%;
   --accent: 42 42% 52%;
   --accent-foreground: 245 33% 14%;
-  /* Functional/status red - deliberately independent of the brand re-theme. Quiz/essay
+  /* Functional/status red - deliberately independent of the brand re-theme. Quiz
      correct-incorrect states and dashboard "needs review" thresholds use explicit
      Tailwind reds/ambers/emeralds directly (see progress-bar.tsx, quiz/page.tsx), not
      this token, but keep it a genuine red regardless. */

@@ -26,7 +26,7 @@ def add_rate_limit_middleware(app: FastAPI) -> None:
     # finds a handler and treats every request as exempt). Confirmed with a 70-request burst
     # against an undecorated GET route: all 70 returned 200, zero were limited. Every rate-limited
     # route below is therefore decorated directly with @limiter.limit(...) - see chat.py,
-    # quiz.py, essay.py, dashboard.py, legal.py - which does NOT depend on this middleware at
+    # quiz.py, dashboard.py, legal.py - which does NOT depend on this middleware at
     # all (the decorator's own wrapper calls the limiter check directly). app.state.limiter is
     # still set here since it's what those decorators' underlying Limiter instance is attached
     # to for FastAPI app introspection.

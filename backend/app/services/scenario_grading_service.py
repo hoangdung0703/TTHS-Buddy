@@ -1,8 +1,8 @@
 """Lượt 2 of "Sinh tình huống minh họa" (see requirements.md): LLM-as-judge qualitative grading of
 the student's free-text analysis of a Lượt 1 scenario, against that scenario's own hidden
 key_points rubric (persisted by scenario_service.generate_scenario via chat_log_service). Reuses
-rubric_grading_service's positional matched/missing parsing (same principle as essay_service.py) -
-NO score/percentage in any form, per requirements.md's core philosophy for this feature line.
+rubric_grading_service's positional matched/missing parsing - NO score/percentage in any form, per
+requirements.md's core philosophy for this feature line.
 """
 from __future__ import annotations
 

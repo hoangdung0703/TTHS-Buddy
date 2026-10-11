@@ -1,10 +1,10 @@
-"""Phase 7: aggregates data already logged by Phase 4 (chat_query_logs), Phase 5a
-(quiz_attempts) and Phase 5b (essay_attempts) into the dashboard's 3 views. No new logging is
-introduced here - everything is computed on read from tables that already exist.
+"""Phase 7: aggregates data already logged by Phase 4 (chat_query_logs) and Phase 5a
+(quiz_attempts) into the dashboard's views. No new logging is introduced here - everything is
+computed on read from tables that already exist.
 """
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -17,7 +17,6 @@ logger = get_logger(__name__)
 
 CHAT_QUERY_LOGS_TABLE = "chat_query_logs"
 QUIZ_ATTEMPTS_TABLE = "quiz_attempts"
-ESSAY_ATTEMPTS_TABLE = "essay_attempts"
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 WEAK_TOPIC_THRESHOLD_PERCENT = 50
@@ -92,56 +91,19 @@ def _accumulate_quiz_topic_scores(supabase_client: Client, user_id: str,
                 correct[topic] += 1
 
 
-def _accumulate_essay_topic_scores(supabase_client: Client, user_id: str,
-                                    correct: dict[str, int], total: dict[str, int],
-                                    essay_bank_category_votes: dict[str, Counter]) -> None:
-    try:
-        response = (
-            supabase_client.table(ESSAY_ATTEMPTS_TABLE)
-            .select("topic_category, category, matched_points, missing_points")
-            .eq("user_id", user_id)
-            .execute()
-        )
-    except Exception:
-        logger.exception("Failed to read essay_attempts for weak-topics (user_id=%s)", user_id)
-        return
-
-    for row in response.data or []:
-        topic = row.get("topic_category")
-        if not topic:
-            continue
-        matched = len(row.get("matched_points") or [])
-        missing = len(row.get("missing_points") or [])
-        if matched + missing == 0:
-            continue
-        total[topic] += matched + missing
-        correct[topic] += matched
-        # "category" (ly_thuyet/van_dung/ban_trac_nghiem/tinh_huong) is the real essay bank the
-        # attempt was answered under (migration 0006) - a topic_category can appear in more than
-        # one bank in question_bank.json, so we take the bank the user actually practiced most
-        # under that topic, rather than guessing a bank from the topic_category text client-side.
-        if row.get("category"):
-            essay_bank_category_votes[topic][row["category"]] += 1
-
-
 def get_weak_topics(supabase_client: Client, user_id: str) -> list[dict[str, Any]]:
     correct: dict[str, int] = defaultdict(int)
     total: dict[str, int] = defaultdict(int)
-    essay_bank_category_votes: dict[str, Counter] = defaultdict(Counter)
 
     _accumulate_quiz_topic_scores(supabase_client, user_id, correct, total)
-    _accumulate_essay_topic_scores(supabase_client, user_id, correct, total, essay_bank_category_votes)
 
     weak_topics = []
     for topic, topic_total in total.items():
         score_percentage = round(100 * correct[topic] / topic_total)
         if score_percentage < WEAK_TOPIC_THRESHOLD_PERCENT:
-            votes = essay_bank_category_votes.get(topic)
-            essay_bank_category = votes.most_common(1)[0][0] if votes else None
             weak_topics.append({
                 "topic_category": topic,
                 "score_percentage": score_percentage,
-                "essay_bank_category": essay_bank_category,
             })
 
     weak_topics.sort(key=lambda t: t["score_percentage"])
@@ -162,22 +124,6 @@ def get_dashboard_stats(supabase_client: Client, user_id: str) -> dict[str, Any]
                 attempt_percentages.append(100 * row["score"] / row["total"])
     except Exception:
         logger.exception("Failed to read quiz_attempts for stats (user_id=%s)", user_id)
-
-    try:
-        essay_response = (
-            supabase_client.table(ESSAY_ATTEMPTS_TABLE)
-            .select("matched_points, missing_points")
-            .eq("user_id", user_id)
-            .execute()
-        )
-        for row in essay_response.data or []:
-            total_quiz_attempts += 1
-            matched = len(row.get("matched_points") or [])
-            missing = len(row.get("missing_points") or [])
-            if matched + missing > 0:
-                attempt_percentages.append(100 * matched / (matched + missing))
-    except Exception:
-        logger.exception("Failed to read essay_attempts for stats (user_id=%s)", user_id)
 
     average_score = round(sum(attempt_percentages) / len(attempt_percentages)) if attempt_percentages else 0
 

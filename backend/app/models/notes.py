@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class NoteUpsertRequest(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     # max_length: generous headroom for a real study note, tight enough to block spam-sized
-    # payloads - same reasoning as EssaySubmitRequest.user_answer.
+    # payloads.
     content: str = Field(min_length=1, max_length=20000)
     tag: str | None = Field(default=None, max_length=100)
 

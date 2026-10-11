@@ -1,11 +1,9 @@
 import {
   deleteMockConversation,
-  gradeMockEssay,
   gradeMockQuiz,
   MOCK_CHAT_SUGGESTIONS,
   MOCK_CONVERSATIONS,
   MOCK_DASHBOARD_STATS,
-  MOCK_ESSAY_QUESTIONS,
   MOCK_KEYWORDS_YESTERDAY,
   MOCK_QUIZ_QUESTIONS,
   MOCK_QUIZ_SETS,
@@ -15,7 +13,6 @@ import {
   resolveMockConversationDetail,
   withMockDelay
 } from "@/lib/mockData";
-import { ESSAY_BANK_DESCRIPTIONS, ESSAY_BANK_SUBTITLES, ESSAY_BANK_TITLES } from "@/lib/essayBankPresentation";
 import type {
   ChatStreamAnswerDeltaEvent,
   ChatStreamCitationsEvent,
@@ -26,20 +23,11 @@ import type {
   ConversationListResponse,
   ConversationSummary,
   DashboardStats,
-  EssayBankCategory,
-  EssayBankQuestionListItem,
-  EssayBankSummary,
-  EssayBankV2,
-  EssayQuestion,
-  EssayQuestionV2,
-  EssaySubmitRequest,
-  EssaySubmitResponse,
   KeywordYesterday,
   LegalArticle,
   Note,
   NoteListResponse,
   NoteUpsertRequest,
-  PracticeQuestionV2,
   QuizGenerateResponse,
   QuizQuestion,
   QuizSetSummary,
@@ -295,27 +283,6 @@ export async function submitQuiz(request: QuizSubmitRequest): Promise<QuizSubmit
   });
 }
 
-export async function getEssayQuestion(excludeQuestionId?: string): Promise<EssayQuestion> {
-  if (isMockDataEnabled()) {
-    const candidates = MOCK_ESSAY_QUESTIONS.filter((question) => question.question_id !== excludeQuestionId);
-    const nextQuestion = candidates[0] ?? MOCK_ESSAY_QUESTIONS[0];
-    return withMockDelay(nextQuestion);
-  }
-
-  return apiFetch<EssayQuestion>("/api/essay/question", { method: "POST", body: JSON.stringify({}) });
-}
-
-export async function submitEssay(request: EssaySubmitRequest): Promise<EssaySubmitResponse> {
-  if (isMockDataEnabled()) {
-    return withMockDelay(gradeMockEssay(request.question_id, request.user_answer));
-  }
-
-  return apiFetch<EssaySubmitResponse>("/api/essay/submit", {
-    method: "POST",
-    body: JSON.stringify(request)
-  });
-}
-
 export async function getKeywordsYesterday(): Promise<KeywordYesterday[]> {
   if (isMockDataEnabled()) {
     return withMockDelay(MOCK_KEYWORDS_YESTERDAY);
@@ -343,10 +310,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 }
 
 // ============================================================================
-// Phase 5a/5b v2 (requirements.md "Phase 5a/5b v2" Buoc B) - 15 bộ x 5 câu
-// mcq_4choice (Quiz) và 4 ngân hàng theo category, 111 câu (Essay). Không đi
-// qua NEXT_PUBLIC_USE_MOCK_DATA - luôn gọi backend thật, thay thế hoàn toàn
-// lib/mockDataV2.ts (đã xóa).
+// Trắc nghiệm v2 (requirements.md "Phase 5a/5b v2" Buoc B). Không đi qua
+// NEXT_PUBLIC_USE_MOCK_DATA - luôn gọi backend thật.
 // ============================================================================
 
 export async function getQuizSetsV2(): Promise<QuizSetSummaryV2[]> {
@@ -373,36 +338,10 @@ export async function submitQuizV2(quizSetId: number, answers: QuizSubmitRequest
   });
 }
 
-function toEssayBankV2(summary: EssayBankSummary): EssayBankV2 {
-  const attemptedCount = summary.questions_practiced;
-  const kind = attemptedCount === 0 ? "untouched" : attemptedCount >= summary.total_questions ? "complete" : "started";
-
-  return {
-    category: summary.category,
-    title: ESSAY_BANK_TITLES[summary.category],
-    subtitle: ESSAY_BANK_SUBTITLES[summary.category],
-    description: ESSAY_BANK_DESCRIPTIONS[summary.category],
-    total_questions: summary.total_questions,
-    progress: { kind, attempted_count: attemptedCount }
-  };
-}
-
-export async function getEssayBanksV2(): Promise<EssayBankV2[]> {
-  const { banks } = await apiFetch<{ banks: EssayBankSummary[] }>("/api/essay/banks");
-  return banks.map(toEssayBankV2);
-}
-
-export async function getEssayBankQuestionListV2(category: EssayBankCategory): Promise<EssayBankQuestionListItem[]> {
-  const { questions } = await apiFetch<{ category: EssayBankCategory; questions: EssayBankQuestionListItem[] }>(
-    `/api/essay/banks/${category}/questions`
-  );
-  return questions;
-}
-
 // ============================================================================
 // Vở ghi cá nhân (requirements.md "Feature - Vở ghi cá nhân + Chat trả lời dựa trên nội dung ghi
 // chú"). Storage/CRUD foundation only - NOT wired into Chat yet, always hits the real backend
-// (no NEXT_PUBLIC_USE_MOCK_DATA branch, same as the V2 quiz/essay routes above).
+// (no NEXT_PUBLIC_USE_MOCK_DATA branch, same as the V2 quiz routes above).
 // ============================================================================
 
 export async function getNotes(): Promise<Note[]> {
@@ -422,17 +361,3 @@ export async function deleteNote(noteId: string): Promise<void> {
   await apiFetch<void>(`/api/notes/${noteId}`, { method: "DELETE" });
 }
 
-export async function getPracticeQuestionV2(excludeQuestionId?: string): Promise<PracticeQuestionV2> {
-  const question = await apiFetch<EssayQuestionV2 & { category: EssayBankCategory }>("/api/essay/question", {
-    method: "POST",
-    body: JSON.stringify(excludeQuestionId ? { exclude_question_id: excludeQuestionId } : {})
-  });
-
-  return {
-    question_id: question.question_id,
-    bank_category: question.category,
-    bank_label: ESSAY_BANK_TITLES[question.category],
-    question_text: question.question_text,
-    legal_ref: question.dieu_number ? `Điều ${question.dieu_number} BLTTHS 2015` : "Không có Điều luật cụ thể"
-  };
-}

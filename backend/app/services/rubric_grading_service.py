@@ -1,13 +1,11 @@
 """Shared LLM-as-judge positional-grading parsing - matched/missing decided by rubric ARRAY INDEX,
-never by fuzzy-matching LLM-reconstructed text back against the rubric. Originally built for
-essay_service.py's essay grading (see essay_prompts.py's module docstring for why judging by
-position matters); extracted here so the "Sinh tình huống minh họa" Lượt 2 feature
-(scenario_grading_service.py) can reuse the exact same discipline instead of duplicating it.
+never by fuzzy-matching LLM-reconstructed text back against the rubric. Used by the "Sinh tình
+huống minh họa" Lượt 2 feature (scenario_grading_service.py).
 
-Both callers pass their own rubric (essay_key_points vs a per-scenario key_points list, in the
-same numbered order their own prompt presented to the model) and get back the same
-matched/missing/feedback/missing_points_display shape - deliberately no score/percentage field
-anywhere, per this whole feature line's core philosophy (chữa bài, không chấm điểm).
+The caller passes its own rubric (a per-scenario key_points list, in the same numbered order its
+prompt presented to the model) and gets back a matched/missing/feedback/missing_points_display
+shape - deliberately no score/percentage field anywhere, per this feature's core philosophy
+(chữa bài, không chấm điểm).
 """
 from __future__ import annotations
 

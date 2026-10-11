@@ -1,9 +1,8 @@
 """Lượt 1 of the "Sinh tình huống minh họa" feature (see requirements.md): generates a fictional
 scenario grounded in the conversation's own recent turns (no new retrieval) plus a hidden
 key_points rubric saved for Lượt 2 (LLM-as-judge grading, not built yet - see requirements.md,
-built/tested separately on purpose to control Gemini budget). Mirrors essay_service.py's
-"grounded strictly in given material" discipline, except the material here is recent_turns
-instead of a fixed question-bank rubric.
+built/tested separately on purpose to control Gemini budget). Grounded strictly in the given
+material - here, recent_turns.
 """
 from __future__ import annotations
 

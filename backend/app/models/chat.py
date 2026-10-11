@@ -67,8 +67,7 @@ class ChatStreamSuggestedFollowupsEvent(BaseModel):
 
 # Only emitted for intent=answer_evaluation (requirements.md "Sinh tình huống minh họa" Lượt 2),
 # right after that turn's answer_delta (the qualitative "nhận xét" sentence). Deliberately has NO
-# score/percentage field anywhere - matched/missing points only, mirroring EssaySubmitResponse's
-# shape (see models/essay.py) since the frontend reuses that same matched/missing visual language.
+# score/percentage field anywhere - matched/missing points only.
 class ChatStreamGradingEvent(BaseModel):
     matched_points: list[str]
     missing_points: list[str]

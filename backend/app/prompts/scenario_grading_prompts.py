@@ -1,14 +1,12 @@
 """Prompt for Lượt 2 of "Sinh tình huống minh họa" (see requirements.md): grades the student's
 free-text analysis of a Lượt 1 scenario against that scenario's own hidden key_points rubric.
-Same "numbered rubric, judge by position" discipline as essay_prompts.py (see that file's module
-docstring) - reused via rubric_grading_service.parse_positional_grading_response - except the
-material graded here is a chat reply about a generated scenario, not a question-bank essay
-answer, and the rubric itself was generated per-scenario (scenario_prompts.py), not fixed ahead
-of time in a question bank.
+Judging is by numbered-rubric POSITION, never by fuzzy-matching the model's reconstructed text
+back against the rubric - see rubric_grading_service.parse_positional_grading_response. The rubric
+itself is generated per-scenario (scenario_prompts.py), not fixed ahead of time.
 
 Triết lý cốt lõi (requirements.md, giữ xuyên suốt cả 2 lượt): đây là chatbot hỗ trợ học tập, chữa
-bài - KHÔNG chấm điểm số/phần trăm dưới bất kỳ hình thức nào, chỉ feedback định tính matched/missing
-- giống hệt nguyên tắc essay grading.
+bài - KHÔNG chấm điểm số/phần trăm dưới bất kỳ hình thức nào, chỉ feedback định tính
+matched/missing.
 """
 from __future__ import annotations
 

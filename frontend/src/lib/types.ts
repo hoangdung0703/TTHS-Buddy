@@ -56,8 +56,7 @@ export interface ChatStreamSuggestedFollowupsEvent {
 
 // Only emitted for intent=answer_evaluation ("Sinh tình huống minh họa" Lượt 2), between
 // answer_delta and suggested_followups. Deliberately has NO score/percentage field - matched/
-// missing points only, same shape as EssaySubmitResponse's grading fields so the chat UI can
-// reuse that module's matched/missing visual language.
+// missing points only.
 export interface ChatStreamGradingEvent {
   matched_points: string[];
   missing_points: string[];
@@ -135,28 +134,6 @@ export interface QuizSubmitResponse {
   results: QuizResult[];
 }
 
-export interface EssayQuestion {
-  question_id: string;
-  question_text: string;
-  dieu_number: string;
-  topic_category: string;
-}
-
-export interface EssaySubmitRequest {
-  question_id: string;
-  user_answer: string;
-}
-
-export interface EssaySubmitResponse {
-  matched_points: string[];
-  missing_points: string[];
-  feedback: string;
-  suggested_dieu: string[];
-  // Display-only, natural-language merge of missing_points. Null/undefined when the LLM didn't
-  // return a usable value - render missing_points as separate bullets instead.
-  missing_points_display?: string[] | null;
-}
-
 export interface KeywordYesterday {
   dieu_number: string;
   keyword: string;
@@ -166,10 +143,6 @@ export interface KeywordYesterday {
 export interface WeakTopic {
   topic_category: string;
   score_percentage: number;
-  // Real essay bank category the user actually practiced this topic under (derived server-side
-  // from essay_attempts.category), null when only quiz history exists for this topic - see
-  // requirements.md "Feature — Redesign Dashboard Hero".
-  essay_bank_category: EssayBankCategory | null;
 }
 
 // Matches GET /api/dashboard/stats exactly as specified in requirements.md Phase 7 - backs the
@@ -182,11 +155,8 @@ export interface DashboardStats {
 }
 
 // ============================================================================
-// Phase 5a/5b v2 (real backend, see requirements.md "Phase 5a/5b v2" Buoc B) -
-// 15 bộ x 5 câu mcq_4choice thuần túy (Quiz) và 4 ngân hàng theo category, 111
-// câu (Essay). Backend routes: GET /api/quiz/sets, GET /api/quiz/stats,
-// GET /api/essay/banks, POST /api/essay/question (body: {category?,
-// exclude_question_id?}).
+// Trắc nghiệm v2 (real backend, see requirements.md "Phase 5a/5b v2" Buoc B).
+// Backend routes: GET /api/quiz/sets, GET /api/quiz/stats.
 // ============================================================================
 
 export type QuizSetV2StatusKind = "untouched" | "done";
@@ -196,10 +166,10 @@ export interface QuizSetV2Status {
   correct_count: number; // 0 when kind is "untouched"
 }
 
-// GET /api/quiz/sets - 15 bộ x 5 câu mcq_4choice thuần túy.
+// GET /api/quiz/sets - số bộ đề và số câu mỗi bộ do ngân hàng đề quyết định, không cố định.
 export interface QuizSetSummaryV2 {
-  quiz_set_id: number; // 1-15
-  total_questions: number; // luôn = 5 ở v2
+  quiz_set_id: number;
+  total_questions: number;
   status: QuizSetV2Status;
 }
 
@@ -210,67 +180,6 @@ export interface QuizStatsV2 {
   questions_total: number;
   quiz_sets_attempted: number;
   total_quiz_sets: number;
-}
-
-export type EssayBankCategory = "ly_thuyet" | "van_dung" | "ban_trac_nghiem" | "tinh_huong";
-
-export type EssayBankProgressKind = "untouched" | "started" | "complete";
-
-export interface EssayBankProgressV2 {
-  kind: EssayBankProgressKind;
-  attempted_count: number;
-}
-
-// Raw shape from GET /api/essay/banks - title/subtitle/description/icon are
-// presentation-only and NOT sent by the backend (see lib/essayBankPresentation.ts);
-// combined with those into EssayBankV2 client-side (see lib/api.ts getEssayBanksV2).
-export interface EssayBankSummary {
-  category: EssayBankCategory;
-  total_questions: number;
-  questions_practiced: number;
-}
-
-export interface EssayBankV2 {
-  category: EssayBankCategory;
-  title: string;
-  subtitle: string;
-  description: string;
-  total_questions: number;
-  progress: EssayBankProgressV2;
-}
-
-// POST /api/essay/question - cùng shape với EssayQuestion (Phase 5b gốc), thêm
-// bank_category vì pool giờ tách theo ngân hàng.
-export interface EssayQuestionV2 extends EssayQuestion {
-  bank_category: EssayBankCategory;
-}
-
-// GET /api/essay/banks/{category}/questions - backs the "chọn tự do" grid (requirements.md
-// "Doi luong Tu luan"). status derived server-side from the latest essay_attempts row for that
-// question. Deliberately NO dieu_number field - that's the answer's legal basis (see
-// ingestion/question_bank.json's "explanation"), and this endpoint returns the whole bank's list
-// in one response before the user has opened/answered any of them, so including it would leak
-// every question's answer over the wire even though the UI never renders it pre-submit.
-export type EssayBankQuestionStatus = "done" | "needs_review" | "not_done";
-
-export interface EssayBankQuestionListItem {
-  question_id: string;
-  order: number;
-  question_text: string;
-  status: EssayBankQuestionStatus;
-}
-
-// Minigame "Tôi hỏi bạn trả lời" - lấy ngẫu nhiên 1 câu từ TOÀN BỘ pool tự luận
-// (POST /api/essay/question không kèm category), không giới hạn theo category.
-// Nút "Câu khác" gọi lại endpoint này với exclude_question_id = câu hiện tại,
-// KHÔNG gọi submit - bỏ qua hoàn toàn, không tính là 1 lượt làm bài (quyết định
-// đã chốt trong requirements.md). legal_ref suy ra client-side từ dieu_number.
-export interface PracticeQuestionV2 {
-  question_id: string;
-  bank_category: EssayBankCategory;
-  bank_label: string;
-  question_text: string;
-  legal_ref: string;
 }
 
 // Vở ghi cá nhân (requirements.md "Feature - Vở ghi cá nhân + Chat trả lời dựa trên nội dung ghi

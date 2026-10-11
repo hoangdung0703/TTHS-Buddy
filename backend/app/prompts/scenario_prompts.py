@@ -3,8 +3,7 @@ call that, given only the recent conversation turns (no new retrieval - the feat
 reuses whatever Điều luật/nội dung was already discussed), produces (a) a fictional scenario shown
 to the student and (b) a hidden key_points rubric saved for later grading (Lượt 2, not built yet).
 
-Same "numbered rubric, grounded strictly in given material" discipline as essay_prompts.py, except
-here the material is the conversation history instead of a fixed question-bank rubric - key_points
+Grounded strictly in given material: here the material is the conversation history, so key_points
 must never introduce a legal principle that wasn't already stated somewhere in that history.
 """
 from __future__ import annotations
