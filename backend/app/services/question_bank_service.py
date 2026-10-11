@@ -22,8 +22,6 @@ logger = get_logger(__name__)
 QUIZ_ATTEMPTS_TABLE = "quiz_attempts"
 MCQ_QUESTION_TYPES = ("mcq_4choice",)
 
-QUIZ_SET_COUNT = 15
-
 
 @lru_cache(maxsize=1)
 def load_question_bank() -> list[dict[str, Any]]:
@@ -33,6 +31,17 @@ def load_question_bank() -> list[dict[str, Any]]:
         logger.warning("Dropped %d invalid questions from question bank on load",
                         len(questions) - len(valid))
     return valid
+
+
+@lru_cache(maxsize=1)
+def get_quiz_set_ids() -> tuple[int, ...]:
+    """The quiz_set ids the bank actually defines, ascending. Derived from the data rather than a
+    constant so a replacement question bank can ship any number of sets (or none at all, while the
+    law students are still compiling it) without a code change."""
+    return tuple(sorted({
+        q["quiz_set"] for q in load_question_bank()
+        if q["question_type"] in MCQ_QUESTION_TYPES and q["quiz_set"] is not None
+    }))
 
 
 def get_mcq_questions_for_set(quiz_set: int, dieu_number: str | None = None,
@@ -76,7 +85,7 @@ def _get_latest_attempt_per_set(supabase_client: Client, user_id: str) -> dict[i
 def get_quiz_set_summaries(supabase_client: Client, user_id: str) -> list[dict[str, Any]]:
     latest_by_set = _get_latest_attempt_per_set(supabase_client, user_id)
     summaries = []
-    for quiz_set in range(1, QUIZ_SET_COUNT + 1):
+    for quiz_set in get_quiz_set_ids():
         total_questions = len(get_mcq_questions_for_set(quiz_set))
         attempt = latest_by_set.get(quiz_set)
         status = (
@@ -101,14 +110,14 @@ def get_quiz_stats(supabase_client: Client, user_id: str) -> dict[str, Any]:
         "correct_total": correct_total,
         "questions_total": questions_total,
         "quiz_sets_attempted": len(latest_by_set),
-        "total_quiz_sets": QUIZ_SET_COUNT,
+        "total_quiz_sets": len(get_quiz_set_ids()),
     }
 
 
 def select_quiz_questions(quiz_set: int) -> list[dict[str, Any]]:
-    """A quiz_set is a fixed 5-question set (see module docstring) - an "attempt" is simply all
-    of that set's questions, shuffled for presentation order. No rotation/exclusion logic is
-    needed any more: there is no larger pool to rotate against within a single set."""
+    """An "attempt" is simply all of that set's questions, shuffled for presentation order (see
+    module docstring) - no rotation/exclusion logic is needed, there is no larger pool to rotate
+    against within a single set."""
     candidates = get_mcq_questions_for_set(quiz_set)
     shuffled = candidates[:]
     random.shuffle(shuffled)

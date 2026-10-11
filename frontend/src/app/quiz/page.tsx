@@ -68,13 +68,46 @@ function Stat({ label, value }: { label: string; value: string }) {
 function ProgressSummary({ sets }: { sets: QuizSetSummaryV2[] }) {
   const done = sets.filter((set) => set.status.kind === "done").length;
   const totalCorrect = sets.reduce((acc, set) => (set.status.kind === "done" ? acc + set.status.correct_count : acc), 0);
-  const totalAttempted = done * (sets[0]?.total_questions ?? 5);
+  const totalAttempted = sets.reduce(
+    (acc, set) => (set.status.kind === "done" ? acc + set.total_questions : acc),
+    0
+  );
 
   return (
     <div className="mb-10 flex flex-wrap gap-x-8 gap-y-2 rounded-xl border border-border bg-primary/[0.04] px-5 py-3.5">
       <Stat label="Bộ đề hoàn thành" value={`${done} / ${sets.length}`} />
       <div className="w-px self-stretch bg-border" />
       <Stat label="Tổng số câu đúng" value={totalAttempted > 0 ? `${totalCorrect} / ${totalAttempted}` : "-"} />
+    </div>
+  );
+}
+
+// "mỗi bộ N câu" chỉ nói được khi mọi bộ cùng số câu - ngân hàng đề mới có thể chia các bộ dài
+// ngắn khác nhau, lúc đó bỏ hẳn mệnh đề này thay vì nêu một con số không đúng cho mọi bộ.
+function describeSets(sets: QuizSetSummaryV2[]): string {
+  const sizes = new Set(sets.map((set) => set.total_questions));
+  const base = `Chọn 1 trong ${sets.length} bộ đề`;
+  return sizes.size === 1 ? `${base}, mỗi bộ ${sets[0].total_questions} câu` : base;
+}
+
+function EmptyBank() {
+  return (
+    <div className="rounded-xl border border-border bg-card px-6 py-10 text-center shadow-sm">
+      <p className="mb-2 font-serif text-xl font-light tracking-tight text-foreground">
+        Ngân hàng đề đang được cập nhật
+      </p>
+      <p className="mx-auto max-w-md text-sm font-light text-muted-foreground">
+        Bộ đề trắc nghiệm mới đang được nhóm biên soạn hoàn thiện. Trong lúc chờ, bạn vẫn có thể hỏi
+        trợ lý AI hoặc xem lại Vở ghi của mình.
+      </p>
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
+        <Button asChild className="rounded-full">
+          <Link href="/chat">Hỏi trợ lý AI</Link>
+        </Button>
+        <Button asChild variant="outline" className="rounded-full">
+          <Link href="/notes">Mở Vở ghi</Link>
+        </Button>
+      </div>
     </div>
   );
 }
@@ -100,9 +133,11 @@ export default function QuizPage() {
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6">
           <h1 className="mb-1.5 font-serif text-3xl font-light tracking-tight text-foreground">Trắc nghiệm</h1>
-          <p className="text-sm font-light text-muted-foreground">
-            {sets ? `Chọn 1 trong ${sets.length} bộ đề, mỗi bộ ${sets[0]?.total_questions ?? 5} câu` : "Đang tải danh sách bộ đề..."}
-          </p>
+          {sets === null || sets.length > 0 ? (
+            <p className="text-sm font-light text-muted-foreground">
+              {sets === null ? "Đang tải danh sách bộ đề..." : describeSets(sets)}
+            </p>
+          ) : null}
         </div>
 
         {loadError ? (
@@ -122,7 +157,9 @@ export default function QuizPage() {
           </div>
         ) : null}
 
-        {sets !== null ? (
+        {sets !== null && sets.length === 0 ? <EmptyBank /> : null}
+
+        {sets !== null && sets.length > 0 ? (
           <>
             <ProgressSummary sets={sets} />
 

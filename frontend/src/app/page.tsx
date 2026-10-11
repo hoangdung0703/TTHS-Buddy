@@ -12,9 +12,9 @@ const features = [
   },
   {
     icon: ListChecks,
-    title: "5 bộ đề trắc nghiệm",
+    title: "Trắc nghiệm theo bộ đề",
     description:
-      "Mỗi bộ trộn chung câu hỏi MCQ và Nhận định Đúng/Sai, chấm điểm và giải thích ngay sau khi nộp."
+      "Làm theo từng bộ đề, chấm điểm và giải thích căn cứ pháp lý ngay sau khi nộp."
   },
   {
     icon: BarChart2,

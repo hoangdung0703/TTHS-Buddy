@@ -66,6 +66,30 @@ function HeroShell({
   );
 }
 
+// Khi ngân hàng đề rỗng (đang chờ ngân hàng mới) thì không gợi ý "làm bộ đề" - không có bộ nào để
+// làm. Hero chuyển sang gợi ý Chat, thứ duy nhất vẫn dùng được đầy đủ lúc đó.
+function NoBankHero() {
+  return (
+    <HeroShell
+      eyebrow="Gợi ý hôm nay · Trợ lý AI"
+      message={
+        <>
+          Ngân hàng đề trắc nghiệm đang được cập nhật.
+          <span className="mt-1 block font-sans text-sm font-normal text-muted-foreground">
+            Trong lúc chờ, hỏi trợ lý AI về bất kỳ Điều luật nào bạn đang vướng - câu trả lời luôn
+            kèm căn cứ pháp lý.
+          </span>
+        </>
+      }
+      cta={
+        <Button asChild className="rounded-full">
+          <Link href="/chat">Hỏi trợ lý AI</Link>
+        </Button>
+      }
+    />
+  );
+}
+
 // Tiến độ trắc nghiệm tổng hợp, dùng chung state đã fetch cho Khối 1 (không gọi API riêng).
 function QuizHero({ quizStats }: { quizStats: QuizStatsV2 }) {
   return (
@@ -160,25 +184,37 @@ export default function DashboardPage() {
 
         {loadState === "ready" && data !== null ? (
           <>
-            <QuizHero quizStats={data.quizStats} />
+            {data.quizStats.total_quiz_sets === 0 ? (
+              <NoBankHero />
+            ) : (
+              <QuizHero quizStats={data.quizStats} />
+            )}
 
             {/* Khối 1 - MCQ tổng hợp (data thật: GET /api/quiz/stats) */}
             <Card>
               <CardHeader>
                 <CardTitle className="font-serif text-base font-light tracking-tight">Trắc nghiệm</CardTitle>
               </CardHeader>
-              <CardContent className="flex items-center gap-5">
-                <ProgressRing correct={data.quizStats.correct_total} total={data.quizStats.questions_total} size={88} />
-                <div className="space-y-1">
-                  <p className="font-serif text-2xl font-normal text-foreground">{data.quizStats.average_score_percentage}%</p>
-                  <p className="text-sm text-muted-foreground">tỉ lệ đúng tổng thể</p>
-                  <p className="text-xs text-muted-foreground">
-                    Đã làm {data.quizStats.quiz_sets_attempted} / {data.quizStats.total_quiz_sets} bộ đề
+              <CardContent>
+                {data.quizStats.total_quiz_sets === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Ngân hàng đề đang được cập nhật - chưa có bộ đề nào để làm.
                   </p>
-                  <Button asChild variant="outline" size="sm" className="mt-1 rounded-full">
-                    <Link href="/quiz">Vào trắc nghiệm</Link>
-                  </Button>
-                </div>
+                ) : (
+                  <div className="flex items-center gap-5">
+                    <ProgressRing correct={data.quizStats.correct_total} total={data.quizStats.questions_total} size={88} />
+                    <div className="space-y-1">
+                      <p className="font-serif text-2xl font-normal text-foreground">{data.quizStats.average_score_percentage}%</p>
+                      <p className="text-sm text-muted-foreground">tỉ lệ đúng tổng thể</p>
+                      <p className="text-xs text-muted-foreground">
+                        Đã làm {data.quizStats.quiz_sets_attempted} / {data.quizStats.total_quiz_sets} bộ đề
+                      </p>
+                      <Button asChild variant="outline" size="sm" className="mt-1 rounded-full">
+                        <Link href="/quiz">Vào trắc nghiệm</Link>
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

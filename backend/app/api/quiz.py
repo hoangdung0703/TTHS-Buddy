@@ -16,7 +16,7 @@ from app.models.quiz import (
     QuizSubmitResponse,
 )
 from app.services.question_bank_service import (
-    QUIZ_SET_COUNT,
+    get_quiz_set_ids,
     get_quiz_set_summaries,
     get_quiz_stats,
     load_question_bank,
@@ -27,13 +27,14 @@ from app.services.quiz_service import grade_mcq_answer
 
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
-VALID_QUIZ_SETS = set(range(1, QUIZ_SET_COUNT + 1))
-
 
 def _validate_quiz_set(quiz_set: int) -> None:
-    if quiz_set not in VALID_QUIZ_SETS:
+    """Valid ids come from the bank file, not a constant - an empty bank therefore has no valid
+    set and every id is rejected here rather than 500ing deeper in."""
+    valid = get_quiz_set_ids()
+    if quiz_set not in valid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                             detail=f"quiz_set must be between 1 and {QUIZ_SET_COUNT}")
+                             detail=f"Unknown quiz_set: {quiz_set}. Available sets: {list(valid)}")
 
 
 @router.get("/sets", response_model=QuizSetsResponse)
