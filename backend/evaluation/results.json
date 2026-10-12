@@ -4,7 +4,7 @@
       "n": 20,
       "exact_match_rate": 1.0,
       "mean_recall": 1.0,
-      "mean_precision": 0.7725
+      "mean_precision": 0.735
     },
     "groundedness": {
       "n": 29,
@@ -18,40 +18,11 @@
     },
     "citation_grounding": {
       "n": 29,
-      "mean_rate": 0.993103448275862,
-      "pooled_rate": 0.9761904761904762,
-      "total_dieu_mentioned": 42,
-      "total_dieu_ungrounded": 1,
-      "violations": [
-        {
-          "question": "Phân tích vai trò của chứng cứ và nguồn chứng cứ trong việc xác định sự thật khách quan của vụ án hình sự.",
-          "ungrounded_dieu_numbers": [
-            "108"
-          ],
-          "allowed_dieu_numbers": [
-            "10",
-            "11",
-            "15",
-            "19",
-            "20",
-            "245",
-            "280",
-            "284",
-            "3",
-            "358",
-            "37",
-            "39",
-            "441",
-            "51",
-            "52",
-            "75",
-            "84",
-            "85",
-            "86",
-            "87"
-          ]
-        }
-      ]
+      "mean_rate": 1.0,
+      "pooled_rate": 1.0,
+      "total_dieu_mentioned": 44,
+      "total_dieu_ungrounded": 0,
+      "violations": []
     },
     "academic_reference_usage": {
       "n": 2,
@@ -119,22 +90,22 @@
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Theo quy định tại Điều 119 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), tạm giam có thể áp dụng đối với bị can, bị cáo về các loại tội phạm sau:\n\n1. Tội đặc biệt nghiêm trọng và tội rất nghiêm trọng (theo khoản 1 Điều 119).\n2. Tội nghiêm trọng và tội ít nghiêm trọng mà Bộ luật Hình sự quy định hình phạt tù trên 02 năm, khi có căn cứ xác định người đó thuộc một trong các trường hợp:\n   - Đã bị áp dụng biện pháp ngăn chặn khác nhưng vi phạm;\n   - Không có nơi cư trú rõ ràng hoặc không xác định được lý lịch;\n   - Bỏ trốn và bị bắt theo quyết định truy nã hoặc có dấu hiệu bỏ trốn;\n   - Tiếp tục phạm tội hoặc có dấu hiệu tiếp tục phạm tội;\n   - Có hành vi mua chuộc, cưỡng ép, xúi giục người khác khai báo gian dối, cung cấp tài liệu sai sự thật; tiêu hủy, giả mạo chứng cứ, tài liệu, đồ vật của vụ án, tẩu tán tài sản liên quan đến vụ án; đe dọa, khống chế, trả thù người làm chứng, bị hại, người tố giác tội phạm và người thân thích của những người này (theo khoản 2 Điều 119).\n3. Tội ít nghiêm trọng mà Bộ luật Hình sự quy định hình phạt tù đến 02 năm, nếu họ tiếp tục phạm tội hoặc bỏ trốn và bị bắt theo quyết định truy nã (theo khoản 3 Điều 119).",
+      "answer": "Theo quy định tại Điều 119 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), tạm giam có thể áp dụng đối với bị can, bị cáo về các loại tội phạm sau:\n\n1. Tội đặc biệt nghiêm trọng và tội rất nghiêm trọng (Khoản 1 Điều 119).\n2. Tội nghiêm trọng và tội ít nghiêm trọng mà Bộ luật Hình sự quy định hình phạt tù trên 02 năm, khi có căn cứ xác định người đó thuộc một trong các trường hợp:\n   - Đã bị áp dụng biện pháp ngăn chặn khác nhưng vi phạm;\n   - Không có nơi cư trú rõ ràng hoặc không xác định được lý lịch;\n   - Bỏ trốn và bị bắt theo quyết định truy nã hoặc có dấu hiệu bỏ trốn;\n   - Tiếp tục phạm tội hoặc có dấu hiệu tiếp tục phạm tội;\n   - Có hành vi mua chuộc, cưỡng ép, xúi giục người khác khai báo gian dối, cung cấp tài liệu sai sự thật; tiêu hủy, giả mạo chứng cứ, tài liệu, đồ vật của vụ án, tẩu tán tài sản liên quan đến vụ án; đe dọa, khống chế, trả thù người làm chứng, bị hại, người tố giác tội phạm và người thân thích của những người này (Khoản 2 Điều 119).\n3. Tội ít nghiêm trọng mà Bộ luật Hình sự quy định hình phạt tù đến 02 năm, nếu họ tiếp tục phạm tội hoặc bỏ trốn và bị bắt theo quyết định truy nã (Khoản 3 Điều 119).",
       "grounded": true,
       "allowed_dieu_numbers": [
         "1",
         "109",
-        "110",
         "113",
         "119",
         "123",
         "134",
         "138",
         "14",
-        "15",
         "17",
         "173",
+        "174",
         "18",
+        "19",
         "240",
         "64"
       ],
@@ -159,7 +130,7 @@
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Theo Điều 173 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), thời hạn tạm giam bị can để điều tra đối với tội phạm rất nghiêm trọng không quá 04 tháng.\n\nTrong trường hợp vụ án có nhiều tình tiết phức tạp, xét cần phải có thời gian dài hơn cho việc điều tra và không có căn cứ để thay đổi hoặc hủy bỏ biện pháp tạm giam, thời hạn này có thể được gia hạn thêm một lần không quá 03 tháng theo quy định tại khoản 2 Điều 173 Bộ luật Tố tụng Hình sự.",
+      "answer": "Theo Điều 173 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), thời hạn tạm giam bị can để điều tra đối với tội phạm rất nghiêm trọng không quá 04 tháng.\n\nTrong trường hợp vụ án có nhiều tình tiết phức tạp, xét cần phải có thời gian dài hơn cho việc điều tra và không có căn cứ để thay đổi hoặc hủy bỏ biện pháp tạm giam, thời hạn này có thể được gia hạn một lần không quá 03 tháng theo quy định tại khoản 2 Điều 173 Bộ luật Tố tụng Hình sự.",
       "grounded": true,
       "allowed_dieu_numbers": [
         "1",
@@ -202,7 +173,6 @@
       "grounded": true,
       "allowed_dieu_numbers": [
         "10",
-        "108",
         "11",
         "19",
         "2",
@@ -219,6 +189,7 @@
         "8",
         "84",
         "85",
+        "87",
         "98"
       ],
       "mentioned_dieu_numbers": [
@@ -246,24 +217,21 @@
       "grounded": true,
       "allowed_dieu_numbers": [
         "1",
-        "132",
         "134",
+        "135",
         "150",
         "153",
         "155",
-        "156",
         "157",
+        "158",
         "159",
-        "16",
-        "161",
         "164",
-        "230",
-        "282",
-        "29",
-        "40",
-        "41",
+        "245",
+        "280",
         "456",
         "55",
+        "6",
+        "69",
         "7",
         "71"
       ],
@@ -414,7 +382,7 @@
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Theo Điều 7 Nghị định 250/2025/NĐ-CP, Hội đồng định giá tài sản được thành lập ở các cấp sau:\n\n1. Cấp xã (bao gồm xã, phường, đặc khu trực thuộc cấp tỉnh);\n2. Cấp tỉnh (bao gồm tỉnh, thành phố trực thuộc trung ương, cấp quân khu hoặc tương đương);\n3. Cấp bộ (bao gồm bộ, cơ quan ngang bộ);\n4. Hội đồng định giá tài sản theo quyết định của Thủ tướng Chính phủ.",
+      "answer": "Theo quy định tại khoản 1 Điều 7 Nghị định 250/2025/NĐ-CP, Hội đồng định giá tài sản được thành lập ở các cấp sau:\n\n- Cấp xã (bao gồm xã, phường, đặc khu trực thuộc cấp tỉnh);\n- Cấp tỉnh (bao gồm tỉnh, thành phố trực thuộc trung ương, cấp quân khu hoặc tương đương);\n- Cấp bộ (bao gồm bộ, cơ quan ngang bộ);\n- Hội đồng định giá tài sản theo quyết định của Thủ tướng Chính phủ.",
       "grounded": true,
       "allowed_dieu_numbers": [
         "10",
@@ -479,12 +447,11 @@
         "11"
       ],
       "returned_dieu_numbers": [
-        "11",
-        "3"
+        "11"
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Theo Thông tư liên tịch 05/2026/TTLT-BCA-BQP-VKSNDTC-TANDTC, việc phối hợp giải quyết thăm gặp người bị tạm giữ, người bị tạm giam được quy định như sau:\n\n1. **Phối hợp giám sát:** Trường hợp cơ quan đang thụ lý vụ án có yêu cầu giám sát, theo dõi việc thăm gặp, tiếp xúc, Thủ trưởng cơ sở giam giữ phải thông báo kịp thời cho cơ quan thụ lý về thời điểm thăm gặp để cử cán bộ phối hợp thực hiện (Khoản 1 Điều 11).\n\n2. **Xử lý vi phạm:** Nếu người bị tạm giữ, tạm giam hoặc người đến thăm gặp có hành vi vi phạm Nội quy cơ sở giam giữ hoặc cản trở việc giải quyết vụ án, cán bộ giám sát phải nhắc nhở hoặc báo cáo Thủ trưởng cơ sở giam giữ quyết định chấm dứt việc thăm gặp. Đồng thời, cơ sở giam giữ phải lập biên bản và thông báo bằng văn bản cho cơ quan đang thụ lý vụ án biết (Khoản 2 Điều 11).\n\n3. **Đối với người bào chữa:** Khi nhận được thông báo về người bào chữa, cơ sở giam giữ tổ chức cho người bào chữa gặp người bị tạm giữ, tạm giam theo quy định và trao đổi với cơ quan đang thụ lý vụ án để phối hợp. Nếu người bào chữa yêu cầu gặp tại cơ sở khám, chữa bệnh ngoài cơ sở giam giữ, cơ sở giam giữ phải trao đổi trực tiếp, lấy ý kiến đồng ý của bác sĩ điều trị và thông báo cho cơ quan đang thụ lý vụ án để phối hợp. Cơ sở giam giữ có trách nhiệm quản lý, giám sát chặt chẽ để không xảy ra việc đưa, chuyển đồ vật cấm hoặc các hành vi cản trở giải quyết vụ án (Khoản 3 Điều 11).\n\n4. **Hạn chế thăm gặp:** Trường hợp cơ quan đang thụ lý vụ án thấy việc thăm gặp người thân thích có thể ảnh hưởng nghiêm trọng đến việc giải quyết vụ án, vụ việc, cơ quan này phải có văn bản đề nghị Thủ trưởng cơ sở giam giữ không đồng ý cho thăm gặp, trong đó nêu rõ lý do và thời hạn (không được dài hơn thời hạn điều tra, truy tố, xét xử). Cơ sở giam giữ có trách nhiệm thông báo cho người bị tạm giữ, tạm giam và người thân thích biết. Nếu sau đó việc thăm gặp không còn ảnh hưởng nghiêm trọng, cơ quan thụ lý có văn bản đề nghị Thủ trưởng cơ sở giam giữ giải quyết cho thăm gặp theo quy định (Khoản 3 Điều 3).\n\n5. **Tiếp xúc lãnh sự/tổ chức nhân đạo:** Đối với người bị tạm giữ, tạm giam là người nước ngoài, nếu đồng ý yêu cầu tiếp xúc lãnh sự hoặc tiếp xúc với tổ chức nhân đạo, Thủ trưởng cơ sở giam giữ quyết định cụ thể thời điểm, địa điểm bằng văn bản và lưu hồ sơ giam giữ (Khoản 4 Điều 11).",
+      "answer": "Theo Thông tư liên tịch 05/2026/TTLT-BCA-BQP-VKSNDTC-TANDTC, việc phối hợp giải quyết thăm gặp người bị tạm giữ, tạm giam được thực hiện như sau:\n\n*   **Giám sát việc thăm gặp:** Trường hợp cơ quan đang thụ lý vụ án có yêu cầu giám sát, theo dõi việc thăm gặp, tiếp xúc, Thủ trưởng cơ sở giam giữ phải kịp thời thông báo cho cơ quan này biết thời điểm thăm gặp để cử cán bộ phối hợp thực hiện (Khoản 1 Điều 11).\n*   **Xử lý vi phạm:** Nếu người bị tạm giữ, tạm giam hoặc người đến thăm gặp có hành vi vi phạm Nội quy cơ sở giam giữ hoặc cản trở việc giải quyết vụ án, cán bộ giám sát phải nhắc nhở hoặc báo cáo Thủ trưởng cơ sở giam giữ quyết định chấm dứt việc thăm gặp, tiếp xúc; đồng thời lập biên bản và thông báo bằng văn bản cho cơ quan đang thụ lý vụ án (Khoản 2 Điều 11).\n*   **Đối với người bào chữa:** Khi nhận được thông báo về người bào chữa, cơ sở giam giữ tổ chức cho người bào chữa gặp người bị tạm giữ, tạm giam theo quy định và trao đổi với cơ quan đang thụ lý vụ án để phối hợp. Nếu người bào chữa yêu cầu gặp tại cơ sở khám, chữa bệnh ngoài cơ sở giam giữ, cơ sở giam giữ phải trao đổi trực tiếp, có sự đồng ý của bác sĩ điều trị và thông báo cho cơ quan đang thụ lý vụ án. Cơ sở giam giữ có trách nhiệm quản lý, giám sát chặt chẽ để không xảy ra việc đưa, chuyển đồ vật cấm hoặc các hành vi gây cản trở việc giải quyết vụ án (Khoản 3 Điều 11).\n*   **Đối với tiếp xúc lãnh sự, tổ chức nhân đạo:** Trường hợp đồng ý yêu cầu tiếp xúc đối với người bị tạm giữ, tạm giam là người nước ngoài, Thủ trưởng cơ sở giam giữ quyết định cụ thể thời điểm, địa điểm bằng văn bản và lưu hồ sơ giam giữ (Khoản 4 Điều 11).",
       "grounded": true,
       "allowed_dieu_numbers": [
         "1",
@@ -492,19 +459,17 @@
         "119",
         "120",
         "15",
-        "2",
         "3",
         "5",
         "80"
       ],
       "mentioned_dieu_numbers": [
-        "11",
-        "3"
+        "11"
       ],
       "ungrounded_dieu_numbers": [],
       "citation_grounding_rate": 1.0,
       "citation_recall": 1.0,
-      "citation_precision": 0.5,
+      "citation_precision": 1.0,
       "all_expected_cited": true
     },
     {
@@ -520,19 +485,18 @@
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Theo Thông tư liên tịch 01/2026/TTLT-VKSNDTC-BCA-BQP, thủ tục áp dụng biện pháp bảo lĩnh đối với bị can được thực hiện như sau:\n\n**1. Giai đoạn Cơ quan điều tra quyết định áp dụng:**\n*   Khi Cơ quan điều tra quyết định cho bị can được bảo lĩnh, ngay sau khi ra quyết định, Cơ quan điều tra phải có văn bản nêu rõ lý do, kèm theo chứng cứ, tài liệu gửi Viện kiểm sát có thẩm quyền để đề nghị xét phê chuẩn (Điều 21).\n*   Hồ sơ đề nghị xét phê chuẩn bao gồm:\n    *   Văn bản đề nghị xét phê chuẩn và quyết định áp dụng biện pháp bảo lĩnh;\n    *   Giấy cam đoan có xác nhận của người đứng đầu cơ quan, tổ chức (đối với trường hợp cơ quan, tổ chức nhận bảo lĩnh);\n    *   Giấy cam đoan có xác nhận của Ủy ban nhân dân cấp xã nơi người nhận bảo lĩnh cư trú hoặc cơ quan, tổ chức nơi người nhận bảo lĩnh làm việc, học tập (đối với trường hợp cá nhân nhận bảo lĩnh, phải có ít nhất 02 người);\n    *   Giấy cam đoan thực hiện các nghĩa vụ của bị can theo quy định tại khoản 3 Điều 121 Bộ luật Tố tụng hình sự;\n    *   Chứng cứ, tài liệu về hành vi phạm tội, nhân thân của bị can để xác định tính chất, mức độ hành vi không cần thiết phải tạm giam (Điều 21).\n\n**2. Giai đoạn Viện kiểm sát xét phê chuẩn:**\n*   Trong thời hạn 03 ngày kể từ ngày nhận được hồ sơ đề nghị của Cơ quan điều tra, Viện kiểm sát có thẩm quyền phải ra quyết định phê chuẩn, không phê chuẩn hoặc có văn bản yêu cầu Cơ quan điều tra bổ sung chứng cứ, tài liệu (Điều 21).\n\n**3. Giai đoạn truy tố:**\n*   Trường hợp đã kết thúc điều tra chuyển sang giai đoạn truy tố, nếu Viện kiểm sát thấy cần thiết tiếp tục áp dụng biện pháp bảo lĩnh thì Viện kiểm sát ra quyết định áp dụng. Thời hạn bảo lĩnh không quá thời hạn quyết định việc truy tố, tính từ ngày kế tiếp của ngày cuối cùng ghi trong quyết định áp dụng biện pháp bảo lĩnh của Cơ quan điều tra (Điều 21).\n\n**4. Xử lý vi phạm:**\n*   Nếu có căn cứ xác định bị can vi phạm nghĩa vụ cam đoan, Cơ quan điều tra có văn bản nêu rõ lý do, kèm tài liệu xác định vi phạm để đề nghị Viện kiểm sát hủy bỏ biện pháp bảo lĩnh. Cơ quan điều tra phải ra lệnh bắt bị can để tạm giam và đề nghị Viện kiểm sát phê chuẩn (thời hạn tạm giam không quá thời hạn điều tra vụ án).\n*   Trường hợp Viện kiểm sát có căn cứ xác định bị can vi phạm nghĩa vụ, Viện kiểm sát có văn bản yêu cầu Cơ quan điều tra thực hiện các thủ tục hủy bỏ biện pháp bảo lĩnh và áp dụng biện pháp tạm giam (Điều 21).",
+      "answer": "Theo Thông tư liên tịch 01/2026/TTLT-VKSNDTC-BCA-BQP, thủ tục áp dụng biện pháp bảo lĩnh đối với bị can được thực hiện như sau:\n\n**1. Đề nghị phê chuẩn:**\nKhi Cơ quan điều tra quyết định cho bị can được bảo lĩnh, ngay sau khi ra quyết định, Cơ quan điều tra phải có văn bản nêu rõ lý do, kèm theo chứng cứ, tài liệu gửi Viện kiểm sát có thẩm quyền để đề nghị xét phê chuẩn (Điều 21).\n\n**2. Hồ sơ đề nghị xét phê chuẩn:**\nHồ sơ bao gồm các tài liệu quy định tại khoản 2 Điều 21, cụ thể:\n*   Văn bản đề nghị xét phê chuẩn và quyết định áp dụng biện pháp bảo lĩnh.\n*   Giấy cam đoan có xác nhận của người đứng đầu cơ quan, tổ chức (đối với trường hợp cơ quan, tổ chức nhận bảo lĩnh).\n*   Giấy cam đoan có xác nhận của Ủy ban nhân dân cấp xã nơi người nhận bảo lĩnh cư trú hoặc cơ quan, tổ chức nơi người nhận bảo lĩnh làm việc, học tập (đối với trường hợp cá nhân nhận bảo lĩnh; phải có ít nhất 02 người bảo lĩnh).\n*   Giấy cam đoan thực hiện các nghĩa vụ của bị can theo quy định tại khoản 3 Điều 121 Bộ luật Tố tụng hình sự.\n*   Chứng cứ, tài liệu về hành vi phạm tội, nhân thân của bị can để xác định tính chất, mức độ hành vi không cần thiết phải áp dụng biện pháp tạm giam.\n\n**3. Thời hạn giải quyết của Viện kiểm sát:**\nTrong thời hạn 03 ngày kể từ ngày nhận được hồ sơ đề nghị của Cơ quan điều tra, Viện kiểm sát có thẩm quyền phải ra quyết định phê chuẩn, không phê chuẩn hoặc có văn bản yêu cầu Cơ quan điều tra bổ sung chứng cứ, tài liệu để xét phê chuẩn (Điều 21).\n\n**4. Lưu ý trong giai đoạn truy tố:**\nTrường hợp đã kết thúc điều tra chuyển sang giai đoạn truy tố, nếu Viện kiểm sát thấy cần thiết tiếp tục áp dụng biện pháp bảo lĩnh thì Viện kiểm sát ra quyết định áp dụng. Thời hạn bảo lĩnh không quá thời hạn quyết định việc truy tố, tính từ ngày kế tiếp của ngày cuối cùng ghi trong quyết định áp dụng biện pháp bảo lĩnh của Cơ quan điều tra (Điều 21).",
       "grounded": true,
       "allowed_dieu_numbers": [
         "1",
         "113",
-        "119",
         "121",
         "122",
         "123",
         "18",
-        "19",
         "21",
         "22",
+        "23",
         "240",
         "64"
       ],
@@ -557,41 +521,45 @@
         "1",
         "13",
         "15",
-        "27",
-        "285"
+        "285",
+        "67"
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Nguyên tắc suy đoán vô tội là một trong những nguyên tắc cơ bản của tố tụng hình sự, có ý nghĩa quan trọng đối với hoạt động thực hành quyền công tố của Viện kiểm sát nhân dân (VKSND). Dưới đây là phân tích dựa trên các quy định pháp luật và tài liệu học thuật:\n\n**1. Cơ sở pháp lý của nguyên tắc suy đoán vô tội**\nTheo Điều 13 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), nguyên tắc này bao gồm hai nội dung chính:\n*   Người bị buộc tội được coi là không có tội cho đến khi được chứng minh theo trình tự, thủ tục do Bộ luật này quy định và có bản án kết tội của Tòa án đã có hiệu lực pháp luật.\n*   Khi không đủ và không thể làm sáng tỏ căn cứ để buộc tội, kết tội theo trình tự, thủ tục do Bộ luật này quy định thì cơ quan, người có thẩm quyền tiến hành tố tụng phải kết luận người bị buộc tội không có tội.\n\n**2. Ý nghĩa đối với hoạt động thực hành quyền công tố của VKSND**\nTheo tài liệu học thuật, nguyên tắc suy đoán vô tội định hướng hoạt động của Kiểm sát viên (KSV) trong thực hành quyền công tố (THQCT) và kiểm sát xét xử theo các khía cạnh sau:\n\n*   **Xác định trách nhiệm chứng minh:** Theo Điều 15 Bộ luật Tố tụng Hình sự 2015, trách nhiệm chứng minh tội phạm thuộc về cơ quan có thẩm quyền tiến hành tố tụng. Người bị buộc tội có quyền nhưng không buộc phải chứng minh mình vô tội. Do đó, VKSND phải chủ động, khách quan trong việc thu thập, đánh giá chứng cứ buộc tội và gỡ tội để xác định sự thật khách quan của vụ án.\n*   **Đảm bảo tính khách quan trong truy tố:** VKSND chỉ quyết định truy tố khi quá trình điều tra đã xác định rõ tội phạm và hành vi phạm tội. Nếu còn nghi ngờ về chứng cứ buộc tội hoặc chứng cứ chưa đầy đủ, VKSND phải trả hồ sơ để điều tra bổ sung thay vì truy tố. Điều này thể hiện sự tôn trọng nguyên tắc suy đoán vô tội, tránh làm oan người vô tội (Điều 1 Quyết định 505/QĐ-VKSTC).\n*   **Thái độ và cách ứng xử của Kiểm sát viên:** Nguyên tắc này yêu cầu KSV phải luôn coi bị cáo là người không có tội trong quá trình xét xử. Điều này đòi hỏi KSV phải có thái độ chuẩn mực, tôn trọng bị cáo, không được có định kiến, miệt thị hay xúc phạm danh dự, nhân phẩm của bị cáo. KSV cần lắng nghe và xem xét thấu đáo các ý kiến, yêu cầu của bị cáo và người bào chữa.\n*   **Xử lý khi bị cáo chối tội:** Khi bị cáo chối tội, KSV không được nóng nảy hay định kiến. Thay vào đó, KSV phải nghiên cứu kỹ hồ sơ, đánh giá chứng cứ và sử dụng các biện pháp hợp pháp tại phiên tòa để làm rõ sự thật. Việc chứng minh tội phạm phải dựa trên các chứng cứ, tài liệu đã được kiểm tra tại phiên tòa một cách công bằng, khách quan.\n*   **Quyền rút quyết định truy tố:** Nếu tại phiên tòa xuất hiện tình tiết mới làm thay đổi nội dung truy tố theo hướng có lợi cho bị cáo, hoặc khi việc rút quyết định truy tố có căn cứ, KSV có quyền rút một phần hoặc toàn bộ quyết định truy tố (Điều 285 Bộ luật Tố tụng Hình sự 2015; Điều 27 Quyết định 505/QĐ-VKSTC). Đây là biểu hiện cụ thể của việc áp dụng nguyên tắc suy đoán vô tội để bảo vệ quyền con người, quyền công dân.\n\nTóm lại, nguyên tắc suy đoán vô tội không chỉ là yêu cầu về mặt tư pháp mà còn là kim chỉ nam để KSV thực hiện chức năng THQCT một cách \"Công minh, chính trực, khách quan, thận trọng\", đảm bảo không để lọt tội phạm nhưng cũng không làm oan người vô tội.",
+      "answer": "Nguyên tắc suy đoán vô tội là một trong những nguyên tắc cơ bản của tố tụng hình sự, có ý nghĩa quan trọng đối với hoạt động thực hành quyền công tố của Viện kiểm sát nhân dân (VKSND). Dựa trên các quy định pháp luật và tài liệu học thuật, ý nghĩa của nguyên tắc này được thể hiện qua các khía cạnh sau:\n\n**1. Xác định trách nhiệm chứng minh tội phạm**\nTheo Điều 15 Bộ luật Tố tụng Hình sự 2015, trách nhiệm chứng minh tội phạm thuộc về cơ quan có thẩm quyền tiến hành tố tụng. Người bị buộc tội có quyền nhưng không buộc phải chứng minh mình vô tội. Đối với Kiểm sát viên, nguyên tắc này đặt ra yêu cầu phải chủ động, khách quan trong việc thu thập, đánh giá chứng cứ. Theo tài liệu học thuật, việc chứng minh tội phạm là nhiệm vụ trọng tâm của Kiểm sát viên, nhưng phải dựa trên kết quả nghiên cứu hồ sơ và các chứng cứ được kiểm tra tại phiên tòa để bảo vệ quan điểm truy tố.\n\n**2. Bảo đảm tính khách quan và quyền con người**\nTheo Điều 13 Bộ luật Tố tụng Hình sự 2015, người bị buộc tội được coi là không có tội cho đến khi được chứng minh theo trình tự, thủ tục luật định và có bản án kết tội của Tòa án đã có hiệu lực pháp luật. Khi không đủ căn cứ để buộc tội, cơ quan có thẩm quyền phải kết luận người bị buộc tội không có tội.\n- Theo tài liệu học thuật, nguyên tắc này giúp Kiểm sát viên giữ thái độ ứng xử chuẩn mực, tôn trọng bị cáo, không có hành vi miệt thị hay xúc phạm danh dự, nhân phẩm của bị cáo trong suốt quá trình điều tra, truy tố và xét xử.\n- Việc áp dụng nguyên tắc này giúp Kiểm sát viên hạn chế tối đa tình trạng oan, sai, bảo vệ quyền con người và quyền công dân.\n\n**3. Định hướng cho các quyết định tố tụng của Viện kiểm sát**\nNguyên tắc suy đoán vô tội là cơ sở để Kiểm sát viên thực hiện các quyết định tố tụng nhằm bảo đảm sự thật khách quan:\n- **Trong giai đoạn truy tố:** Nếu có căn cứ xác định bị can không phạm tội hoặc không đủ chứng cứ buộc tội, Kiểm sát viên phải đề xuất đình chỉ vụ án hoặc trả hồ sơ để điều tra bổ sung (Điều 67 Quyết định 06/QĐ-VKSTC).\n- **Tại phiên tòa:** Nếu tình tiết mới xuất hiện làm thay đổi nội dung truy tố theo hướng có lợi cho bị cáo, Kiểm sát viên có quyền rút một phần hoặc toàn bộ quyết định truy tố (Điều 285 Bộ luật Tố tụng Hình sự 2015). Theo tài liệu học thuật, đây là biểu hiện của việc thực hiện chức năng gỡ tội, bảo đảm tính công minh, khách quan của VKSND.\n\n**4. Xử lý trường hợp bị cáo chối tội**\nTheo tài liệu học thuật, khi bị cáo chối tội, nguyên tắc suy đoán vô tội yêu cầu Kiểm sát viên không được định kiến hay nóng nảy. Thay vào đó, Kiểm sát viên phải nghiên cứu kỹ hồ sơ, đánh giá chứng cứ và thực hiện xét hỏi, tranh luận dựa trên các tài liệu đã được kiểm tra tại phiên tòa để làm rõ sự thật khách quan, thay vì ép buộc bị cáo phải thừa nhận hành vi.\n\nTóm lại, nguyên tắc suy đoán vô tội không chỉ là yêu cầu về mặt tư pháp mà còn là kim chỉ nam để Kiểm sát viên thực hiện chức năng thực hành quyền công tố một cách \"Công minh, chính trực, khách quan, thận trọng\", bảo đảm việc truy tố đúng người, đúng tội, đúng pháp luật theo quy định tại Điều 1 Quyết định 505/QĐ-VKSTC.",
       "grounded": true,
       "allowed_dieu_numbers": [
         "1",
-        "125",
         "13",
-        "130",
+        "137",
+        "141",
         "15",
+        "155",
         "156",
         "157",
         "16",
         "161",
         "18",
         "2",
-        "230",
-        "234",
-        "235",
+        "240",
+        "243",
+        "245",
+        "247",
         "266",
         "27",
         "285",
+        "29",
         "29152",
         "40",
-        "60"
+        "67",
+        "8"
       ],
       "mentioned_dieu_numbers": [
         "1",
         "13",
         "15",
-        "27",
-        "285"
+        "285",
+        "67"
       ],
       "ungrounded_dieu_numbers": [],
       "citation_grounding_rate": 1.0,
@@ -607,29 +575,31 @@
         "22"
       ],
       "returned_dieu_numbers": [
-        "22"
+        "22",
+        "5"
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Việc pháp luật hình sự Việt Nam quy định phòng vệ chính đáng không phải là tội phạm được thể hiện qua các quy định và phân tích lý luận sau:\n\n**1. Quy định pháp luật**\nTheo Điều 22 Bộ luật Hình sự (văn bản hợp nhất năm 2025), phòng vệ chính đáng được định nghĩa là hành vi của người vì bảo vệ quyền hoặc lợi ích chính đáng của mình, của người khác hoặc lợi ích của Nhà nước, của cơ quan, tổ chức mà chống trả lại một cách cần thiết người đang có hành vi xâm phạm các lợi ích nói trên. Khoản 1 Điều này khẳng định rõ: \"Phòng vệ chính đáng không phải là tội phạm\".\n\n**2. Ý nghĩa của quy định**\nTheo tài liệu học thuật về mối quan hệ giữa Luật Hình sự và Luật Tố tụng Hình sự, quy định này mang những ý nghĩa quan trọng sau:\n\n*   **Bảo vệ lợi ích hợp pháp:** Quy định này là sự cụ thể hóa chức năng bảo vệ của pháp luật hình sự, nhằm bảo vệ các lợi ích của Nhà nước, chế độ xã hội chủ nghĩa, quyền và lợi ích hợp pháp của tổ chức, cá nhân trước các hành vi xâm phạm.\n*   **Thể hiện tính nhân văn và công bằng:** Việc loại trừ trách nhiệm hình sự đối với hành vi phòng vệ chính đáng giúp pháp luật hình sự vận hành theo bản chất nhân văn, hướng thiện và công bằng. Nó cho phép cá nhân có quyền tự bảo vệ mình và bảo vệ người khác khi đối mặt với các hành vi nguy hiểm cho xã hội.\n*   **Cân bằng giữa phòng ngừa và bảo vệ quyền con người:** Quy định này giúp cân bằng giữa hiệu quả phòng ngừa, chống tội phạm với việc tôn trọng, bảo vệ các quyền con người, quyền công dân.\n*   **Cơ sở để phân định hành vi:** Quy định này tạo tiền đề pháp lý để cơ quan tiến hành tố tụng phân biệt giữa hành vi phòng vệ hợp pháp với hành vi phạm tội. Nếu hành vi chống trả rõ ràng quá mức cần thiết, không phù hợp với tính chất và mức độ nguy hiểm của hành vi xâm hại, người thực hiện sẽ bị coi là \"vượt quá giới hạn phòng vệ chính đáng\" và phải chịu trách nhiệm hình sự (theo khoản 2 Điều 22 Bộ luật Hình sự).\n\nNhư vậy, quy định này không chỉ là công cụ để Nhà nước thực hiện quyền lực trong đấu tranh phòng, chống tội phạm mà còn là cơ chế bảo đảm quyền tự vệ chính đáng của công dân, góp phần giữ vững an ninh chính trị và trật tự an toàn xã hội.",
+      "answer": "Theo quy định tại khoản 1 Điều 22 Bộ luật Hình sự (văn bản hợp nhất năm 2025), phòng vệ chính đáng được định nghĩa là hành vi của người vì bảo vệ quyền hoặc lợi ích chính đáng của mình, của người khác hoặc lợi ích của Nhà nước, của cơ quan, tổ chức mà chống trả lại một cách cần thiết người đang có hành vi xâm phạm các lợi ích nói trên. Pháp luật quy định hành vi này không phải là tội phạm.\n\nVề ý nghĩa của quy định này, có thể phân tích dựa trên các khía cạnh sau:\n\n*   **Bảo vệ quyền và lợi ích hợp pháp:** Theo tài liệu học thuật, luật tố tụng hình sự và luật hình sự có nhiệm vụ bảo vệ Nhà nước, chế độ xã hội chủ nghĩa, trật tự pháp luật, cũng như bảo vệ quyền con người, quyền công dân và lợi ích hợp pháp của tổ chức, cá nhân. Quy định về phòng vệ chính đáng là sự cụ thể hóa chức năng bảo vệ này, cho phép cá nhân chủ động ngăn chặn các hành vi xâm phạm đến các lợi ích được pháp luật bảo vệ khi Nhà nước chưa kịp thời can thiệp.\n*   **Cơ sở pháp lý cho sự đấu tranh phòng, chống tội phạm:** Theo Điều 5 Bộ luật Tố tụng Hình sự (văn bản hợp nhất năm 2025), tổ chức và cá nhân có quyền và nghĩa vụ tham gia đấu tranh phòng, chống tội phạm. Việc loại trừ tính tội phạm đối với hành vi phòng vệ chính đáng tạo hành lang pháp lý an toàn, khuyến khích công dân tích cực tham gia bảo vệ trật tự xã hội mà không lo ngại bị truy cứu trách nhiệm hình sự khi thực hiện hành vi chống trả trong giới hạn cần thiết.\n*   **Thể hiện tính nhân văn và công bằng:** Theo tài liệu học thuật, hệ thống pháp luật Việt Nam hướng tới các giá trị nhân đạo, công bằng và hướng thiện. Việc không coi phòng vệ chính đáng là tội phạm thể hiện sự công bằng của Nhà nước đối với người dân khi họ buộc phải thực hiện hành vi chống trả để bảo vệ lợi ích chính đáng trước các hành vi xâm hại nguy hiểm.\n\nTuy nhiên, cần lưu ý rằng quyền phòng vệ này có giới hạn. Theo khoản 2 Điều 22 Bộ luật Hình sự (văn bản hợp nhất năm 2025), nếu hành vi chống trả rõ ràng quá mức cần thiết, không phù hợp với tính chất và mức độ nguy hiểm của hành vi xâm hại thì được coi là \"vượt quá giới hạn phòng vệ chính đáng\" và người thực hiện phải chịu trách nhiệm hình sự theo quy định của pháp luật.",
       "grounded": true,
       "allowed_dieu_numbers": [
         "126",
         "136",
+        "14",
         "22",
-        "23",
         "3",
         "31",
         "5",
-        "62"
+        "84"
       ],
       "mentioned_dieu_numbers": [
-        "22"
+        "22",
+        "5"
       ],
       "ungrounded_dieu_numbers": [],
       "citation_grounding_rate": 1.0,
       "citation_recall": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "all_expected_cited": true
     },
     {
@@ -645,7 +615,7 @@
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Mối quan hệ giữa trách nhiệm chứng minh tội phạm của cơ quan có thẩm quyền tiến hành tố tụng và quyền không buộc phải chứng minh vô tội của người bị buộc tội được thể hiện qua các nội dung sau:\n\n**1. Trách nhiệm chứng minh thuộc về cơ quan có thẩm quyền tiến hành tố tụng**\nTheo Điều 15 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), trách nhiệm chứng minh tội phạm thuộc về cơ quan có thẩm quyền tiến hành tố tụng. Trong phạm vi nhiệm vụ, quyền hạn của mình, các cơ quan này phải áp dụng các biện pháp hợp pháp để xác định sự thật của vụ án một cách khách quan, toàn diện và đầy đủ. Họ có nghĩa vụ làm rõ cả chứng cứ xác định có tội và chứng cứ xác định vô tội, cũng như các tình tiết tăng nặng và giảm nhẹ trách nhiệm hình sự của người bị buộc tội.\n\n**2. Quyền không buộc phải chứng minh vô tội của người bị buộc tội**\nTheo Điều 15 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), người bị buộc tội có quyền nhưng không buộc phải chứng minh là mình vô tội. Điều này xuất phát từ nguyên tắc suy đoán vô tội được quy định tại Điều 13 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), theo đó người bị buộc tội được coi là không có tội cho đến khi được chứng minh theo trình tự, thủ tục do Bộ luật này quy định và có bản án kết tội của Tòa án đã có hiệu lực pháp luật.\n\n**3. Mối quan hệ giữa hai nội dung này**\nTheo tài liệu học thuật (Giáo trình Luật Tố tụng Hình sự - Đại học Luật Hà Nội), mối quan hệ này được phân tích như sau:\n*   **Sự phân định nghĩa vụ:** Việc quy định người bị buộc tội không buộc phải chứng minh mình vô tội là sự cụ thể hóa nguyên tắc suy đoán vô tội. Người bị buộc tội không có nghĩa vụ phải đưa ra lời khai chống lại chính mình hoặc buộc phải nhận mình có tội.\n*   **Cơ sở xác định sự thật:** Để xác định một người có tội hay không, cơ quan có thẩm quyền phải dựa trên cơ sở những chứng cứ đã thu thập được trong quá trình điều tra, truy tố, xét xử. Mặc dù người bị buộc tội không có nghĩa vụ chứng minh, nhưng họ vẫn có quyền đưa ra các chứng cứ để chứng minh mình vô tội. Cơ quan có thẩm quyền sẽ kết hợp các chứng cứ này với các chứng cứ khác để đưa ra kết luận khách quan.\n*   **Hệ quả pháp lý:** Nếu cơ quan có thẩm quyền không đủ căn cứ để làm sáng tỏ tội phạm theo trình tự, thủ tục luật định, thì theo Điều 13 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), họ phải kết luận người bị buộc tội không có tội. Điều này khẳng định trách nhiệm chứng minh là gánh nặng pháp lý đặt lên vai cơ quan tiến hành tố tụng, đảm bảo không làm oan người vô tội.",
+      "answer": "Mối quan hệ giữa trách nhiệm chứng minh tội phạm của cơ quan có thẩm quyền tiến hành tố tụng và quyền không buộc phải chứng minh vô tội của người bị buộc tội được thể hiện qua các nội dung sau:\n\n**1. Quy định pháp luật về trách nhiệm chứng minh và quyền của người bị buộc tội**\nTheo Điều 15 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), trách nhiệm chứng minh tội phạm thuộc về cơ quan có thẩm quyền tiến hành tố tụng. Trong khi đó, người bị buộc tội có quyền nhưng không buộc phải chứng minh là mình vô tội. Điều này khẳng định nghĩa vụ pháp lý trong việc xác định sự thật vụ án đặt lên vai các cơ quan tiến hành tố tụng, đảm bảo tính khách quan, toàn diện và đầy đủ, bao gồm cả việc làm rõ chứng cứ xác định có tội và chứng cứ xác định vô tội (Điều 15 BLTTHS 2015).\n\n**2. Phân tích dưới góc độ học thuật**\nTheo giáo trình Luật Tố tụng Hình sự, mối quan hệ này thể hiện sự cân bằng trong tố tụng hình sự:\n*   **Nghĩa vụ của cơ quan tiến hành tố tụng:** Cơ quan có thẩm quyền phải áp dụng mọi biện pháp hợp pháp để xác định sự thật khách quan. Việc chứng minh tội phạm không chỉ dừng lại ở việc tìm kiếm chứng cứ buộc tội mà còn phải thu thập, đánh giá chứng cứ xác định vô tội, các tình tiết tăng nặng, giảm nhẹ. Điều này đòi hỏi những người tiến hành tố tụng phải có trình độ chuyên môn, tư duy pháp lý và không được thiên vị, định kiến.\n*   **Quyền của người bị buộc tội:** Việc người bị buộc tội không buộc phải chứng minh mình vô tội đồng nghĩa với việc họ không có nghĩa vụ phải đưa ra lời khai chống lại chính mình hoặc buộc phải nhận mình có tội. Tuy nhiên, trong quá trình điều tra, truy tố, xét xử, họ vẫn có quyền tự mình đưa ra các chứng cứ để chứng minh mình vô tội.\n*   **Sự kết hợp để xác định sự thật:** Cơ quan có thẩm quyền tiến hành tố tụng sẽ dựa trên cơ sở những chứng cứ đã thu thập được trong vụ án, kết hợp với các chứng cứ do người bị buộc tội đưa ra (nếu có) để xem xét và xác định người bị buộc tội có tội hay không.\n\nNguyên tắc này gắn liền với nguyên tắc suy đoán vô tội tại Điều 13 BLTTHS 2015, theo đó người bị buộc tội được coi là không có tội cho đến khi được chứng minh theo trình tự, thủ tục luật định và có bản án kết tội của Tòa án đã có hiệu lực pháp luật. Nếu không đủ và không thể làm sáng tỏ căn cứ để buộc tội, cơ quan có thẩm quyền phải kết luận người bị buộc tội không có tội.",
       "grounded": true,
       "allowed_dieu_numbers": [
         "10",
@@ -685,11 +655,12 @@
         "98"
       ],
       "returned_dieu_numbers": [
+        "15",
         "98"
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Theo Điều 98 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), lời nhận tội của bị can, bị cáo chỉ có thể được coi là chứng cứ nếu phù hợp với những chứng cứ khác của vụ án. Pháp luật quy định không được dùng lời nhận tội làm chứng cứ duy nhất để buộc tội, kết tội nhằm bảo đảm tính khách quan, toàn diện trong việc xác định sự thật của vụ án.\n\nVề ý nghĩa của quy định này, tài liệu học thuật phân tích như sau:\n\n*   **Bảo đảm tính khách quan:** Do lời khai của bị can, bị cáo được lưu giữ trong ý thức chủ quan của con người nên tính khách quan dễ bị ảnh hưởng bởi các yếu tố như hoàn cảnh khách quan, năng lực tâm sinh lý, hoặc lợi ích, mối quan hệ của người khai. Việc đối chiếu lời nhận tội với các chứng cứ khác giúp loại bỏ khả năng sai lệch thông tin do vô tình hoặc hữu ý.\n*   **Bảo đảm quyền bào chữa và tránh oan sai:** Lời khai của bị can, bị cáo còn là biện pháp để họ thực hiện quyền tự bào chữa. Việc không được dùng lời nhận tội làm chứng cứ duy nhất buộc cơ quan tiến hành tố tụng phải phân tích, xem xét kỹ lưỡng và so sánh với các tài liệu, chứng cứ khác trong vụ án. Điều này giúp ngăn chặn các biện pháp trái pháp luật như bức cung, dùng nhục hình để ép buộc bị can, bị cáo nhận tội, từ đó bảo đảm việc xét xử đúng người, đúng tội, đúng pháp luật.",
+      "answer": "Theo Điều 98 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), lời nhận tội của bị can, bị cáo chỉ có thể được coi là chứng cứ nếu phù hợp với những chứng cứ khác của vụ án. Pháp luật quy định không được dùng lời nhận tội làm chứng cứ duy nhất để buộc tội, kết tội nhằm bảo đảm tính khách quan và tránh việc lạm dụng các biện pháp trái pháp luật trong quá trình lấy lời khai.\n\nVề ý nghĩa của quy định này, theo tài liệu học thuật (Giáo trình Luật Tố tụng Hình sự - Đại học Luật Hà Nội), quy định này mang các ý nghĩa quan trọng sau:\n\n*   **Bảo đảm tính khách quan:** Do lời khai của bị can, bị cáo được lưu giữ trong ý thức chủ quan của con người nên dễ bị ảnh hưởng bởi các yếu tố như trạng thái tâm lý, khả năng nhận thức, hoặc lợi ích cá nhân. Việc yêu cầu lời nhận tội phải phù hợp với các chứng cứ khác giúp kiểm chứng tính xác thực của thông tin, tránh việc kết tội dựa trên những lời khai sai lệch hoặc không đầy đủ.\n*   **Bảo đảm quyền bào chữa và quyền con người:** Việc khai báo là quyền, không phải nghĩa vụ của bị can, bị cáo. Quy định này giúp bảo vệ bị can, bị cáo trước các biện pháp trái pháp luật như bức cung, dùng nhục hình để ép buộc nhận tội. Khi lời nhận tội không phải là căn cứ duy nhất, cơ quan tiến hành tố tụng buộc phải phân tích, xem xét kỹ lưỡng và so sánh với các tài liệu, chứng cứ khác trong vụ án để đánh giá một cách chính xác, khách quan.\n*   **Xác định sự thật khách quan:** Quy định này đòi hỏi cơ quan có thẩm quyền phải thực hiện trách nhiệm chứng minh tội phạm một cách toàn diện, đầy đủ, làm rõ cả chứng cứ xác định có tội và chứng cứ xác định vô tội (theo Điều 15 Bộ luật Tố tụng Hình sự 2015), thay vì chỉ dựa vào lời nhận tội của người bị buộc tội.",
       "grounded": true,
       "allowed_dieu_numbers": [
         "10",
@@ -714,12 +685,13 @@
         "98"
       ],
       "mentioned_dieu_numbers": [
+        "15",
         "98"
       ],
       "ungrounded_dieu_numbers": [],
       "citation_grounding_rate": 1.0,
       "citation_recall": 1.0,
-      "citation_precision": 1.0,
+      "citation_precision": 0.5,
       "all_expected_cited": true
     },
     {
@@ -730,12 +702,14 @@
         "26"
       ],
       "returned_dieu_numbers": [
+        "13",
+        "14",
         "26",
         "322"
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Nguyên tắc tranh tụng trong xét xử được bảo đảm có ý nghĩa quan trọng trong việc bảo vệ quyền của người bị buộc tội, cụ thể như sau:\n\n**1. Bảo đảm sự bình đẳng giữa bên buộc tội và bên gỡ tội**\nTheo tài liệu học thuật, nguyên tắc này là sự cụ thể hóa nguyên tắc bình đẳng trước pháp luật trong tố tụng hình sự. Nội dung cơ bản là xác lập sự bình đẳng giữa bên buộc tội và bên gỡ tội trong việc đưa ra chứng cứ và đánh giá chứng cứ để chứng minh sự thật khách quan của vụ án. Điều này giúp người bị buộc tội có cơ hội ngang bằng với bên buộc tội trong việc bảo vệ quyền và lợi ích hợp pháp của mình.\n\n**2. Mở rộng phạm vi và thời gian thực hiện quyền**\nTheo tài liệu học thuật, trước đây quyền bình đẳng trong việc đưa chứng cứ, yêu cầu chỉ được thực hiện tại phiên tòa. Hiện nay, quyền này được mở rộng cả về chủ thể, phạm vi và thời gian, cho phép người bị buộc tội và người bào chữa thực hiện quyền bình đẳng trong suốt quá trình giải quyết vụ án.\n\n**3. Bảo đảm quyền tranh luận và đối đáp tại phiên tòa**\n*   **Quyền trình bày và đối đáp:** Theo Điều 322 Bộ luật Tố tụng Hình sự 2015, bị cáo và người bào chữa có quyền trình bày ý kiến, đưa ra chứng cứ, tài liệu và lập luận để đối đáp với Kiểm sát viên về các vấn đề như chứng cứ xác định có tội/vô tội, tính chất mức độ nguy hiểm của hành vi, các tình tiết tăng nặng, giảm nhẹ và các vấn đề khác có ý nghĩa đối với vụ án.\n*   **Trách nhiệm của Kiểm sát viên:** Kiểm sát viên có nghĩa vụ phải đối đáp đến cùng từng ý kiến của bị cáo và người bào chữa (Điều 322 Bộ luật Tố tụng Hình sự 2015; Điều 26 Quyết định 505/QĐ-VKSTC).\n*   **Vai trò của Tòa án:** Tòa án có trách nhiệm tạo điều kiện cho bị cáo và người bào chữa thực hiện đầy đủ quyền, nghĩa vụ của mình và tranh tụng dân chủ, bình đẳng (Điều 26 Bộ luật Tố tụng Hình sự 2015). Chủ tọa phiên tòa không được hạn chế thời gian tranh luận, phải tạo điều kiện để các bên trình bày hết ý kiến (Điều 322 Bộ luật Tố tụng Hình sự 2015).\n\n**4. Bảo đảm tính khách quan trong phán quyết của Tòa án**\n*   **Căn cứ ra bản án:** Bản án, quyết định của Tòa án phải căn cứ vào kết quả kiểm tra, đánh giá chứng cứ và kết quả tranh tụng tại phiên tòa (Điều 26 Bộ luật Tố tụng Hình sự 2015). Theo tài liệu học thuật, điều này khắc phục tình trạng \"án tại hồ sơ\", buộc Tòa án phải xem xét, đánh giá mọi chứng cứ xác định có tội và vô tội được trình bày, làm rõ tại phiên tòa.\n*   **Trách nhiệm của Hội đồng xét xử:** Hội đồng xét xử phải lắng nghe, ghi nhận đầy đủ ý kiến của bị cáo, người bào chữa. Nếu không chấp nhận ý kiến, Hội đồng xét xử phải nêu rõ lý do trong bản án (Điều 322 Bộ luật Tố tụng Hình sự 2015).\n\nTóm lại, nguyên tắc này xác định vị trí của Tòa án là trọng tài công minh, tạo điều kiện cho người bị buộc tội thực hiện quyền bào chữa, từ đó giúp Tòa án giải quyết vụ án đúng người, đúng tội, đúng pháp luật, tránh làm oan người vô tội.",
+      "answer": "Nguyên tắc tranh tụng trong xét xử được bảo đảm (quy định tại Điều 26 Bộ luật Tố tụng Hình sự 2015) có ý nghĩa quan trọng trong việc bảo đảm quyền của người bị buộc tội thông qua các khía cạnh sau:\n\n**1. Bảo đảm quyền bình đẳng trong việc chứng minh và bảo vệ quyền lợi**\nTheo Điều 26 Bộ luật Tố tụng Hình sự 2015, người bị buộc tội và người bào chữa có quyền bình đẳng với Kiểm sát viên trong việc đưa ra chứng cứ, đánh giá chứng cứ và đưa ra yêu cầu để làm rõ sự thật khách quan của vụ án. Theo tài liệu học thuật, nguyên tắc này cụ thể hóa quyền bình đẳng trước pháp luật, xác định vị thế bình đẳng giữa bên buộc tội và bên gỡ tội. Việc cho phép người bị buộc tội được chủ động đưa ra chứng cứ xác định vô tội hoặc tình tiết giảm nhẹ giúp họ có công cụ pháp lý thực chất để tự bảo vệ mình trước các cáo buộc.\n\n**2. Bảo đảm tính khách quan, toàn diện trong xét xử**\nTheo Điều 26 Bộ luật Tố tụng Hình sự 2015 và Điều 322 Bộ luật Tố tụng Hình sự 2015, mọi chứng cứ xác định có tội và vô tội đều phải được trình bày, tranh luận và làm rõ tại phiên tòa. Hội đồng xét xử có trách nhiệm lắng nghe, ghi nhận đầy đủ ý kiến của các bên và phải nêu rõ lý do nếu không chấp nhận ý kiến của người bào chữa hoặc bị cáo. Tài liệu học thuật nhấn mạnh rằng nguyên tắc này giúp Tòa án không xét xử dựa trên \"án tại hồ sơ\" mà dựa trên kết quả kiểm tra, đánh giá chứng cứ và tranh tụng trực tiếp tại phiên tòa, từ đó tránh việc làm oan người vô tội.\n\n**3. Bảo đảm quyền được đối đáp và làm sáng tỏ sự thật**\nTheo Điều 322 Bộ luật Tố tụng Hình sự 2015, bị cáo và người bào chữa có quyền trình bày ý kiến, lập luận để đối đáp với Kiểm sát viên về mọi vấn đề có ý nghĩa đối với vụ án (tội danh, hình phạt, trách nhiệm dân sự...). Chủ tọa phiên tòa có trách nhiệm tạo điều kiện cho các bên tranh luận dân chủ, bình đẳng và không được hạn chế thời gian tranh luận. Điều này bảo đảm người bị buộc tội có cơ hội được trình bày hết ý kiến, phản bác lại các lập luận buộc tội, giúp Hội đồng xét xử có cái nhìn toàn diện để đưa ra phán quyết đúng người, đúng tội, đúng pháp luật.\n\n**4. Vai trò của Tòa án trong việc bảo đảm quyền tranh tụng**\nTheo Điều 26 Bộ luật Tố tụng Hình sự 2015 và Điều 13, Điều 14 Luật Tổ chức Tòa án nhân dân 2024, Tòa án có trách nhiệm bảo đảm cho người bị buộc tội thực hiện quyền tự bào chữa, nhờ người bào chữa và tạo điều kiện để họ thực hiện quyền tranh tụng. Tài liệu học thuật khẳng định Tòa án đóng vai trò là trọng tài công minh, tạo môi trường pháp lý để các bên thực hiện quyền tranh tụng, qua đó bảo vệ quyền và lợi ích hợp pháp của người bị buộc tội một cách hiệu quả nhất.",
       "grounded": true,
       "allowed_dieu_numbers": [
         "13",
@@ -747,13 +721,15 @@
         "44"
       ],
       "mentioned_dieu_numbers": [
+        "13",
+        "14",
         "26",
         "322"
       ],
       "ungrounded_dieu_numbers": [],
       "citation_grounding_rate": 1.0,
       "citation_recall": 1.0,
-      "citation_precision": 0.5,
+      "citation_precision": 0.25,
       "all_expected_cited": true
     },
     {
@@ -791,7 +767,7 @@
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Việc giới hạn độ tuổi chịu trách nhiệm hình sự từ đủ 14 tuổi trở lên được quy định tại Điều 12 Bộ luật Hình sự (văn bản hợp nhất năm 2025). Dưới đây là phân tích dựa trên các tài liệu học thuật về căn cứ và ý nghĩa của quy định này:\n\n**1. Căn cứ xác định độ tuổi chịu trách nhiệm hình sự**\nTheo tài liệu học thuật, việc xác định độ tuổi này dựa trên sự phát triển về tâm sinh lý và khả năng nhận thức của con người:\n*   **Khả năng nhận thức và điều khiển hành vi:** Đến một độ tuổi nhất định, con người mới có khả năng nhận thức được tính nguy hiểm cho xã hội của hành vi và có khả năng điều khiển hành vi của mình. Chỉ khi đạt đến ngưỡng phát triển này, cá nhân mới phải chịu trách nhiệm hình sự về những hành vi nguy hiểm cho xã hội do mình gây ra.\n*   **Sự phân hóa độ tuổi:** Quy định tại Điều 12 Bộ luật Hình sự thể hiện sự phân hóa rõ rệt:\n    *   Người từ đủ 16 tuổi trở lên phải chịu trách nhiệm hình sự về mọi tội phạm (trừ trường hợp có quy định khác).\n    *   Người từ đủ 14 tuổi đến dưới 16 tuổi chỉ phải chịu trách nhiệm hình sự về tội phạm rất nghiêm trọng hoặc tội phạm đặc biệt nghiêm trọng đối với một số tội danh cụ thể được liệt kê trong luật.\n\n**2. Ý nghĩa đối với chính sách hình sự nhân đạo**\nQuy định này phản ánh chính sách hình sự nhân đạo của Nhà nước đối với người dưới 18 tuổi thông qua các khía cạnh sau:\n*   **Mục đích giáo dục là trọng tâm:** Theo Điều 91 Bộ luật Hình sự, việc xử lý người dưới 18 tuổi phạm tội phải bảo đảm lợi ích tốt nhất của họ, chủ yếu nhằm mục đích giáo dục, giúp đỡ họ sửa chữa sai lầm, phát triển lành mạnh để trở thành công dân có ích.\n*   **Hạn chế áp dụng hình phạt:** Pháp luật ưu tiên các biện pháp giáo dục, phòng ngừa thay vì trừng trị. Tòa án chỉ áp dụng hình phạt khi xét thấy các biện pháp giáo dục khác không bảo đảm hiệu quả (Điều 91 Bộ luật Hình sự). Đặc biệt, pháp luật nghiêm cấm áp dụng hình phạt tù chung thân hoặc tử hình đối với người dưới 18 tuổi (Điều 91 Bộ luật Hình sự).\n*   **Cân nhắc đặc điểm nhân thân:** Việc truy cứu trách nhiệm hình sự chỉ được thực hiện trong trường hợp cần thiết, căn cứ vào đặc điểm nhân thân, tính chất nguy hiểm của hành vi và yêu cầu phòng ngừa tội phạm (Điều 91 Bộ luật Hình sự).\n*   **Cơ chế miễn trách nhiệm hình sự:** Đối với một số trường hợp phạm tội ít nghiêm trọng hoặc nghiêm trọng, nếu người dưới 18 tuổi có nhiều tình tiết giảm nhẹ và tự nguyện khắc phục hậu quả, họ có thể được miễn trách nhiệm hình sự và áp dụng các biện pháp thay thế (Điều 91 Bộ luật Hình sự).\n\nTóm lại, việc giới hạn độ tuổi chịu trách nhiệm hình sự không chỉ dựa trên cơ sở khoa học về sự phát triển tâm sinh lý mà còn là sự cụ thể hóa chính sách nhân đạo, ưu tiên các biện pháp giáo dục, hỗ trợ để người dưới 18 tuổi có cơ hội sửa chữa sai lầm và tái hòa nhập cộng đồng.",
+      "answer": "Việc giới hạn độ tuổi chịu trách nhiệm hình sự từ đủ 14 tuổi trở lên được quy định tại Điều 12 Bộ luật Hình sự (văn bản hợp nhất năm 2025). Dưới đây là phân tích dựa trên các quy định pháp luật và tài liệu học thuật liên quan:\n\n**1. Cơ sở pháp lý về độ tuổi chịu trách nhiệm hình sự**\nTheo Điều 12 Bộ luật Hình sự, người từ đủ 16 tuổi trở lên phải chịu trách nhiệm hình sự về mọi tội phạm (trừ trường hợp có quy định khác). Đối với người từ đủ 14 tuổi đến dưới 16 tuổi, họ chỉ phải chịu trách nhiệm hình sự về tội phạm rất nghiêm trọng hoặc đặc biệt nghiêm trọng thuộc danh mục các tội danh cụ thể được liệt kê tại khoản 2 Điều này.\n\n**2. Ý nghĩa đối với chính sách hình sự nhân đạo**\nTheo giáo trình Luật Tố tụng Hình sự, việc quy định độ tuổi chịu trách nhiệm hình sự dựa trên các căn cứ lý luận sau:\n\n*   **Sự phát triển về nhận thức và điều khiển hành vi:** Con người cần đạt đến một độ tuổi nhất định mới có khả năng nhận thức đầy đủ về tính nguy hiểm cho xã hội của hành vi và khả năng điều khiển hành vi của mình. Trước độ tuổi này, sự phát triển về tâm sinh lý chưa hoàn thiện, dẫn đến việc áp dụng hình phạt không mang lại hiệu quả giáo dục, phòng ngừa như đối với người trưởng thành.\n*   **Mục đích giáo dục và bảo vệ:** Theo Điều 91 Bộ luật Hình sự, nguyên tắc xử lý đối với người dưới 18 tuổi phạm tội là phải bảo đảm lợi ích tốt nhất cho họ, chủ yếu nhằm mục đích giáo dục, giúp đỡ họ sửa chữa sai lầm và phát triển lành mạnh. Việc giới hạn độ tuổi là sự cụ thể hóa chính sách nhân đạo, ưu tiên các biện pháp giáo dục, phòng ngừa thay vì trừng trị bằng hình phạt.\n*   **Hạn chế tác động tiêu cực của hình phạt:** Việc truy cứu trách nhiệm hình sự đối với người dưới 18 tuổi chỉ được thực hiện trong trường hợp cần thiết (Điều 91 Bộ luật Hình sự). Chính sách này nhằm tránh việc áp dụng các biện pháp cưỡng chế quá mức đối với người chưa thành niên, giúp họ có cơ hội tái hòa nhập cộng đồng và trở thành công dân có ích cho xã hội.\n\nTóm lại, việc giới hạn độ tuổi chịu trách nhiệm hình sự không chỉ là sự ghi nhận về mặt sinh học và tâm lý học mà còn là sự thể hiện tính nhân văn sâu sắc của chính sách hình sự, tập trung vào việc giáo dục và bảo vệ sự phát triển của người dưới 18 tuổi thay vì áp dụng các biện pháp trừng phạt nghiêm khắc như đối với người trưởng thành.",
       "grounded": true,
       "allowed_dieu_numbers": [
         "1",
@@ -806,7 +782,7 @@
         "69",
         "90",
         "91",
-        "92"
+        "93"
       ],
       "mentioned_dieu_numbers": [
         "12",
@@ -833,7 +809,7 @@
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Việc bảo đảm quyền bào chữa cho người bị buộc tội trong tố tụng hình sự có ý nghĩa quan trọng đối với việc bảo vệ quyền con người, được thể hiện qua các khía cạnh sau:\n\n**1. Về mặt lý luận và vai trò bảo vệ quyền con người**\nTheo tài liệu học thuật, quyền bào chữa là một trong những quyền cơ bản nhất của con người và công dân, được ghi nhận trong Hiến pháp. Việc bảo đảm quyền này là cơ sở để người bị buộc tội thực hiện chức năng tự bảo vệ mình trước sự buộc tội của cơ quan nhà nước. Sự tham gia của người bào chữa giúp bảo vệ quyền và lợi ích hợp pháp của người bị buộc tội, góp phần bảo đảm sự công bằng, dân chủ trong tố tụng hình sự.\n\n**2. Về mặt thực tiễn tố tụng**\nViệc bảo đảm quyền bào chữa mang lại những ý nghĩa thiết thực sau:\n*   **Xác định sự thật khách quan:** Sự tham gia của người bào chữa giúp cơ quan có thẩm quyền tiến hành tố tụng làm rõ các tình tiết xác định người bị buộc tội vô tội hoặc các tình tiết giảm nhẹ trách nhiệm hình sự. Điều này góp phần giúp cơ quan tiến hành tố tụng giải quyết vụ án đúng người, đúng tội, đúng pháp luật (Theo Điều 15 BLTTHS 2015).\n*   **Phòng chống oan sai và bỏ lọt tội phạm:** Thông qua việc đưa ra chứng cứ, tài liệu, đồ vật và tranh luận tại phiên tòa, người bào chữa giúp khắc phục tình trạng truy tố, kết án oan sai, đồng thời hỗ trợ cơ quan tiến hành tố tụng không bỏ lọt tội phạm.\n*   **Hạn chế lạm quyền:** Hoạt động bào chữa góp phần giám sát, hạn chế sự lạm quyền và vi phạm pháp luật của người có thẩm quyền tiến hành tố tụng, bảo đảm tính minh bạch và công khai trong quá trình giải quyết vụ án.\n*   **Bảo đảm tranh tụng:** Việc bảo đảm quyền bào chữa là tiền đề để thực hiện nguyên tắc tranh tụng trong xét xử, nơi bị cáo và người bào chữa có quyền bình đẳng với Kiểm sát viên trong việc đưa ra chứng cứ, đánh giá chứng cứ và đưa ra yêu cầu để làm rõ sự thật khách quan (Theo Điều 26 BLTTHS 2015).\n\n**3. Trách nhiệm của cơ quan tiến hành tố tụng**\nĐể bảo đảm quyền này, pháp luật quy định cơ quan, người có thẩm quyền tiến hành tố tụng có trách nhiệm thông báo, giải thích và bảo đảm cho người bị buộc tội thực hiện đầy đủ quyền tự bào chữa, nhờ luật sư hoặc người khác bào chữa (Theo Điều 16 BLTTHS 2015; Điều 14 Luật Tổ chức Tòa án nhân dân 2024). Trong trường hợp cần thiết, cơ quan có thẩm quyền phải chỉ định người bào chữa để bảo đảm quyền lợi cho người bị buộc tội (Theo Điều 76 BLTTHS 2015).",
+      "answer": "Việc bảo đảm quyền bào chữa cho người bị buộc tội trong tố tụng hình sự có ý nghĩa quan trọng đối với việc bảo vệ quyền con người, được thể hiện qua các khía cạnh sau:\n\n**1. Về mặt lý luận và vai trò bảo vệ quyền con người**\nTheo tài liệu học thuật, quyền bào chữa là một trong những quyền cơ bản nhất của con người và công dân, được ghi nhận trong Hiến pháp. Quyền này được hiểu là tổng thể các quyền mà pháp luật quy định cho phép người bị buộc tội sử dụng nhằm bác bỏ một phần hoặc toàn bộ sự buộc tội hoặc giảm nhẹ trách nhiệm hình sự đối với họ. Việc bảo đảm quyền bào chữa góp phần bảo vệ quyền con người, quyền và lợi ích hợp pháp của pháp nhân, đồng thời bảo đảm sự công bằng trong tố tụng hình sự.\n\n**2. Về mặt thực tiễn tố tụng**\nViệc bảo đảm quyền bào chữa mang lại những giá trị thiết thực cho quá trình giải quyết vụ án:\n*   **Xác định sự thật khách quan:** Sự tham gia của người bào chữa giúp cơ quan có thẩm quyền tiến hành tố tụng làm rõ các tình tiết xác định người bị buộc tội vô tội hoặc các tình tiết giảm nhẹ trách nhiệm hình sự. Điều này góp phần giúp cơ quan tiến hành tố tụng giải quyết vụ án đúng người, đúng tội, đúng pháp luật, tránh tình trạng làm oan người vô tội hoặc bỏ lọt tội phạm.\n*   **Bảo đảm tính dân chủ và công bằng:** Việc bảo đảm quyền bào chữa giúp hạn chế sự lạm quyền và vi phạm pháp luật của người có thẩm quyền tiến hành tố tụng. Nó đáp ứng yêu cầu cải cách tư pháp theo hướng dân chủ, công khai, minh bạch và nâng cao chất lượng tranh tụng tại phiên tòa.\n*   **Hỗ trợ pháp lý:** Người bào chữa, bằng kinh nghiệm và sự hiểu biết pháp luật, giúp đỡ người bị buộc tội về mặt pháp lý, bảo vệ quyền và lợi ích hợp pháp của họ trong suốt quá trình tố tụng.\n\n**3. Quy định pháp luật về bảo đảm quyền bào chữa**\nĐể hiện thực hóa ý nghĩa nêu trên, pháp luật đã thiết lập các cơ chế bảo đảm cụ thể:\n*   **Trách nhiệm của cơ quan tiến hành tố tụng:** Theo Điều 16 Bộ luật Tố tụng Hình sự 2015 (sửa đổi, bổ sung 2021), cơ quan, người có thẩm quyền tiến hành tố tụng có trách nhiệm thông báo, giải thích và bảo đảm cho người bị buộc tội thực hiện đầy đủ quyền bào chữa. Điều 14 Luật Tổ chức Tòa án nhân dân 2024 cũng quy định Tòa án có trách nhiệm bảo đảm quyền tự bào chữa, được bào chữa, được trợ giúp pháp lý của bị can, bị cáo.\n*   **Nguyên tắc tranh tụng:** Theo Điều 26 Bộ luật Tố tụng Hình sự 2015, Tòa án có trách nhiệm tạo điều kiện cho bị cáo, người bào chữa thực hiện đầy đủ quyền, nghĩa vụ và tranh tụng dân chủ, bình đẳng trước Tòa án. Bản án, quyết định của Tòa án phải căn cứ vào kết quả tranh tụng tại phiên tòa.\n*   **Trách nhiệm chứng minh:** Theo Điều 15 Bộ luật Tố tụng Hình sự 2015, trách nhiệm chứng minh tội phạm thuộc về cơ quan có thẩm quyền tiến hành tố tụng, trong khi người bị buộc tội có quyền nhưng không buộc phải chứng minh mình vô tội. Điều này tạo nền tảng pháp lý để quyền bào chữa được thực thi một cách thực chất.",
       "grounded": true,
       "allowed_dieu_numbers": [
         "11",
@@ -854,8 +830,7 @@
         "14",
         "15",
         "16",
-        "26",
-        "76"
+        "26"
       ],
       "ungrounded_dieu_numbers": [],
       "citation_grounding_rate": 1.0,
@@ -879,10 +854,11 @@
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Trong tố tụng hình sự, việc xác định sự thật khách quan của vụ án phụ thuộc vào quá trình thu thập, kiểm tra và đánh giá chứng cứ. Dưới đây là phân tích về vai trò của chứng cứ và nguồn chứng cứ dựa trên các quy định pháp luật và tài liệu học thuật:\n\n### 1. Vai trò của chứng cứ\nTheo Điều 86 Bộ luật Tố tụng Hình sự (BLTTHS) 2015, chứng cứ là những gì có thật, được thu thập theo trình tự, thủ tục luật định, dùng làm căn cứ để xác định có hay không có hành vi phạm tội, người thực hiện hành vi phạm tội và những tình tiết khác có ý nghĩa trong việc giải quyết vụ án.\n\n*   **Cơ sở để giải quyết vụ án:** Chứng cứ là phương tiện duy nhất để cơ quan có thẩm quyền làm sáng tỏ sự thật khách quan. Theo tài liệu học thuật, chứng cứ là những thông tin có ý nghĩa đối với việc giải quyết vụ án, tồn tại khách quan, độc lập không phụ thuộc vào ý thức chủ quan của con người.\n*   **Tính xác thực và hợp pháp:** Để đảm bảo sự thật khách quan, mỗi chứng cứ phải được kiểm tra, đánh giá về tính hợp pháp, xác thực và liên quan (Điều 108 BLTTHS 2015). Nếu thông tin thu thập được không khách quan hoặc không tuân thủ trình tự, thủ tục do Bộ luật quy định thì không có giá trị pháp lý và không được dùng làm căn cứ giải quyết vụ án (Điều 87 BLTTHS 2015).\n*   **Đánh giá tổng hợp:** Việc đánh giá chứng cứ không chỉ dừng lại ở từng chứng cứ riêng lẻ mà phải đặt trong mối liên hệ tổng hợp. Tài liệu học thuật nhấn mạnh rằng việc đánh giá tổng hợp giúp lý giải các mâu thuẫn, từ đó đi đến kết luận thống nhất về sự thật duy nhất đúng đắn của vụ án.\n\n### 2. Vai trò của nguồn chứng cứ\nNguồn chứng cứ là nơi chứa đựng các thông tin (chứng cứ) cần thiết cho việc giải quyết vụ án. Điều 87 BLTTHS 2015 liệt kê các nguồn chứng cứ bao gồm: vật chứng; lời khai, lời trình bày; dữ liệu điện tử; kết luận giám định, định giá tài sản; biên bản trong hoạt động tố tụng; kết quả thực hiện ủy thác tư pháp và các tài liệu, đồ vật khác.\n\n*   **Sự phân biệt giữa chứng cứ và nguồn chứng cứ:** Theo tài liệu học thuật, cần phân biệt rõ hai khái niệm này. Chứng cứ là các thông tin được chứa đựng bên trong, còn nguồn chứng cứ là vật chứa đựng thông tin đó. Các nguồn không phải là chứng cứ, nhưng mọi chứng cứ đều phải được lưu giữ trong các nguồn mà pháp luật quy định để đảm bảo tính khách quan và hợp pháp.\n*   **Đảm bảo tính khách quan:** Việc quy định các nguồn chứng cứ cụ thể giúp cơ quan tiến hành tố tụng có cơ sở pháp lý để thu thập thông tin một cách khoa học. Tài liệu học thuật chỉ ra rằng việc thu thập chứng cứ thực chất là thu thập nguồn chứng cứ hoặc thu thập chính chứng cứ đó (ví dụ: thu thập con dao là thu thập nguồn chứng cứ, nhưng thu thập vết máu trên nền nhà là thu thập chứng cứ).\n\n### 3. Mối quan hệ trong việc xác định sự thật khách quan\n*   **Tính thống nhất:** Chứng cứ và nguồn chứng cứ có quan hệ mật thiết. Nếu không có nguồn chứng cứ hợp pháp, thông tin thu thập được sẽ không có giá trị pháp lý. Ngược lại, nếu nguồn chứng cứ không chứa đựng thông tin xác thực, khách quan thì không thể giúp làm sáng tỏ vụ án.\n*   **Nhiệm vụ của cơ quan tố tụng:** Cơ quan có thẩm quyền phải kiểm tra, đánh giá đầy đủ, khách quan, toàn diện mọi chứng cứ đã thu thập được (Điều 108 BLTTHS 2015). Việc thiếu chứng cứ để chứng minh các vấn đề quy định tại Điều 85 BLTTHS 2015 (như hành vi phạm tội, lỗi, nhân thân, thiệt hại...) là căn cứ để Viện kiểm sát hoặc Tòa án trả hồ sơ điều tra bổ sung nhằm đảm bảo vụ án được giải quyết khách quan, toàn diện (Điều 3 Thông tư liên tịch 02/2017/TTLT-VKSNDTC-TANDTC-BCA-BQP).\n\nTóm lại, chứng cứ là \"nội dung\" thông tin, còn nguồn chứng cứ là \"hình thức\" lưu giữ thông tin đó. Cả hai đều đóng vai trò then chốt, là cơ sở pháp lý để cơ quan tiến hành tố tụng xác định sự thật khách quan, đảm bảo việc xử lý tội phạm đúng người, đúng tội và đúng pháp luật.",
+      "answer": "Để phân tích vai trò của chứng cứ và nguồn chứng cứ trong việc xác định sự thật khách quan của vụ án hình sự, cần dựa trên các quy định pháp luật và phân tích học thuật sau:\n\n### 1. Khái niệm và mối quan hệ giữa chứng cứ và nguồn chứng cứ\n*   **Chứng cứ:** Theo Điều 86 Bộ luật Tố tụng Hình sự (BLTTHS) 2015, chứng cứ là những gì có thật, được thu thập theo trình tự, thủ tục do Bộ luật này quy định, dùng làm căn cứ để xác định có hay không có hành vi phạm tội, người thực hiện hành vi phạm tội và những tình tiết khác có ý nghĩa trong việc giải quyết vụ án.\n*   **Nguồn chứng cứ:** Theo Điều 87 BLTTHS 2015, chứng cứ được thu thập, xác định từ các nguồn như vật chứng; lời khai, lời trình bày; dữ liệu điện tử; kết luận giám định, định giá tài sản; biên bản trong hoạt động tố tụng; kết quả thực hiện ủy thác tư pháp và các tài liệu, đồ vật khác.\n*   **Phân biệt:** Theo tài liệu học thuật, chứng cứ là những thông tin có ý nghĩa đối với việc giải quyết vụ án được chứa đựng trong các nguồn. Nguồn chứng cứ không phải là chứng cứ, nhưng bất kỳ chứng cứ nào cũng phải được lưu giữ trong nguồn mà pháp luật quy định để đảm bảo tính đúng đắn, khách quan và hợp pháp.\n\n### 2. Vai trò trong việc xác định sự thật khách quan\nViệc xác định sự thật khách quan của vụ án phụ thuộc vào quá trình kiểm tra, đánh giá chứng cứ:\n*   **Tính hợp pháp:** Theo khoản 2 Điều 87 BLTTHS 2015, những gì có thật nhưng không được thu thập theo trình tự, thủ tục do Bộ luật này quy định thì không có giá trị pháp lý và không được dùng làm căn cứ để giải quyết vụ án.\n*   **Tính khách quan, toàn diện:** Theo Điều 108 BLTTHS 2015, người có thẩm quyền tiến hành tố tụng phải kiểm tra, đánh giá đầy đủ, khách quan, toàn diện mọi chứng cứ đã thu thập được. Mỗi chứng cứ phải được xác định tính hợp pháp, xác thực và liên quan đến vụ án.\n*   **Phân tích học thuật:** \n    *   Chứng cứ là những thông tin, tài liệu, đồ vật tồn tại độc lập, không phụ thuộc vào ý thức chủ quan của con người. Nhiệm vụ của cơ quan tiến hành tố tụng là kiểm tra tính khách quan của các thông tin này. Nếu thông tin không khách quan, dù vì bất kỳ lý do gì, đều không được coi là chứng cứ.\n    *   Việc đánh giá chứng cứ phải thực hiện theo hai bước: đánh giá từng chứng cứ tách rời (về tính khách quan, liên quan, hợp pháp) và đánh giá tổng hợp các chứng cứ trong mối liên hệ với nhau. Điều này giúp lý giải các mâu thuẫn (nếu có) để đi đến kết luận về sự thật duy nhất đúng đắn, khách quan của vụ án.\n    *   Nếu chứng cứ không được đánh giá chính xác, khách quan thì không thể đảm bảo việc xác định sự thật khách quan của vụ án, từ đó ảnh hưởng đến việc ra bản án và các quyết định giải quyết vụ án.\n\n### 3. Ý nghĩa thực tiễn\nViệc thiếu chứng cứ để chứng minh các vấn đề quan trọng (như hành vi phạm tội, lỗi, năng lực trách nhiệm hình sự, tình tiết tăng nặng/giảm nhẹ...) sẽ dẫn đến việc Viện kiểm sát hoặc Tòa án phải trả hồ sơ để điều tra bổ sung nhằm đảm bảo vụ án được giải quyết khách quan, toàn diện và đúng pháp luật (Điều 3 Thông tư liên tịch 02/2017/TTLT-VKSNDTC-TANDTC-BCA-BQP).",
       "grounded": true,
       "allowed_dieu_numbers": [
         "10",
+        "108",
         "11",
         "15",
         "19",
@@ -906,14 +882,11 @@
       "mentioned_dieu_numbers": [
         "108",
         "3",
-        "85",
         "86",
         "87"
       ],
-      "ungrounded_dieu_numbers": [
-        "108"
-      ],
-      "citation_grounding_rate": 0.8,
+      "ungrounded_dieu_numbers": [],
+      "citation_grounding_rate": 1.0,
       "citation_recall": 1.0,
       "citation_precision": 0.5,
       "all_expected_cited": true
@@ -925,12 +898,13 @@
       "expected_dieu_numbers": [],
       "returned_dieu_numbers": [
         "165",
+        "20",
         "21",
         "6"
       ],
       "is_fallback": false,
       "used_academic_reference": true,
-      "answer": "Mối quan hệ giữa Cơ quan điều tra (CQĐT) và Viện kiểm sát (VKS) trong việc áp dụng, thay đổi, hủy bỏ biện pháp ngăn chặn ở giai đoạn khởi tố vụ án hình sự được xác định là mối quan hệ phối hợp và chế ước, nhằm bảo đảm việc áp dụng các biện pháp này đúng quy định pháp luật, không xâm phạm quyền con người, quyền công dân, đồng thời góp phần phát hiện và khắc phục kịp thời các sai phạm tố tụng.\n\nDưới đây là phân tích về mối quan hệ này dựa trên các quy định pháp luật và tài liệu học thuật:\n\n### 1. Bản chất của mối quan hệ\nTheo tài liệu học thuật, mối quan hệ giữa CQĐT và VKS trong giai đoạn khởi tố vụ án hình sự mang tính chất phối hợp - chế ước:\n*   **Phối hợp:** Nhằm bảo đảm sự thống nhất về nghiệp vụ, hiệu quả thu thập chứng cứ và kịp thời ngăn chặn tội phạm, ngăn chặn việc người bị buộc tội gây khó khăn cho quá trình giải quyết vụ án.\n*   **Chế ước:** VKS thực hiện vai trò kiểm sát tính hợp pháp và tính có căn cứ của các quyết định, đề xuất từ CQĐT thông qua cơ chế phê chuẩn, hủy bỏ hoặc yêu cầu thay đổi. Điều này giúp ngăn ngừa sự lạm quyền và bảo vệ quyền con người.\n\n### 2. Nội dung và hình thức phối hợp\n*   **Cơ sở pháp lý:** Mối quan hệ này xuất phát từ chức năng, nhiệm vụ của mỗi cơ quan trong tố tụng hình sự. Theo Điều 165 BLTTHS 2015 (sửa đổi, bổ sung 2021), VKS có nhiệm vụ, quyền hạn phê chuẩn hoặc hủy bỏ các quyết định tố tụng của CQĐT, bao gồm các biện pháp ngăn chặn (khoản 4, khoản 5 Điều 165).\n*   **Hình thức thực hiện:**\n    *   **Bằng văn bản:** Đây là hình thức chủ yếu, tuân thủ trình tự, thủ tục và thẩm quyền chặt chẽ theo quy định của pháp luật.\n    *   **Trao đổi trực tiếp:** Thông qua đối thoại giữa Điều tra viên và Kiểm sát viên hoặc giữa lãnh đạo hai cơ quan để trao đổi thông tin kịp thời.\n    *   **Họp liên ngành:** Hai cơ quan có thể tổ chức họp để đánh giá chứng cứ, tài liệu và thống nhất việc áp dụng biện pháp ngăn chặn trước khi CQĐT thực hiện.\n\n### 3. Trách nhiệm và cơ chế giải quyết bất đồng\n*   **Trách nhiệm của CQĐT:** Theo Điều 6 Thông tư liên tịch 01/2026/TTLT-VKSNDTC-BCA-BQP, CQĐT có trách nhiệm thực hiện các yêu cầu, quyết định của VKS.\n*   **Cơ chế giải quyết khi không nhất trí:** Đối với các quyết định quy định tại khoản 4 và khoản 5 Điều 165 BLTTHS 2015 (sửa đổi, bổ sung 2021), nếu CQĐT không nhất trí với quyết định của VKS thì vẫn phải thực hiện nhưng có quyền kiến nghị với VKS cấp trên trực tiếp xem xét, giải quyết (Điều 6 Thông tư liên tịch 01/2026/TTLT-VKSNDTC-BCA-BQP).\n\n### 4. Vai trò của VKS trong kiểm sát việc hủy bỏ hoặc thay thế\nTheo Điều 21 Quyết định 06/QĐ-VKSTC (Quy chế công tác THQCT, kiểm sát khởi tố, điều tra và truy tố):\n*   Đối với quyết định áp dụng biện pháp ngăn chặn của cơ quan có thẩm quyền điều tra không do VKS phê chuẩn: Nếu xét thấy không còn cần thiết hoặc có căn cứ hủy bỏ/thay thế mà CQĐT không thực hiện, VKS có quyền ra văn bản yêu cầu. Nếu CQĐT vẫn không thực hiện, VKS có quyền ra quyết định hủy bỏ.\n*   Đối với quyết định do VKS phê chuẩn hoặc ban hành: VKS trực tiếp ra quyết định hủy bỏ hoặc thay thế.\n\nTóm lại, mối quan hệ này không phải là quan hệ hành chính hay mệnh lệnh hành chính, mà là mối quan hệ tố tụng đặc thù. Sự phối hợp và chế ước đan xen chặt chẽ giúp bảo đảm sự cân bằng giữa hiệu quả đấu tranh phòng, chống tội phạm và việc bảo vệ quyền con người trong giai đoạn khởi tố.",
+      "answer": "Mối quan hệ giữa Cơ quan điều tra (CQĐT) và Viện kiểm sát (VKS) trong việc áp dụng, thay đổi, hủy bỏ biện pháp ngăn chặn (BPNC) ở giai đoạn khởi tố vụ án hình sự được thể hiện qua cơ chế phối hợp và chế ước, cụ thể như sau:\n\n**1. Bản chất và cơ sở của mối quan hệ**\nTheo tài liệu học thuật, mối quan hệ giữa CQĐT và VKS trong giai đoạn khởi tố vụ án hình sự là mối quan hệ tố tụng mang tính phối hợp và chế ước. Trong đó:\n*   **Phối hợp:** Nhằm bảo đảm sự thống nhất về nghiệp vụ, hiệu quả thu thập chứng cứ, kịp thời ngăn chặn tội phạm và ngăn chặn việc người bị buộc tội gây khó khăn cho quá trình giải quyết vụ án.\n*   **Chế ước:** Nhằm bảo đảm tính hợp pháp, khách quan, ngăn ngừa sự lạm quyền, bảo vệ quyền con người và quyền công dân. VKS thực hiện vai trò thực hành quyền công tố và kiểm sát tính hợp pháp, tính có căn cứ của các đề xuất từ CQĐT.\n\n**2. Nội dung phối hợp và chế ước trong áp dụng, thay đổi, hủy bỏ BPNC**\n*   **Thẩm quyền của VKS:** Theo Điều 165 Bộ luật Tố tụng Hình sự (BLTTHS) 2015, VKS có nhiệm vụ, quyền hạn:\n    *   Phê chuẩn hoặc không phê chuẩn lệnh bắt người bị giữ trong trường hợp khẩn cấp, gia hạn tạm giữ, tạm giam, bảo lĩnh, đặt tiền để bảo đảm, khám xét, thu giữ... (Khoản 4 Điều 165).\n    *   Quyết định áp dụng, thay đổi, hủy bỏ biện pháp ngăn chặn, biện pháp cưỡng chế (Khoản 5 Điều 165).\n    *   Hủy bỏ các quyết định tố tụng không có căn cứ và trái pháp luật của CQĐT (Khoản 4 Điều 165).\n*   **Trách nhiệm của CQĐT:** Theo Điều 6 Thông tư liên tịch 01/2026/TTLT-VKSNDTC-BCA-BQP, CQĐT có trách nhiệm thực hiện các yêu cầu, quyết định của VKS. Đối với các quyết định tại khoản 4 và khoản 5 Điều 165 BLTTHS, nếu không nhất trí, CQĐT vẫn phải thực hiện nhưng có quyền kiến nghị với VKS cấp trên trực tiếp xem xét, giải quyết.\n*   **Trình tự, thủ tục:** Theo Điều 20 Thông tư liên tịch 01/2026/TTLT-VKSNDTC-BCA-BQP, trước khi hết thời hạn áp dụng BPNC 10 ngày, CQĐT phải có văn bản nêu rõ căn cứ, lý do đề nghị VKS gia hạn, hủy bỏ hoặc thay thế BPNC kèm theo các chứng cứ, tài liệu liên quan.\n\n**3. Hình thức thực hiện**\nTheo tài liệu học thuật, mối quan hệ này được thực hiện chủ yếu bằng văn bản theo trình tự, thủ tục chặt chẽ. Ngoài ra, các cơ quan có thể phối hợp thông qua:\n*   Đối thoại, trao đổi trực tiếp giữa Điều tra viên và Kiểm sát viên hoặc giữa lãnh đạo hai cơ quan để trao đổi thông tin kịp thời.\n*   Tổ chức họp, trao đổi, đánh giá chứng cứ, tài liệu và thống nhất áp dụng BPNC trước khi CQĐT thực hiện.\n\n**4. Kiểm sát việc hủy bỏ hoặc thay thế BPNC**\nTheo Điều 21 Quyết định 06/QĐ-VKSTC, khi xem xét hủy bỏ hoặc thay thế BPNC:\n*   Đối với quyết định áp dụng của CQĐT không do VKS phê chuẩn: Nếu xét thấy không còn cần thiết hoặc có căn cứ trái pháp luật, VKS ra văn bản yêu cầu CQĐT hủy bỏ hoặc thay thế. Nếu CQĐT không thực hiện, VKS có quyền ra quyết định hủy bỏ.\n*   Đối với quyết định do VKS phê chuẩn hoặc ban hành: VKS trực tiếp ra quyết định hủy bỏ hoặc thay thế.",
       "grounded": true,
       "allowed_dieu_numbers": [
         "10",
@@ -950,7 +924,6 @@
         "20",
         "21",
         "240",
-        "241",
         "34",
         "37",
         "4",
@@ -961,6 +934,7 @@
       ],
       "mentioned_dieu_numbers": [
         "165",
+        "20",
         "21",
         "6"
       ],
@@ -1120,18 +1094,19 @@
       "answer": "Xin lỗi, tôi không tìm thấy nội dung liên quan trong dữ liệu pháp luật hiện có để trả lời câu hỏi này.",
       "grounded": true,
       "allowed_dieu_numbers": [
+        "1",
         "11",
+        "113",
         "177",
-        "188",
+        "2",
         "27",
         "3",
         "435",
-        "445",
-        "5",
-        "7",
+        "439",
         "75",
         "76",
-        "80"
+        "80",
+        "86"
       ],
       "mentioned_dieu_numbers": [],
       "ungrounded_dieu_numbers": [],

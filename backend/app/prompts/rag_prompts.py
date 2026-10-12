@@ -207,15 +207,23 @@ thường bằng đúng NGỮ CẢNH của chúng, một PHẦN thiếu dữ li�
 lời toàn bộ câu hỏi."""
 
 
-# requirements.md "Feature - Vở ghi cá nhân + Chat trả lời dựa trên nội dung ghi chú": appended
-# ONLY when rag_service.py matched at least one of the asking user's own notes - a question with no
-# matching note gets the exact pre-feature system prompt, so that path can't regress. Notes are
-# stricter than academic_reference (rule 2) because nobody reviewed them: the student may have
-# written something wrong, so the model must label, cross-check against legal_primary, and call out
-# contradictions instead of silently trusting OR silently dropping the note. Point (f) extends rule
-# 9's allowed-Dieu list check to Dieu numbers a note mentions - also enforced in code, see
-# rag_service.py's buffer_for_rule9_risk.
-RAG_USER_NOTES_ADDENDUM = """
+# RETAINED BUT NOT WIRED (2026-10-12). Nothing appends this today - build_system_prompt no
+# longer takes a has_user_notes flag, because Chat stopped reading the student's notes when the
+# feature moved to "ask about the passage you selected, inside the Vở ghi page". It is kept
+# verbatim because the hard-won safety content is exactly what that replacement flow needs: an
+# unreviewed, student-written text block must be labelled, cross-checked against legal_primary,
+# and have its contradictions called out rather than silently trusted OR silently dropped;
+# point (f) extends rule 9's allowed-Dieu check to Dieu numbers the block itself mentions (also
+# enforced in code - see rag_service._mask_unverified_dieu_numbers and buffer_for_rule9_risk),
+# and point (h) carries the "chưa xác thực" reminder that must reach the student.
+#
+# Before wiring it to the passage endpoint, the Vietnamese body below still has to be adapted:
+# it names the block "GHI CHÚ CỦA BẠN" and phrases its contradiction template as "Ghi chú của
+# bạn ghi ...", whereas the new flow labels the block "ĐOẠN BẠN CHỌN" and wants "Đoạn bạn chọn
+# ghi ..., nhưng theo Điều Y ... bạn nên kiểm tra lại". That rewrite is deliberately left for
+# the step that wires it, so the wording can be reviewed as part of that change rather than
+# invented here.
+RAG_USER_PASSAGE_ADDENDUM = """
 
 HƯỚNG DẪN KHI CÓ "GHI CHÚ CỦA BẠN":
 Ngoài NGỮ CẢNH, bên dưới có thêm khối "GHI CHÚ CỦA BẠN" - đây là ghi chú do CHÍNH sinh viên đang \
@@ -349,7 +357,7 @@ def build_rerank_user_prompt(question: str, candidates: list[dict]) -> str:
 
 
 def build_system_prompt(is_long_question: bool, needs_anonymization: bool = False,
-                         multi_part: bool = False, has_user_notes: bool = False) -> str:
+                         multi_part: bool = False) -> str:
     prompt = RAG_SYSTEM_PROMPT
     if is_long_question:
         prompt += RAG_LONG_QUESTION_COT_ADDENDUM
@@ -357,8 +365,6 @@ def build_system_prompt(is_long_question: bool, needs_anonymization: bool = Fals
         prompt += RAG_ANONYMIZATION_ADDENDUM
     if multi_part:
         prompt += RAG_MULTI_PART_ADDENDUM
-    if has_user_notes:
-        prompt += RAG_USER_NOTES_ADDENDUM
     return prompt
 
 
@@ -368,8 +374,8 @@ def _format_recent_turns(recent_turns: list[dict[str, str]]) -> str:
     )
 
 
-def build_user_prompt(question: str, context_blocks: list[str], recent_turns: list[dict[str, str]] | None = None,
-                       note_blocks: list[str] | None = None) -> str:
+def build_user_prompt(question: str, context_blocks: list[str],
+                       recent_turns: list[dict[str, str]] | None = None) -> str:
     # History is for conversational continuity ONLY (e.g. not repeating the previous answer
     # verbatim) - it is explicitly NOT a legal source, so it's kept separate from NGU CANH and
     # the system prompt's grounding rules still apply only to that section.
@@ -389,24 +395,11 @@ def build_user_prompt(question: str, context_blocks: list[str], recent_turns: li
             "Hãy trả lời đúng theo quy tắc số 4 ở trên (thông báo không tìm thấy)."
         )
 
-    # requirements.md "Feature - Vở ghi cá nhân...": the user's own notes are a separate top-level
-    # section OUTSIDE NGU CANH (not one more block inside it), so they can never be read as one of
-    # NGU CANH's legal/academic sources - see RAG_USER_NOTES_ADDENDUM for how they may be used.
-    notes_part = ""
-    if note_blocks:
-        joined_notes = "\n\n---\n\n".join(note_blocks)
-        notes_part = (
-            "GHI CHÚ CỦA BẠN (do chính sinh viên tự viết, CHƯA được kiểm chứng, KHÔNG phải nguồn "
-            f"pháp lý - chỉ dùng theo đúng HƯỚNG DẪN KHI CÓ \"GHI CHÚ CỦA BẠN\"):\n\n{joined_notes}\n\n"
-            "---\n\n"
-        )
-
     joined_context = "\n\n---\n\n".join(context_blocks)
     return (
         f"{history_part}"
         f"NGỮ CẢNH:\n\n{joined_context}\n\n"
         "---\n\n"
-        f"{notes_part}"
         f"Câu hỏi của sinh viên: {question}"
     )
 
@@ -463,7 +456,10 @@ def format_academic_context_block(source_document: str, section_heading: str | N
     return f"[TÀI LIỆU HỌC THUẬT - {display_name}{heading_part}]\n{chunk_text}"
 
 
-def format_note_block(title: str | None, tag: str | None, content: str) -> str:
+def format_passage_block(title: str | None, tag: str | None, content: str) -> str:
+    """RETAINED BUT NOT WIRED (2026-10-12) - see RAG_USER_PASSAGE_ADDENDUM. No caller today; kept
+    for the passage-ask flow, whose block label will be "ĐOẠN BẠN CHỌN" rather than the note-era
+    label still hardcoded below."""
     label_parts = [part for part in (title, tag and f"chủ đề: {tag}") if part]
     label = f" - {' - '.join(label_parts)}" if label_parts else ""
     return f"[GHI CHÚ CỦA BẠN{label}]\n{content}"
