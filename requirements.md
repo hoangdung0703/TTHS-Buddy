@@ -1062,3 +1062,42 @@ Rủi ro còn lại — ghi đúng sắc thái, KHÔNG phải "đã xóa sạch"
 Kết quả (run_evaluation.py qua HTTP endpoint thật, tài khoản tạm đã xóa sau khi chạy):
 exact_match 100%, recall 100%, groundedness 100% (cả 3 category), correct_refusal 100%, academic_usage 50% — tất cả bằng đúng baseline. mean_precision 73.7% → 77.3% (dao động giữa các lần chạy, không phải cải thiện thật).
 Khác biệt duy nhất: citation_grounding 100% → 99.3% (mean) / 97.6% (pooled), do 1/42 Điều bị đánh ungrounded ở câu "Phân tích vai trò của chứng cứ và nguồn chứng cứ...". ĐÃ KIỂM CHỨNG đây là sai số đo của chính script eval, không phải vi phạm thật: Điều 108 NẰM TRONG citations của câu trả lời live (returned_dieu_numbers = 108/3/86/87), mà citations chỉ được dựng từ legal_primary — tức Điều 108 thực sự đã được retrieve; chỉ có bước re-derive retrieval độc lập của run_evaluation.py (allowed_dieu_numbers) không chứa nó. Bước re-derive này không tất định (HyDE + LLM re-ranking), đúng như docstring _compute_allowed_dieu_numbers đã ghi, và hiện tượng y hệt đã xảy ra ở lần eval của feature Vở ghi.
+
+---
+
+Sửa số liệu — tỷ lệ lưu lượng Chat bị buffer là 80,2%, không phải 71,6% (đo 12/10/2026)
+
+Bối cảnh: trong lúc chẩn đoán "Chat production chậm / có lúc không trả lời", tôi đếm tỷ lệ request
+đi đường buffer (không stream token) bằng cột `used_academic_reference` của `chat_query_logs` và
+báo 71,6%. Con số đó SAI. Đúng là **80,2%** (777/969 dòng).
+
+Nguyên nhân: cột trong DB KHÔNG phản ánh quyết định buffer.
+- Quyết định buffer: `buffer_for_rule9_risk = retrieval.used_academic_reference and not
+  needs_anonymization` (`rag_service.py` ~dòng 1537), trong đó `retrieval.used_academic_reference`
+  chính là `bool(academic_chunks)` (dòng ~993) — tức "có chunk academic nào được đưa vào NGỮ CẢNH".
+- Giá trị ghi vào DB: `result.used_academic_reference = (not is_fallback) and
+  retrieval.used_academic_reference` (dòng ~1646) — bị **xoá về False trên MỌI câu trả lời
+  fallback**, dù request đó vẫn đã đi đường buffer.
+- Lệch đo được: **87 dòng** buffer thật nhưng log ghi False.
+
+Hệ quả: cột này đo "câu trả lời thành công có dùng nguồn học thuật", KHÔNG đo "request có buffer".
+Không được dùng nó để tính tỷ lệ buffer, tỷ lệ streaming, hay bất cứ thống kê nào về đường đi.
+Muốn biết đường đi thật thì đọc `retrieved_chunks` và xét có `source_type=academic_reference` hay
+không — đó là cùng một thông tin mà biến quyết định dùng.
+
+QUYẾT ĐỊNH: **không đổi ngữ nghĩa cột `used_academic_reference`** (nó đang đúng với cái tên của nó
+và với chỉ số eval đang dựa vào nó). Chỉ ghi nhận cạm bẫy ở đây, và từ nay đường đi thật được ghi
+riêng bằng log server có cấu trúc, lấy trực tiếp từ biến quyết định buffer chứ không suy từ cột này.
+
+Những chỗ ĐỌC cột này (chỉ liệt kê, không sửa):
+- `backend/evaluation/run_evaluation.py` — dòng ~133 (`.select`), ~222, ~243, ~312, ~369: chỉ số
+  `academic_reference_usage`. Lưu ý khi đọc chỉ số này: vì cột bị xoá về False trên fallback, nó
+  KHÔNG phân biệt được "không dùng academic" với "có dùng academic nhưng câu trả lời fallback".
+  Con số `academic_reference_usage = 50% (1/2)` đã ghi ở các mục trên chính là trường hợp đó — câu
+  "Phân tích mối quan hệ LHS-LTTHS" luôn fail-closed nên luôn log False. Đây là hạn chế của phép
+  đo, không phải bằng chứng retrieval bỏ qua nguồn học thuật.
+- `backend/app/api/chat.py` dòng ~157 và `backend/evaluation/test_aggregate_e2e_stream.py` dòng ~30
+  chỉ khởi tạo `RagAnswer(used_academic_reference=False)`, không đọc giá trị để ra quyết định.
+
+Ngoài `run_evaluation.py`, không có chỗ nào khác trong backend hay frontend đọc cột này để quyết
+định hành vi.
