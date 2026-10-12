@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
 from app.core.rate_limit import DEFAULT_RATE_LIMIT, LLM_ROUTE_RATE_LIMIT, limiter
+from app.core.request_telemetry import finish_request, stage, start_request
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
 from app.models.chat import (
@@ -128,6 +129,12 @@ async def query_chat(
     qdrant_client = request.app.state.qdrant_client
     supabase_client = request.app.state.supabase_client
 
+    # First thing after auth + rate limiting, before any I/O: emits the chat_request_start log
+    # line so a request that later hangs, errors, or has its connection dropped still leaves
+    # evidence. log_chat_query only runs once the stream completes, so it cannot do this - see
+    # app/core/request_telemetry.py.
+    start_request(current_user.user_id)
+
     conversation_id = body.conversation_id or uuid.uuid4()
     recent_turns = get_recent_turns(supabase_client, current_user.user_id, conversation_id)
     # Fetched UNCONDITIONALLY now (requirements.md "Sinh tình huống minh họa" Lượt 2) - unlike the
@@ -144,9 +151,10 @@ async def query_chat(
     # pattern already used for the sync QdrantClient calls in rag_service.retrieve_context (see
     # requirements.md security/capacity audit - this was the main cause of near-total
     # serialization measured under concurrent chat load before this fix).
-    query_understanding = await asyncio.to_thread(
-        rewrite_question, body.question, recent_turns, settings, has_pending_scenario
-    )
+    with stage("query_understanding"):
+        query_understanding = await asyncio.to_thread(
+            rewrite_question, body.question, recent_turns, settings, has_pending_scenario
+        )
     rewritten_question = query_understanding.rewritten_question
 
     # Mutated in place by stream_answer_question as the stream progresses - holds the fields
@@ -158,15 +166,37 @@ async def query_chat(
     )
 
     async def event_stream() -> AsyncIterator[str]:
-        async for event_name, event_payload in stream_answer_question(
-            rewritten_question, conversation_id, settings, qdrant_client, result, recent_turns,
-            intent=query_understanding.intent, last_turn=last_turn,
-            needs_anonymization=query_understanding.needs_anonymization,
-            anonymized_names=query_understanding.anonymized_names,
-            sub_questions=query_understanding.sub_questions
-        ):
-            yield _sse_format(event_name, event_payload)
+        # A client that goes away mid-stream must not be recorded as a failure, or the logs
+        # cannot tell "student closed the tab" from "something broke" - which is the whole
+        # distinction this logging exists to provide. Measured against a real aborted request:
+        # the abort arrives as asyncio.CancelledError from anyio's cancel scope, NOT as
+        # GeneratorExit, so CancelledError is the clause that actually fires; GeneratorExit is
+        # kept because Starlette can also close a generator that way. Both are re-raised -
+        # swallowing a cancellation would break task/generator finalisation. "cancelled" rather
+        # than "client_disconnected" because a server shutdown cancels the task the same way, and
+        # the log should not claim to know which. Any other exception is recorded and re-raised
+        # unchanged - turning it into a graceful SSE error event is step E2's job, not this one.
+        try:
+            async for event_name, event_payload in stream_answer_question(
+                rewritten_question, conversation_id, settings, qdrant_client, result, recent_turns,
+                intent=query_understanding.intent, last_turn=last_turn,
+                needs_anonymization=query_understanding.needs_anonymization,
+                anonymized_names=query_understanding.anonymized_names,
+                sub_questions=query_understanding.sub_questions
+            ):
+                yield _sse_format(event_name, event_payload)
 
-        log_chat_query(supabase_client, current_user.user_id, conversation_id, body.question, rewritten_question, result)
+            log_chat_query(
+                supabase_client, current_user.user_id, conversation_id, body.question,
+                rewritten_question, result
+            )
+        except (asyncio.CancelledError, GeneratorExit):
+            finish_request("cancelled")
+            raise
+        except BaseException as error:
+            finish_request("error", error)
+            raise
+        else:
+            finish_request("ok")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

@@ -13,6 +13,7 @@ import httpx
 
 from app.core.config import Settings
 from app.core.logging import get_logger
+from app.core import request_telemetry as telemetry
 
 logger = get_logger(__name__)
 
@@ -205,6 +206,12 @@ async def stream_generate_answer(
                             for part in candidates[0].get("content", {}).get("parts", []):
                                 text = part.get("text")
                                 if text:
+                                    if not yielded_any:
+                                        # The model that actually answered, which is not
+                                        # necessarily models_to_try[0] - a preview-tier primary
+                                        # can time out and hand over to the fallback.
+                                        telemetry.set_answering_model(current_model)
+                                        telemetry.mark_first_token()
                                     yielded_any = True
                                     yield text
                     finally:
@@ -226,6 +233,12 @@ async def stream_generate_answer(
                     raise
 
                 last_error = error
+                telemetry.add_fallback_reason(
+                    f"{current_model}:"
+                    + ("first_token_timeout" if is_first_token_timeout
+                       else f"http_{error.response.status_code}" if is_retryable_status
+                       else "transport_error")
+                )
                 if is_first_token_timeout:
                     logger.warning(
                         "Gemini streamGenerateContent on %s: no token within %ss (attempt %d/%d)",

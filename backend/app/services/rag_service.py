@@ -26,6 +26,7 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
 from app.core.config import Settings
 from app.core.document_display_names import get_display_name
 from app.core.logging import get_logger
+from app.core import request_telemetry as telemetry
 from app.models.chat import (
     ChatStreamAnswerDeltaEvent,
     ChatStreamCitationsEvent,
@@ -695,7 +696,8 @@ def _retrieve_legal(client: QdrantClient, collection: str, question: str,
     # (original similarity score) reconstructs the exact pre-A ordering - a no-op fallback, not a
     # degraded one.
     non_exact = [c for c in above_threshold if not c.is_exact_match]
-    rerank_scores = _rerank_legal_candidates(question, non_exact, settings)
+    with telemetry.stage("rerank"):
+        rerank_scores = _rerank_legal_candidates(question, non_exact, settings)
 
     def _sort_key(chunk: RetrievedChunk) -> tuple[int, float, float]:
         if chunk.is_exact_match:
@@ -914,7 +916,8 @@ def _generate_hyde_passage(question: str, settings: Settings) -> str:
     call degrades retrieval quality rather than breaking the request - same resilience pattern as
     summarize_previous/explain_simpler's try/except fallback in stream_answer_question."""
     try:
-        passage = generate_answer(HYDE_SYSTEM_PROMPT, build_hyde_user_prompt(question), settings)
+        with telemetry.stage("hyde"):
+            passage = generate_answer(HYDE_SYSTEM_PROMPT, build_hyde_user_prompt(question), settings)
         return passage or question
     except Exception:
         logger.exception("HyDE passage generation failed - falling back to embedding the question directly")
@@ -1126,6 +1129,11 @@ async def stream_answer_question(
     why) or when sub_questions
     has fewer than 2 elements (nothing to split).
     """
+    # Every non-legal_question intent short-circuits without retrieval or generation; the
+    # branches that short-circuit inside the legal_question flow relabel this below.
+    if intent != "legal_question":
+        telemetry.set_path(f"short_circuit:{intent}")
+
     if intent == "out_of_scope":
         result.answer = FALLBACK_ANSWER
         result.citations = []
@@ -1311,11 +1319,17 @@ async def stream_answer_question(
     # below (anonymization still applied correctly, just without the multi-part retrieval
     # improvement for that one message - a deliberate, documented trade-off, not an oversight).
     if sub_questions and len(sub_questions) >= 2 and not needs_anonymization:
-        retrieval_results = await retrieve_context_for_subquestions(sub_questions, settings, qdrant_client)
+        telemetry.set_path("buffer_multipart")
+        with telemetry.stage("retrieval"):
+            retrieval_results = await retrieve_context_for_subquestions(
+                sub_questions, settings, qdrant_client
+            )
         result.retrieved_chunks = [chunk for r in retrieval_results for chunk in r.all_retrieved]
 
         if not any(r.context_blocks for r in retrieval_results):
             logger.info("No context passed threshold for any sub-question, returning fallback answer")
+            telemetry.set_path("short_circuit:no_context_multipart")
+            telemetry.set_answer_flags(is_fallback=True)
             result.answer = FALLBACK_ANSWER
             result.is_fallback = True
             result.used_academic_reference = False
@@ -1351,11 +1365,12 @@ async def stream_answer_question(
         # the sub-question's own retrieval"), then send once, same fail-closed pattern as
         # buffer_for_rule9_risk above.
         answer_parts: list[str] = []
-        async for text_chunk in stream_generate_answer(
-            system_prompt, user_prompt, settings, model=generation_model,
-            fallback_model=fallback_model, first_token_timeout=first_token_timeout
-        ):
-            answer_parts.append(text_chunk)
+        with telemetry.stage("generation"):
+            async for text_chunk in stream_generate_answer(
+                system_prompt, user_prompt, settings, model=generation_model,
+                fallback_model=fallback_model, first_token_timeout=first_token_timeout
+            ):
+                answer_parts.append(text_chunk)
 
         answer_text = "".join(answer_parts)
         rule9_fail_closed = False
@@ -1371,6 +1386,7 @@ async def stream_answer_question(
                 )
                 answer_text = RULE9_VIOLATION_FALLBACK_ANSWER
                 rule9_fail_closed = True
+                telemetry.set_answer_flags(guard_tripped="rule9_multipart")
 
         # requirements.md "Viec 3" Buoc 3 completeness guard - only meaningful if rule 9 hasn't
         # already replaced answer_text wholesale (a replaced answer has no PHAN labels by design,
@@ -1389,6 +1405,7 @@ async def stream_answer_question(
                     multipart_missing_parts, len(sub_questions), question
                 )
                 answer_text = RULE9_VIOLATION_FALLBACK_ANSWER
+                telemetry.set_answer_flags(guard_tripped="multipart_completeness")
 
         completeness_fail_closed = bool(multipart_missing_parts)
 
@@ -1492,11 +1509,14 @@ async def stream_answer_question(
             yield ("done", ChatStreamDoneEvent())
             return
 
-    retrieval = await retrieve_context(question, settings, qdrant_client)
+    with telemetry.stage("retrieval"):
+        retrieval = await retrieve_context(question, settings, qdrant_client)
     result.retrieved_chunks = retrieval.all_retrieved
 
     if not retrieval.context_blocks:
         logger.info("No context passed threshold for question, returning fallback answer")
+        telemetry.set_path("short_circuit:no_context")
+        telemetry.set_answer_flags(is_fallback=True)
         result.answer = FALLBACK_ANSWER
         result.is_fallback = True
         result.used_academic_reference = False
@@ -1535,18 +1555,27 @@ async def stream_answer_question(
     # that actually needs it - direct-citation/legal_text-only questions (the majority of traffic)
     # keep true live token streaming, unaffected.
     buffer_for_rule9_risk = retrieval.used_academic_reference and not needs_anonymization
+    # Recorded from the SAME expression that decides buffering, so the logged path cannot drift
+    # from the real one (requirements.md 2026-10-12: chat_query_logs.used_academic_reference is
+    # zeroed on fallback answers and so disagrees with the path actually taken).
+    telemetry.set_path(
+        "buffer_anonymization" if needs_anonymization
+        else "buffer" if buffer_for_rule9_risk
+        else "stream"
+    )
 
     # requirements.md muc C: needs_anonymization buffers the whole answer instead of forwarding
     # each token as it arrives (unlike the normal path) so the leak check + disclaimer below can
     # run BEFORE anything reaches the client - see this function's docstring.
     answer_parts: list[str] = []
-    async for text_chunk in stream_generate_answer(
-        system_prompt, user_prompt, settings, model=generation_model,
-        fallback_model=fallback_model, first_token_timeout=first_token_timeout
-    ):
-        answer_parts.append(text_chunk)
-        if not (needs_anonymization or buffer_for_rule9_risk):
-            yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=text_chunk))
+    with telemetry.stage("generation"):
+        async for text_chunk in stream_generate_answer(
+            system_prompt, user_prompt, settings, model=generation_model,
+            fallback_model=fallback_model, first_token_timeout=first_token_timeout
+        ):
+            answer_parts.append(text_chunk)
+            if not (needs_anonymization or buffer_for_rule9_risk):
+                yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=text_chunk))
 
     answer_text = "".join(answer_parts)
     leaked_real_name = False
@@ -1562,6 +1591,7 @@ async def stream_answer_question(
                 )
                 answer_text = ANONYMIZATION_LEAK_FALLBACK_ANSWER
                 leaked_real_name = True
+                telemetry.set_answer_flags(guard_tripped="anonymization_leak")
             else:
                 answer_text = f"{answer_text.rstrip()}\n\n{ANONYMIZATION_DISCLAIMER}"
         yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
@@ -1576,6 +1606,7 @@ async def stream_answer_question(
                 )
                 answer_text = RULE9_VIOLATION_FALLBACK_ANSWER
                 rule9_fail_closed = True
+                telemetry.set_answer_flags(guard_tripped="rule9")
         yield ("answer_delta", ChatStreamAnswerDeltaEvent(delta=answer_text))
     # Same trust-the-model's-own-refusal reasoning as the old answer_question: the retrieval
     # threshold is intentionally lenient (see LEGAL_SCORE_THRESHOLD), so weakly-related chunks
@@ -1645,6 +1676,7 @@ async def stream_answer_question(
     result.is_fallback = is_fallback
     result.used_academic_reference = (not is_fallback) and retrieval.used_academic_reference
     result.rule9_ungrounded_dieu_numbers = rule9_ungrounded
+    telemetry.set_answer_flags(is_fallback=is_fallback)
 
     yield ("suggested_followups", ChatStreamSuggestedFollowupsEvent(suggested_followups=suggested_followups))
     yield ("done", ChatStreamDoneEvent())
