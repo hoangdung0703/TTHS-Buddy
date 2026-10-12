@@ -7,17 +7,26 @@
 # ingestion/chat_suggestions_seed.json at startup - those only exist alongside backend/, not
 # inside it.
 #
-# Worker count is fixed at 2 (not the usual 2xCPU+1 formula) to fit Render's free/Starter tier
+# Worker count is fixed at 2 (not the usual 2xCPU+1 formula) to fit Render's Free tier
 # 512MB RAM ceiling without OOM-killing the service - see requirements.md's capacity audit.
+#
+# plan: free matches the service that is ACTUALLY deployed (created by hand in the Dashboard,
+# Instance Type = Free). This file said `starter` until 2026-10-12, which was never true of the
+# running service - and the difference matters: only the Free tier spins down after 15 minutes
+# with no requests, so the first request after an idle period pays a cold start. A diagnosis of
+# "production chat is slow" that trusted `starter` here would have ruled cold start out
+# incorrectly. See DEPLOYMENT.md "Instance Type".
 #
 # Env vars are declared here with sync: false so Render prompts for real values in the
 # Dashboard instead of committing secrets to this file. See DEPLOYMENT.md for the full list
 # and where each value comes from.
 services:
   - type: web
-    name: ttths-buddy-backend
+    # Must match the deployed service, whose host is tths-buddy.onrender.com (see
+    # DEPLOYMENT.md "Live URLs") - this said ttths-buddy-backend until 2026-10-12.
+    name: tths-buddy
     runtime: python
-    plan: starter
+    plan: free
     region: singapore
     rootDir: .
     buildCommand: pip install -r backend/requirements.txt
