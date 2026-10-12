@@ -27,13 +27,13 @@ next request has to wait for the instance to boot before it is served. Measured 
 against `GET /api/health` — the cheapest endpoint there is, no auth, no DB, no Gemini — after a
 22-minute idle period:
 
-| | Time |
-|---|---|
-| First request after spin-down (cold) | **46.45s** |
-| The 3 requests right after it (warm) | 0.21s / 0.20s / 0.21s |
+| Measurement | Cold (first request after spin-down) | Warm (next 3 requests) |
+|---|---|---|
+| Round 1, after 22.7 min idle | **46.45s** | 0.21s / 0.20s / 0.21s |
+| Round 2, after 22.1 min idle | **44.14s** | 0.19s / 0.27s / 0.18s |
 
-So the boot itself costs roughly **46 seconds**, and it is paid by whoever happens to arrive
-first. A real chat question on a warm instance measured 12.98–14.18s (median 13.56s, n=5), which
+So the boot itself costs roughly **44-46 seconds** — reproducible across two independent idle
+periods, not a one-off — and it is paid by whoever happens to arrive first. A real chat question on a warm instance measured 12.98–14.18s (median 13.56s, n=5), which
 means the worst case a student actually sees is boot + answer ≈ **60 seconds**, with nothing on
 screen for most of it. Practical consequences:
 
