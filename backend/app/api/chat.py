@@ -172,15 +172,25 @@ async def query_chat(
         # escaping into the stream (which would truncate it mid-event and look like a dropped
         # connection to the client).
         try:
-            recent_turns = await asyncio.to_thread(
-                get_recent_turns, supabase_client, current_user.user_id, conversation_id
-            )
-            # Fetched UNCONDITIONALLY (requirements.md "Sinh tình huống minh họa" Lượt 2) -
-            # has_pending_scenario below must be known BEFORE rewrite_question runs, since
-            # query_understanding_service needs it as part of its own classification (and as the
-            # deterministic gate on intent=answer_evaluation).
-            last_turn = await asyncio.to_thread(
-                get_last_assistant_turn, supabase_client, current_user.user_id, conversation_id
+            # Two independent Supabase reads, so they run CONCURRENTLY rather than one after the
+            # other - neither needs the other's result; both are needed before rewrite_question.
+            # They have never actually been concurrent: before E2, get_recent_turns ran
+            # synchronously ON THE EVENT LOOP (blocking every other in-flight request for the
+            # duration) and only get_last_assistant_turn was offloaded; E2 moved both into
+            # threads but still awaited them one at a time. Gathering them removes one full
+            # Supabase round trip from the critical path ahead of the first status event.
+            #
+            # last_turn is fetched UNCONDITIONALLY (requirements.md "Sinh tình huống minh họa"
+            # Lượt 2) - has_pending_scenario below must be known BEFORE rewrite_question runs,
+            # since query_understanding_service needs it as part of its own classification (and
+            # as the deterministic gate on intent=answer_evaluation).
+            recent_turns, last_turn = await asyncio.gather(
+                asyncio.to_thread(
+                    get_recent_turns, supabase_client, current_user.user_id, conversation_id
+                ),
+                asyncio.to_thread(
+                    get_last_assistant_turn, supabase_client, current_user.user_id, conversation_id
+                ),
             )
             has_pending_scenario = bool(last_turn and last_turn.get("scenario_key_points"))
             # rewrite_question calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded
