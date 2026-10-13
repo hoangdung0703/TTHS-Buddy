@@ -49,9 +49,26 @@ screen for most of it. Practical consequences:
 requirements file, so Render auto-detects the Python environment — no Dockerfile needed.
 `gunicorn` has been added to `backend/requirements.txt` for the production start command.
 
-You can either click through the Dashboard by hand, or use the included `render.yaml`
-("New +" → "Blueprint", point it at this repo) which pre-fills the settings below and prompts
-you for the secret values.
+**`render.yaml` is reference material, not the source of truth.** The running service was
+created by hand in the Dashboard and has never been deployed from this Blueprint, so the file
+describes what a fresh Blueprint deploy *would* create, while the Dashboard describes what is
+actually serving traffic. Two divergences have already been found by checking rather than
+assuming, and both mattered:
+
+| | `render.yaml` said | Reality | Why it mattered |
+|---|---|---|---|
+| Instance type | `plan: starter` | **Free** | Only Free spins down after ~15 min idle. Trusting the file would have ruled out cold start, which is in fact the single largest latency cost (~45s, measured). Corrected on 2026-10-12. |
+| Python | `PYTHON_VERSION: 3.12.7` | **3.14.3**, per the Render build log of 2026-10-03 | The pin is not taking effect on the running service, so dependency resolution in production is happening on a different minor version than this file claims. |
+
+The `PYTHON_VERSION` entry is left in place deliberately: it is correct for a Blueprint deploy
+and removing it would only hide the discrepancy. Treat it as "what we would pin", not "what is
+running". **Not verified:** 3.12.7 itself could not be exercised locally - the dev machine has
+only 3.14.2 and 3.11.14 - so the clean-install check described below was run on 3.14.2, matching
+the version Render actually reports rather than the version this file pins. A 3.12-specific
+resolution problem would not have been caught.
+
+Either click through the Dashboard by hand, or use `render.yaml` ("New +" → "Blueprint", point it
+at this repo) which pre-fills the settings below and prompts you for the secret values.
 
 ### Dashboard settings (if creating the service by hand)
 

@@ -33,6 +33,12 @@ services:
     startCommand: gunicorn -k uvicorn.workers.UvicornWorker -w 2 --bind 0.0.0.0:$PORT --chdir backend app.main:app
     healthCheckPath: /api/health
     envVars:
+      # NOT what the running service uses: Render's build log of 2026-10-03 shows Python 3.14.3
+      # there. The service was created by hand in the Dashboard, so this pin has never actually
+      # been applied to it. Kept because it IS the right pin for a Blueprint deploy, and deleting
+      # it would hide the discrepancy rather than fix it - see DEPLOYMENT.md "render.yaml is
+      # reference material". 3.12.7 has not been verified locally either (the dev machine has
+      # 3.14.2 and 3.11.14 only).
       - key: PYTHON_VERSION
         value: 3.12.7
       - key: ENVIRONMENT
