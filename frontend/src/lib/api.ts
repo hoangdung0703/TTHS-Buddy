@@ -16,6 +16,7 @@ import {
 import type {
   ChatStreamAnswerDeltaEvent,
   ChatStreamCitationsEvent,
+  ChatStreamErrorEvent,
   ChatStreamGradingEvent,
   ChatStreamStatusEvent,
   ChatStreamSuggestedFollowupsEvent,
@@ -114,6 +115,9 @@ export interface ChatStreamHandlers {
   // Progress text for the buffered path. Optional so existing callers keep compiling and so a
   // caller that does not care can simply omit it.
   onStatus?: (event: ChatStreamStatusEvent) => void;
+  // Server-side failure reported inside the stream (the response is already 200 by then, so it
+  // cannot arrive as an HTTP error). Optional for the same reason as onStatus.
+  onError?: (event: ChatStreamErrorEvent) => void;
 }
 
 // Parses one complete "event: <name>\ndata: <json>" block (already split on the blank-line
@@ -147,6 +151,8 @@ function dispatchSseBlock(block: string, handlers: ChatStreamHandlers): void {
     handlers.onGradingResult(data as ChatStreamGradingEvent);
   } else if (eventName === "status") {
     handlers.onStatus?.(data as ChatStreamStatusEvent);
+  } else if (eventName === "error") {
+    handlers.onError?.(data as ChatStreamErrorEvent);
   }
 }
 

@@ -86,6 +86,15 @@ class ChatStreamStatusEvent(BaseModel):
     message: str
 
 
+# Terminal failure, sent INSTEAD of the remaining events when something breaks after the response
+# headers have already gone out (which is every failure, once query understanding moved inside the
+# generator - see chat.py). The HTTP status is already 200 by then and cannot be changed, so the
+# failure has to be reported inside the stream. Carries a short, user-facing Vietnamese sentence -
+# never an exception string, which can quote the payload that caused it.
+class ChatStreamErrorEvent(BaseModel):
+    message: str
+
+
 # Phase 4 Extension 2: read-back of chat_query_logs, grouped by conversation_id, for the
 # Sidebar history list and conversation reload. See chat_log_service.list_conversations /
 # get_conversation_detail.

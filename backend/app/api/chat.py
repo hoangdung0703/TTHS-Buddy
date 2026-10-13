@@ -6,12 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
+from app.core.logging import get_logger
 from app.core.rate_limit import DEFAULT_RATE_LIMIT, LLM_ROUTE_RATE_LIMIT, limiter
 from app.core.request_telemetry import finish_request, stage, start_request
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
 from app.models.chat import (
     ChatQueryRequest,
+    ChatStreamErrorEvent,
     ChatSuggestion,
     ChatSuggestionsResponse,
     ConversationDetailResponse,
@@ -32,6 +34,8 @@ from app.services.chat_log_service import (
 from app.services.chat_suggestions_service import load_static_suggestions
 from app.services.query_understanding_service import rewrite_question
 from app.services.rag_service import RagAnswer, stream_answer_question
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -136,26 +140,6 @@ async def query_chat(
     start_request(current_user.user_id)
 
     conversation_id = body.conversation_id or uuid.uuid4()
-    recent_turns = get_recent_turns(supabase_client, current_user.user_id, conversation_id)
-    # Fetched UNCONDITIONALLY now (requirements.md "Sinh tình huống minh họa" Lượt 2) - unlike the
-    # old summarize_previous-only fetch, has_pending_scenario below must be known BEFORE
-    # rewrite_question runs, since query_understanding_service needs it as part of its own
-    # classification (and as the deterministic gate on intent=answer_evaluation) - a
-    # chicken-and-egg requirement the old "fetch only after intent is known" approach can't satisfy.
-    last_turn = await asyncio.to_thread(
-        get_last_assistant_turn, supabase_client, current_user.user_id, conversation_id
-    )
-    has_pending_scenario = bool(last_turn and last_turn.get("scenario_key_points"))
-    # rewrite_question calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded to a
-    # thread so it doesn't block the single event loop for every other in-flight request, same
-    # pattern already used for the sync QdrantClient calls in rag_service.retrieve_context (see
-    # requirements.md security/capacity audit - this was the main cause of near-total
-    # serialization measured under concurrent chat load before this fix).
-    with stage("query_understanding"):
-        query_understanding = await asyncio.to_thread(
-            rewrite_question, body.question, recent_turns, settings, has_pending_scenario
-        )
-    rewritten_question = query_understanding.rewritten_question
 
     # Mutated in place by stream_answer_question as the stream progresses - holds the fields
     # (is_fallback, used_academic_reference, retrieved_chunks) that are intentionally never sent
@@ -166,17 +150,47 @@ async def query_chat(
     )
 
     async def event_stream() -> AsyncIterator[str]:
-        # A client that goes away mid-stream must not be recorded as a failure, or the logs
-        # cannot tell "student closed the tab" from "something broke" - which is the whole
-        # distinction this logging exists to provide. Measured against a real aborted request:
-        # the abort arrives as asyncio.CancelledError from anyio's cancel scope, NOT as
-        # GeneratorExit, so CancelledError is the clause that actually fires; GeneratorExit is
-        # kept because Starlette can also close a generator that way. Both are re-raised -
-        # swallowing a cancellation would break task/generator finalisation. "cancelled" rather
-        # than "client_disconnected" because a server shutdown cancels the task the same way, and
-        # the log should not claim to know which. Any other exception is recorded and re-raised
-        # unchanged - turning it into a graceful SSE error event is step E2's job, not this one.
+        # Bound before the try so the finally block can always read it, even if the failure
+        # happened before query understanding ran. Falls back to the student's original wording,
+        # which is what rewrite_question itself does on failure.
+        rewritten_question = body.question
+
+        # EVERYTHING that touches the network now lives inside this generator, including the two
+        # Supabase reads and the query-understanding Gemini call that used to run in the handler
+        # body. Those three ran BEFORE the StreamingResponse was returned, so no response header
+        # could be sent until all three finished - measured on production as 3.76-5.81s before the
+        # first byte, on top of the retrieval and generation the client then waits through. Moving
+        # them here lets headers and the first status event go out immediately.
+        #
+        # Auth and rate limiting deliberately stay OUTSIDE (the Depends and the decorator): a
+        # rejected request must still get a real 401/429 status code, which is only possible
+        # before the response starts.
+        #
+        # The cost of the move is that a failure in those three can no longer become a 5xx - the
+        # status line is already 200 by the time they run. So the whole body is wrapped and a
+        # failure becomes an `error` SSE event followed by a clean close, never an exception
+        # escaping into the stream (which would truncate it mid-event and look like a dropped
+        # connection to the client).
         try:
+            recent_turns = await asyncio.to_thread(
+                get_recent_turns, supabase_client, current_user.user_id, conversation_id
+            )
+            # Fetched UNCONDITIONALLY (requirements.md "Sinh tình huống minh họa" Lượt 2) -
+            # has_pending_scenario below must be known BEFORE rewrite_question runs, since
+            # query_understanding_service needs it as part of its own classification (and as the
+            # deterministic gate on intent=answer_evaluation).
+            last_turn = await asyncio.to_thread(
+                get_last_assistant_turn, supabase_client, current_user.user_id, conversation_id
+            )
+            has_pending_scenario = bool(last_turn and last_turn.get("scenario_key_points"))
+            # rewrite_question calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded
+            # to a thread so it doesn't block the event loop for every other in-flight request.
+            with stage("query_understanding"):
+                query_understanding = await asyncio.to_thread(
+                    rewrite_question, body.question, recent_turns, settings, has_pending_scenario
+                )
+            rewritten_question = query_understanding.rewritten_question
+
             async for event_name, event_payload in stream_answer_question(
                 rewritten_question, conversation_id, settings, qdrant_client, result, recent_turns,
                 intent=query_understanding.intent, last_turn=last_turn,
@@ -185,18 +199,39 @@ async def query_chat(
                 sub_questions=query_understanding.sub_questions
             ):
                 yield _sse_format(event_name, event_payload)
-
-            log_chat_query(
-                supabase_client, current_user.user_id, conversation_id, body.question,
-                rewritten_question, result
-            )
+        # A client that goes away mid-stream must not be recorded as a failure, or the logs cannot
+        # tell "student closed the tab" from "something broke". Measured against a real aborted
+        # request: the abort arrives as asyncio.CancelledError from anyio's cancel scope, NOT as
+        # GeneratorExit; GeneratorExit is kept because Starlette can also close a generator that
+        # way. Both are re-raised - swallowing a cancellation would break finalisation.
         except (asyncio.CancelledError, GeneratorExit):
             finish_request("cancelled")
             raise
-        except BaseException as error:
+        except BaseException as error:  # noqa: BLE001 - deliberately broad; see below
+            # Deliberately broad and deliberately NOT re-raised. Past this point the client is
+            # mid-stream, so the only way to report a failure is inside the stream; letting the
+            # exception propagate would cut the connection and be indistinguishable from a network
+            # drop. The telemetry line carries the real exception for diagnosis; the client gets a
+            # fixed sentence that cannot leak an exception string (which may quote the question).
+            logger.exception("Chat request failed after the response started (conversation_id=%s)",
+                              conversation_id)
             finish_request("error", error)
-            raise
+            yield _sse_format("error", ChatStreamErrorEvent(
+                message="Xin lỗi, đã có lỗi xảy ra khi xử lý câu hỏi. Bạn vui lòng thử lại."
+            ))
         else:
             finish_request("ok")
+        finally:
+            # In `finally` so a turn that errored part-way through still persists whatever it did
+            # produce, instead of the answer being shown and then silently lost. Guarded on there
+            # actually being an answer: a request that failed or was cancelled before generation
+            # has nothing worth storing, and writing an empty row would surface as a blank turn in
+            # the student's own history and in the sidebar conversation list. Nothing is lost
+            # diagnostically - request_telemetry already recorded the failure.
+            if result.answer:
+                log_chat_query(
+                    supabase_client, current_user.user_id, conversation_id, body.question,
+                    rewritten_question, result
+                )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

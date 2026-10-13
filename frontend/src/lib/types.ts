@@ -61,6 +61,13 @@ export interface ChatStreamStatusEvent {
   message: string;
 }
 
+// Terminal failure reported INSIDE the stream. Once the response headers are out the HTTP status
+// is already 200 and cannot be changed, so a failure after that point arrives as this event
+// followed by a clean close rather than as an HTTP error.
+export interface ChatStreamErrorEvent {
+  message: string;
+}
+
 // Only emitted for intent=answer_evaluation ("Sinh tình huống minh họa" Lượt 2), between
 // answer_delta and suggested_followups. Deliberately has NO score/percentage field - matched/
 // missing points only.

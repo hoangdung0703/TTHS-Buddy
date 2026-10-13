@@ -259,6 +259,14 @@ export function ChatView({ conversationId }: ChatViewProps) {
             )
           );
         },
+        onError: (event) => {
+          // The server reports a mid-stream failure this way because the response is already 200
+          // by the time it happens. Surfaced through the same error banner as a transport
+          // failure, so the student sees one consistent message either way.
+          setStatusMessage(null);
+          slowRequest.stop();
+          setError(event.message);
+        },
         onStatus: (event) => {
           // Reaching this means the instance is awake and working, so the cold-boot notice would
           // now be misleading even though the answer has not arrived.
