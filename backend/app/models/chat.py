@@ -78,6 +78,14 @@ class ChatStreamDoneEvent(BaseModel):
     pass
 
 
+# Progress text shown while the answer is being withheld. Emitted BEFORE any answer_delta, so it
+# does not change the relative order of the existing events, and an older client that does not
+# know this event ignores it (see frontend dispatchSseBlock, which drops unrecognised blocks
+# rather than throwing). Carries no legal content - purely "what the server is doing now".
+class ChatStreamStatusEvent(BaseModel):
+    message: str
+
+
 # Phase 4 Extension 2: read-back of chat_query_logs, grouped by conversation_id, for the
 # Sidebar history list and conversation reload. See chat_log_service.list_conversations /
 # get_conversation_detail.

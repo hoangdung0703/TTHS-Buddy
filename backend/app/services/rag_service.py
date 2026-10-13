@@ -32,6 +32,7 @@ from app.models.chat import (
     ChatStreamCitationsEvent,
     ChatStreamDoneEvent,
     ChatStreamGradingEvent,
+    ChatStreamStatusEvent,
     ChatStreamSuggestedFollowupsEvent,
     Citation,
     RelatedArticle,
@@ -216,6 +217,22 @@ ACADEMIC_EXPANSION_MAX_EXTRA = 12
 # of the nearest neighbors are typically other Khoan of Dieu already in citations/related).
 SUGGESTED_FOLLOWUP_COUNT = 3
 SUGGESTED_FOLLOWUP_FETCH_LIMIT = 8
+
+# Progress text for the buffered path, where nothing reaches the client until generation is
+# finished and the rule 9 guard has run (requirements.md 2026-10-12: 80.2% of traffic). The guard,
+# the event order and the answer itself are untouched - this only replaces a contentless spinner
+# with what the server is actually doing.
+#
+# STATUS_RETRIEVING is emitted for every legal_question, NOT only the buffered path, and that is a
+# deliberate deviation worth knowing about: the buffered path is decided by
+# buffer_for_rule9_risk, which is derived FROM retrieval.used_academic_reference, so at the moment
+# this marker is due - immediately after query understanding, before retrieval - the path is not
+# yet knowable. Gating it would mean emitting it after retrieval, which is exactly when it stops
+# being useful. On the streamed path it costs nothing: the client replaces it the instant the
+# first answer_delta arrives, which on that path is the answer itself starting. The short-circuit
+# intents (greeting, out_of_scope, ...) emit no status at all - they have an answer already.
+STATUS_RETRIEVING = "Đang tra cứu luật..."
+STATUS_CROSS_CHECKING = "Đang đối chiếu trích dẫn..."
 
 FALLBACK_ANSWER = (
     "Xin lỗi, tôi không tìm thấy nội dung liên quan trong dữ liệu pháp luật hiện có để trả lời "
@@ -1026,7 +1043,8 @@ async def stream_answer_question(
     last_turn: dict[str, Any] | None = None, needs_anonymization: bool = False,
     anonymized_names: list[str] | None = None, sub_questions: list[str] | None = None
 ) -> AsyncIterator[tuple[str, ChatStreamCitationsEvent | ChatStreamAnswerDeltaEvent |
-                          ChatStreamGradingEvent | ChatStreamSuggestedFollowupsEvent | ChatStreamDoneEvent]]:
+                          ChatStreamGradingEvent | ChatStreamSuggestedFollowupsEvent |
+                          ChatStreamStatusEvent | ChatStreamDoneEvent]]:
     """Streaming counterpart of the old answer_question (Phase 4 Extension - see
     requirements.md). Yields (event_name, payload) tuples in the order: answer_delta (one or
     more) -> citations -> suggested_followups -> done - except for the two early-return cases
@@ -1320,6 +1338,7 @@ async def stream_answer_question(
     # improvement for that one message - a deliberate, documented trade-off, not an oversight).
     if sub_questions and len(sub_questions) >= 2 and not needs_anonymization:
         telemetry.set_path("buffer_multipart")
+        yield ("status", ChatStreamStatusEvent(message=STATUS_RETRIEVING))
         with telemetry.stage("retrieval"):
             retrieval_results = await retrieve_context_for_subquestions(
                 sub_questions, settings, qdrant_client
@@ -1364,6 +1383,7 @@ async def stream_answer_question(
         # for rule 9's purposes as citing an academic_reference-only Dieu - both are "not backed by
         # the sub-question's own retrieval"), then send once, same fail-closed pattern as
         # buffer_for_rule9_risk above.
+        yield ("status", ChatStreamStatusEvent(message=STATUS_CROSS_CHECKING))
         answer_parts: list[str] = []
         with telemetry.stage("generation"):
             async for text_chunk in stream_generate_answer(
@@ -1509,6 +1529,7 @@ async def stream_answer_question(
             yield ("done", ChatStreamDoneEvent())
             return
 
+    yield ("status", ChatStreamStatusEvent(message=STATUS_RETRIEVING))
     with telemetry.stage("retrieval"):
         retrieval = await retrieve_context(question, settings, qdrant_client)
     result.retrieved_chunks = retrieval.all_retrieved
@@ -1563,6 +1584,12 @@ async def stream_answer_question(
         else "buffer" if buffer_for_rule9_risk
         else "stream"
     )
+
+    # Marker 2: retrieval and re-ranking are done and this request is known to be withholding its
+    # answer, so say what the wait is for. Gated on the real buffer decision, so the streamed path
+    # never sees it.
+    if buffer_for_rule9_risk or needs_anonymization:
+        yield ("status", ChatStreamStatusEvent(message=STATUS_CROSS_CHECKING))
 
     # requirements.md muc C: needs_anonymization buffers the whole answer instead of forwarding
     # each token as it arrives (unlike the normal path) so the leak check + disclaimer below can
