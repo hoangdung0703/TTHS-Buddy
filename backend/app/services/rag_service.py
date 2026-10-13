@@ -231,6 +231,11 @@ SUGGESTED_FOLLOWUP_FETCH_LIMIT = 8
 # being useful. On the streamed path it costs nothing: the client replaces it the instant the
 # first answer_delta arrives, which on that path is the answer itself starting. The short-circuit
 # intents (greeting, out_of_scope, ...) emit no status at all - they have an answer already.
+# Emitted by the chat route the instant the generator starts, BEFORE query understanding, so the
+# very first byte reaches the client in well under a second instead of waiting on two Supabase
+# reads plus a Gemini call. Lives here next to the other two so all the progress wording stays in
+# one place.
+STATUS_READING_QUESTION = "Đang đọc câu hỏi của bạn..."
 STATUS_RETRIEVING = "Đang tra cứu luật..."
 STATUS_CROSS_CHECKING = "Đang đối chiếu trích dẫn..."
 

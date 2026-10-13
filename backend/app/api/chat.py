@@ -14,6 +14,7 @@ from app.models.auth import AuthUser
 from app.models.chat import (
     ChatQueryRequest,
     ChatStreamErrorEvent,
+    ChatStreamStatusEvent,
     ChatSuggestion,
     ChatSuggestionsResponse,
     ConversationDetailResponse,
@@ -33,7 +34,7 @@ from app.services.chat_log_service import (
 )
 from app.services.chat_suggestions_service import load_static_suggestions
 from app.services.query_understanding_service import rewrite_question
-from app.services.rag_service import RagAnswer, stream_answer_question
+from app.services.rag_service import STATUS_READING_QUESTION, RagAnswer, stream_answer_question
 
 logger = get_logger(__name__)
 
@@ -127,8 +128,23 @@ async def query_chat(
     actually cited), not guessed from retrieval alone; see rag_service.stream_answer_question's
     docstring. The route stays thin per requirements.md mục 4 ("khong viet logic don het vao
     route") - all retrieval/generation/fallback logic lives in rag_service.stream_answer_question;
-    this handler only does auth, query understanding, SSE transport, and logging the final result
-    once the stream ends.
+    this handler only does auth, SSE transport, and logging the final result once the stream ends.
+
+    Everything that touches the network - the two Supabase history reads and the query-understanding
+    Gemini call - runs INSIDE the generator, not in this function body. Running them here would
+    hold back the response headers until all of them finished (measured on production at 3.1-4.6s
+    before the first byte). Auth and rate limiting deliberately stay outside, as the Depends and
+    the decorator, because a rejected request must still get a real 401/429 status code, which is
+    only possible before the response starts.
+
+    Because the status line is already 200 by the time that work runs, a failure in it cannot
+    become a 5xx. It is reported inside the stream instead, as an `error` event followed by a clean
+    close - see the generator below.
+
+    Event order: status (marker 0, immediately) -> ... -> answer_delta (one or more) -> citations
+    -> suggested_followups -> done. The status events are additive and always precede the first
+    answer_delta, so the relative order of the pre-existing events is unchanged and a client that
+    does not know them ignores them.
     """
     qdrant_client = request.app.state.qdrant_client
     supabase_client = request.app.state.supabase_client
@@ -172,6 +188,14 @@ async def query_chat(
         # escaping into the stream (which would truncate it mid-event and look like a dropped
         # connection to the client).
         try:
+            # Marker 0, sent before anything else happens. Everything after this point costs at
+            # least one Supabase round trip and a Gemini call, so without it the client's first
+            # byte waits ~3s even though the server started work immediately. Emitted for EVERY
+            # chat turn, including the short-circuit intents: at this point the intent is not
+            # known yet (query understanding is what determines it), and for those turns the
+            # answer follows so quickly that the client replaces this almost at once.
+            yield _sse_format("status", ChatStreamStatusEvent(message=STATUS_READING_QUESTION))
+
             # Two independent Supabase reads, so they run CONCURRENTLY rather than one after the
             # other - neither needs the other's result; both are needed before rewrite_question.
             # They have never actually been concurrent: before E2, get_recent_turns ran
