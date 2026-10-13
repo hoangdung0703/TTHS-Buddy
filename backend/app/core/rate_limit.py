@@ -14,13 +14,15 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
-from app.core.security import _extract_bearer_token, verify_supabase_jwt
+from app.core.security import _extract_bearer_token, verify_supabase_jwt_for_request
 
 
 def _rate_limit_key(request: Request) -> str:
     try:
         token = _extract_bearer_token(request.headers.get("Authorization"))
-        user = verify_supabase_jwt(token, get_settings())
+        # Shares its result with require_supabase_user through request.state, so the same token is
+        # verified once per request instead of twice - ES256 verification is not cheap.
+        user = verify_supabase_jwt_for_request(request, token, get_settings())
         return f"user:{user.user_id}"
     except Exception:
         return f"ip:{get_remote_address(request)}"
