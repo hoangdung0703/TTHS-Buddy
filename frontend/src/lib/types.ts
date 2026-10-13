@@ -54,6 +54,13 @@ export interface ChatStreamSuggestedFollowupsEvent {
   suggested_followups: SuggestedFollowup[];
 }
 
+// Progress text while the server withholds the answer to run the citation-grounding guard
+// (~80% of traffic - see requirements.md 2026-10-12). Always arrives before the first
+// answer_delta, so it never reorders the existing events.
+export interface ChatStreamStatusEvent {
+  message: string;
+}
+
 // Only emitted for intent=answer_evaluation ("Sinh tình huống minh họa" Lượt 2), between
 // answer_delta and suggested_followups. Deliberately has NO score/percentage field - matched/
 // missing points only.

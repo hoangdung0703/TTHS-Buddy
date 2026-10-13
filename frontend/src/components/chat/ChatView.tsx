@@ -8,6 +8,8 @@ import { CitationList } from "@/components/chat/CitationList";
 import { FormattedAnswer } from "@/components/chat/FormattedAnswer";
 import { ScenarioGradingResult } from "@/components/chat/ScenarioGradingResult";
 import { ApiError, getChatSuggestions, getConversationDetail, sendChatQuery } from "@/lib/api";
+import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
+import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
 import type { ChatStreamGradingEvent, ChatSuggestion, Citation } from "@/lib/types";
 
 interface ChatMessage {
@@ -65,6 +67,13 @@ export function ChatView({ conversationId }: ChatViewProps) {
   // streaming into a message bubble" (show the bubble instead) - null before the first SSE event
   // of the current request arrives, then the id of the assistant message being streamed into.
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  // Latest server progress text for the current request ("Đang tra cứu luật...", then "Đang đối
+  // chiếu trích dẫn..."). Replaces the contentless spinner caption while the answer is withheld
+  // for the citation-grounding guard, which is ~80% of traffic and 13-17s of blank screen. Null
+  // when no status has arrived - including against an older backend that does not send the event
+  // at all, in which case the original caption shows exactly as before.
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const slowRequest = useSlowRequestNotice();
   // Feature nhỏ - "Sao chép" button transient feedback: which assistant message's copy just
   // succeeded, reset after COPY_FEEDBACK_DURATION_MS so the icon/label reverts on its own.
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
@@ -208,6 +217,8 @@ export function ChatView({ conversationId }: ChatViewProps) {
     }
 
     setError(null);
+    setStatusMessage(null);
+    slowRequest.start();
     setInput("");
     updateMessages((current) => [...current, { id: createMessageId(), role: "user", content: trimmed }]);
     setIsSending(true);
@@ -248,7 +259,16 @@ export function ChatView({ conversationId }: ChatViewProps) {
             )
           );
         },
+        onStatus: (event) => {
+          // Reaching this means the instance is awake and working, so the cold-boot notice would
+          // now be misleading even though the answer has not arrived.
+          slowRequest.stop();
+          setStatusMessage(event.message);
+        },
         onDelta: (event) => {
+          // The first real token supersedes any progress text - on the streamed path this is the
+          // answer starting, on the buffered path it is the whole answer arriving at once.
+          setStatusMessage(null);
           ensureAssistantMessage();
           updateMessages((current) =>
             current.map((message) =>
@@ -276,6 +296,8 @@ export function ChatView({ conversationId }: ChatViewProps) {
     } finally {
       setIsSending(false);
       setStreamingMessageId(null);
+      setStatusMessage(null);
+      slowRequest.stop();
       if (newlyStartedConversationId !== null) {
         pendingFreshConversationHandoff = {
           conversationId: newlyStartedConversationId,
@@ -390,9 +412,15 @@ export function ChatView({ conversationId }: ChatViewProps) {
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground [animation-delay:150ms]" />
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground [animation-delay:300ms]" />
               </span>
-              TTHS Buddy đang soạn câu trả lời...
+              {statusMessage ?? "TTHS Buddy đang soạn câu trả lời..."}
             </div>
           </div>
+        ) : null}
+
+        {isSending && slowRequest.isSlow ? (
+          <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            {SLOW_REQUEST_NOTICE}
+          </p>
         ) : null}
 
         {error !== null ? (

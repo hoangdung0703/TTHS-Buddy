@@ -17,6 +17,7 @@ import type {
   ChatStreamAnswerDeltaEvent,
   ChatStreamCitationsEvent,
   ChatStreamGradingEvent,
+  ChatStreamStatusEvent,
   ChatStreamSuggestedFollowupsEvent,
   ChatSuggestion,
   ConversationDetailResponse,
@@ -110,6 +111,9 @@ export interface ChatStreamHandlers {
   // Only fires for intent=answer_evaluation turns ("Sinh tình huống minh họa" Lượt 2) - see
   // ChatStreamGradingEvent.
   onGradingResult: (event: ChatStreamGradingEvent) => void;
+  // Progress text for the buffered path. Optional so existing callers keep compiling and so a
+  // caller that does not care can simply omit it.
+  onStatus?: (event: ChatStreamStatusEvent) => void;
 }
 
 // Parses one complete "event: <name>\ndata: <json>" block (already split on the blank-line
@@ -141,6 +145,8 @@ function dispatchSseBlock(block: string, handlers: ChatStreamHandlers): void {
     handlers.onSuggestedFollowups(data as ChatStreamSuggestedFollowupsEvent);
   } else if (eventName === "grading_result") {
     handlers.onGradingResult(data as ChatStreamGradingEvent);
+  } else if (eventName === "status") {
+    handlers.onStatus?.(data as ChatStreamStatusEvent);
   }
 }
 

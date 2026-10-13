@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import { getKeywordsYesterday, getQuizStatsV2, getWeakTopics } from "@/lib/api";
+import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
+import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
 import type { KeywordYesterday, QuizStatsV2, WeakTopic } from "@/lib/types";
 
 type LoadState = "loading" | "ready" | "error";
@@ -123,6 +125,7 @@ export default function DashboardPage() {
   const { email } = useAuthSession();
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [data, setData] = useState<DashboardData | null>(null);
+  const slowRequest = useSlowRequestNotice();
 
   useEffect(() => {
     loadDashboard();
@@ -130,13 +133,15 @@ export default function DashboardPage() {
 
   function loadDashboard(): void {
     setLoadState("loading");
+    slowRequest.start();
 
     Promise.all([getKeywordsYesterday(), getWeakTopics(), getQuizStatsV2()])
       .then(([keywords, weakTopics, quizStats]) => {
         setData({ keywords, weakTopics, quizStats });
         setLoadState("ready");
       })
-      .catch(() => setLoadState("error"));
+      .catch(() => setLoadState("error"))
+      .finally(() => slowRequest.stop());
   }
 
   return (
@@ -161,6 +166,12 @@ export default function DashboardPage() {
             <p className="text-sm text-muted-foreground">Đây là tổng quan học tập của bạn.</p>
           </div>
         </div>
+
+        {loadState === "loading" && slowRequest.isSlow ? (
+          <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            {SLOW_REQUEST_NOTICE}
+          </p>
+        ) : null}
 
         {loadState === "loading" ? (
           <div className="space-y-6">

@@ -16,6 +16,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { deleteConversation, getConversations, renameConversation } from "@/lib/api";
+import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
+import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
 import type { ConversationSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -68,13 +70,25 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState<string>("");
+  const { isSlow: isHistorySlow, start: startSlowNotice, stop: stopSlowNotice } = useSlowRequestNotice();
 
   // Re-fetched on every pathname change (not just once on mount) so sending a first message on
   // the bare /chat route - which creates a brand new conversation server-side - makes it appear
   // in this list without requiring a full page reload.
   useEffect(() => {
-    void getConversations().then(setConversations);
-  }, [pathname]);
+    startSlowNotice();
+    void getConversations()
+      .then(setConversations)
+      .catch(() => {
+        // Pre-existing behaviour: a failed history fetch leaves the list as-is rather than
+        // breaking the whole shell. Only the notice is new, and it must be cleared either way.
+      })
+      .finally(() => stopSlowNotice());
+    // Depends on the two stable callbacks, NOT on the object the hook returns - that object is a
+    // fresh literal every render, and depending on it turned this into an infinite fetch loop
+    // (fetch -> setState -> render -> new object -> fetch). Keeps the original "re-fetch on
+    // pathname change" trigger and nothing else.
+  }, [pathname, startSlowNotice, stopSlowNotice]);
 
   const filteredHistory = useMemo(
     () =>
@@ -212,6 +226,9 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
 
       <div className="mt-4 flex-1 overflow-y-auto px-3">
         <p className="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Lịch sử</p>
+        {isHistorySlow && conversations.length === 0 ? (
+          <p className="px-1 pb-2 text-xs leading-relaxed text-muted-foreground">{SLOW_REQUEST_NOTICE}</p>
+        ) : null}
         <ul className="space-y-1">
           {filteredHistory.map((conversation) => {
             const href = `/chat/${conversation.conversation_id}`;

@@ -9,6 +9,7 @@ import { BackgroundOrbs } from "@/components/brand/BackgroundOrbs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { warmUpBackend } from "@/lib/serverWakeup";
 
 // Sizing/shape only — border, bg, text, and focus-ring colors now come from the shared
 // Input component's own semantic defaults (border-border/bg-background/ring-ring), which
@@ -54,6 +55,13 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string>("");
+
+  // Wake the backend while the student is still typing their credentials, so a Render Free cold
+  // boot overlaps the form instead of being paid in full on their first request after signing in.
+  // Covers /login and /register, which both render this component.
+  useEffect(() => {
+    warmUpBackend();
+  }, []);
 
   useEffect(() => {
     const supabase = getSupabaseClient();

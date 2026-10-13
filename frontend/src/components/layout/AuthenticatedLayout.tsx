@@ -2,11 +2,12 @@
 
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { useAuthSession } from "@/hooks/useAuthSession";
+import { warmUpBackend } from "@/lib/serverWakeup";
 
 interface AuthenticatedLayoutProps {
   title: string;
@@ -24,6 +25,13 @@ interface AuthenticatedLayoutProps {
 export function AuthenticatedLayout({ title, children }: AuthenticatedLayoutProps) {
   const { loading, email } = useAuthSession();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  // Runs before the early `loading` return below, so the ping goes out while the session check is
+  // still in flight rather than waiting for it. warmUpBackend rate-limits itself to once per 10
+  // minutes per session, so remounting across pages behind login costs at most one ping.
+  useEffect(() => {
+    warmUpBackend();
+  }, []);
 
   if (loading) {
     return (

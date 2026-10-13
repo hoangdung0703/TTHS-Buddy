@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BarChart2, ListChecks, MessageSquareQuote, Scale } from "lucide-react";
 
 import { BackgroundOrbs } from "@/components/brand/BackgroundOrbs";
+import { BackendWarmUp } from "@/components/system/BackendWarmUp";
 import { Button } from "@/components/ui/button";
 
 const features = [
@@ -26,6 +27,7 @@ const features = [
 export default function HomePage() {
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background font-sans text-foreground">
+      <BackendWarmUp />
       <BackgroundOrbs />
 
       <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-8 pb-4 pt-8">
