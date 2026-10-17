@@ -30,11 +30,36 @@ MAX_TRANSIENT_RETRIES = 3
 RETRY_BACKOFF_SECONDS = 5.0
 
 
-def _post_with_retry(url: str, api_key: str, body: dict) -> httpx.Response:
+def _post_with_retry(url: str, api_key: str, body: dict, *,
+                      timeout: float = REQUEST_TIMEOUT_SECONDS,
+                      max_attempts: int = MAX_TRANSIENT_RETRIES) -> httpx.Response:
+    """`timeout` is the per-attempt httpx timeout; `max_attempts` bounds the retry loop.
+
+    Both are parameters rather than module constants because the two call sites that HAVE a
+    designed fallback (rag_service's HyDE passage and LLM re-rank) need a far tighter budget than
+    the ones that don't. The worst observed chat request spent 66.45s in the HyDE stage alone, and
+    the server log shows exactly how: "Gemini request failed (attempt 1/3): The read operation
+    timed out" - attempt 1 burned the full 60s timeout, slept RETRY_BACKOFF_SECONDS, and attempt 2
+    then succeeded in the usual ~1.4s (60 + 5 + 1.45 = 66.45). That student waited 75.2s in total
+    for an answer whose retrieval had a free fallback available at the 4-second mark.
+
+    So capping the per-attempt timeout is necessary but NOT sufficient: with max_attempts left at
+    3, a 4s timeout still allows 4 + 5 + 4 + 10 + 4 = 27s. A caller that can degrade gracefully
+    passes max_attempts=1, because for it the fallback IS the recovery and is strictly cheaper
+    than another round trip.
+
+    Why the bound has to live HERE, inside the blocking call, and not in the event loop: these
+    calls reach the loop through `asyncio.to_thread`, and a thread cannot be cancelled. Wrapping
+    the await in `asyncio.wait_for` would hand control back to the handler while leaving the
+    thread blocked in `httpx.post`, still holding its slot in the default ThreadPoolExecutor - and
+    every Qdrant and Supabase call on this path goes through that same pool, so a few stuck
+    threads would stall unrelated requests. httpx's own timeout makes the socket operation itself
+    fail, so the worker thread raises and RETURNS on its own; nothing needs to cancel it.
+    """
     last_error: Exception | None = None
-    for attempt in range(1, MAX_TRANSIENT_RETRIES + 1):
+    for attempt in range(1, max_attempts + 1):
         try:
-            response = httpx.post(url, params={"key": api_key}, json=body, timeout=REQUEST_TIMEOUT_SECONDS)
+            response = httpx.post(url, params={"key": api_key}, json=body, timeout=timeout)
             if response.status_code >= 500 or response.status_code == 429:
                 raise httpx.HTTPStatusError(
                     f"Retryable HTTP {response.status_code}: {response.text[:200]}",
@@ -44,8 +69,8 @@ def _post_with_retry(url: str, api_key: str, body: dict) -> httpx.Response:
             return response
         except (httpx.TransportError, httpx.HTTPStatusError) as error:
             last_error = error
-            logger.warning("Gemini request failed (attempt %d/%d): %s", attempt, MAX_TRANSIENT_RETRIES, error)
-            if attempt < MAX_TRANSIENT_RETRIES:
+            logger.warning("Gemini request failed (attempt %d/%d): %s", attempt, max_attempts, error)
+            if attempt < max_attempts:
                 time.sleep(RETRY_BACKOFF_SECONDS * attempt)
 
     assert last_error is not None
@@ -65,7 +90,8 @@ def embed_query(text: str, settings: Settings) -> list[float]:
 
 
 def generate_answer(system_prompt: str, user_prompt: str, settings: Settings, response_json: bool = False,
-                     response_schema: dict | None = None) -> str:
+                     response_schema: dict | None = None, timeout: float = REQUEST_TIMEOUT_SECONDS,
+                     max_attempts: int = MAX_TRANSIENT_RETRIES) -> str:
     url = GENERATE_CONTENT_URL_TEMPLATE.format(model=settings.gemini_chat_model)
     generation_config: dict[str, object] = {"temperature": 0.1}
     if response_json:
@@ -86,7 +112,8 @@ def generate_answer(system_prompt: str, user_prompt: str, settings: Settings, re
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
         "generationConfig": generation_config
     }
-    response = _post_with_retry(url, settings.google_api_key, body)
+    response = _post_with_retry(url, settings.google_api_key, body,
+                                 timeout=timeout, max_attempts=max_attempts)
     data = response.json()
 
     candidates = data.get("candidates", [])

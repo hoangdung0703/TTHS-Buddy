@@ -20,6 +20,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
 
@@ -167,6 +168,29 @@ RERANK_SNIPPET_CHARS = 220
 # discarding it outright, so a partial/malformed re-rank response degrades gracefully instead of
 # silently dropping a candidate from consideration.
 RERANK_MISSING_SCORE_FALLBACK = -1.0
+
+# Latency budget for the two retrieval-stage Gemini calls that have a designed fallback. Both are
+# passed straight to httpx as the per-attempt socket timeout, with max_attempts=1 - see
+# gemini_client._post_with_retry's docstring for why the bound must live in the blocking call
+# rather than in asyncio, and why capping the timeout without also capping the retry count leaves
+# a 27s hole.
+#
+# Chosen from the telemetry of 61 real buffered chat requests:
+#
+#   hyde     p50 1.30  p90 1.53  p95 1.58  p99 27.84  max 66.45   (2 requests over 2s)
+#   rerank   p50 1.94  p90 2.34  p95 2.41  p99 2.87   max  3.15   (0 requests over 4s)
+#
+# Both distributions are tight and then fall off a cliff. HyDE's p95 is 1.58s, so 4s is ~2.5x p95
+# and the ONLY sample it would have cut short is the 66.45s one (1 of 61, 1.6%) - a request that
+# cost its student 75.2s in total. Re-rank never once exceeded 3.15s, so 6s is ~2x the observed
+# maximum; it is deliberately the looser of the two because re-rank's fallback costs more quality
+# (plain similarity ordering, losing the muc A re-ranking entirely) than HyDE's does (embedding
+# the question directly, which is simply the pre-HyDE behaviour), so it should be the more
+# reluctant of the two to give up. Both samples come from the dev machine - the shape, not the
+# absolute values, is what justifies the thresholds.
+HYDE_TIMEOUT_SECONDS = 4.0
+RERANK_TIMEOUT_SECONDS = 6.0
+
 ACADEMIC_TOP_K = 3
 LEGAL_SCORE_THRESHOLD = 0.5
 ACADEMIC_SCORE_THRESHOLD = 0.5
@@ -659,7 +683,8 @@ def _rerank_legal_candidates(question: str, non_exact_candidates: list[Retrieved
     try:
         response_text = generate_answer(
             RERANK_SYSTEM_PROMPT, build_rerank_user_prompt(question, list(candidates_by_key.values())),
-            settings, response_json=True, response_schema=RERANK_RESPONSE_SCHEMA
+            settings, response_json=True, response_schema=RERANK_RESPONSE_SCHEMA,
+            timeout=RERANK_TIMEOUT_SECONDS, max_attempts=1
         )
         parsed = json.loads(response_text)
         scores: dict[tuple[str, str | None], float] = {}
@@ -668,8 +693,17 @@ def _rerank_legal_candidates(question: str, non_exact_candidates: list[Retrieved
             if key is not None:
                 scores[key] = float(entry["relevance_score"])
         return scores
+    except httpx.TimeoutException:
+        # Expected and handled, so logged WITHOUT a traceback - a timeout here is a budget
+        # decision, not a defect, and a full stack trace per occurrence would bury the real
+        # exceptions this same handler still reports below.
+        logger.warning("LLM re-ranking exceeded its %ss budget - falling back to plain "
+                        "similarity-score ordering", RERANK_TIMEOUT_SECONDS)
+        telemetry.add_fallback_reason("rerank:timeout")
+        return {}
     except Exception:
         logger.exception("LLM re-ranking failed - falling back to plain similarity-score ordering")
+        telemetry.add_fallback_reason("rerank:error")
         return {}
 
 
@@ -939,10 +973,19 @@ def _generate_hyde_passage(question: str, settings: Settings) -> str:
     summarize_previous/explain_simpler's try/except fallback in stream_answer_question."""
     try:
         with telemetry.stage("hyde"):
-            passage = generate_answer(HYDE_SYSTEM_PROMPT, build_hyde_user_prompt(question), settings)
+            passage = generate_answer(HYDE_SYSTEM_PROMPT, build_hyde_user_prompt(question), settings,
+                                       timeout=HYDE_TIMEOUT_SECONDS, max_attempts=1)
         return passage or question
+    except httpx.TimeoutException:
+        # Expected and handled - see the matching branch in _rerank_legal_candidates for why this
+        # one logs a warning instead of a traceback.
+        logger.warning("HyDE passage generation exceeded its %ss budget - falling back to "
+                        "embedding the question directly", HYDE_TIMEOUT_SECONDS)
+        telemetry.add_fallback_reason("hyde:timeout")
+        return question
     except Exception:
         logger.exception("HyDE passage generation failed - falling back to embedding the question directly")
+        telemetry.add_fallback_reason("hyde:error")
         return question
 
 
