@@ -847,7 +847,9 @@ Chạy lại 29 câu eval (cùng phương thức in-process real-API do thiếu 
 
 [ ] B — HyDE (Hypothetical Document Embeddings): trước khi embed câu hỏi để retrieval, sinh 1 đoạn văn giả định "trông như câu trả lời lý tưởng" (giọng văn luật, không phải giọng câu hỏi tình huống) bằng 1 lời gọi Gemini nhẹ, embed đoạn đó thay vì câu hỏi gốc. Giả thuyết: giải quyết đúng gốc rễ dilution/mismatch giọng văn giữa câu hỏi tình huống và văn bản luật. Test bằng đúng các case chẩn đoán đã biết trước đây (Điều 298, Điều 280, case Điều 165/110 "crowding" trùng từ vựng bề mặt) — đo rank/score TRƯỚC/SAU khi có HyDE, so với rank khi retrieval thường (không HyDE). Chạy 29 câu eval, đo citation_grounding_rate/accuracy — xác nhận không hồi quy cho câu hỏi ngắn/tra cứu trực tiếp vốn đã hoạt động tốt (rủi ro: HyDE có thể "diễn giải" lệch câu hỏi đơn giản).
 
-[x] A — LLM re-ranking: implement xong trên nhánh legal_text semantic (`_rerank_legal_candidates` + `_retrieve_legal` trong `backend/app/services/rag_service.py`, prompt/schema mới `RERANK_SYSTEM_PROMPT`/`RERANK_RESPONSE_SCHEMA`/`build_rerank_user_prompt` trong `rag_prompts.py`). Dedup top-25 ứng viên (chunk-level) xuống 1 dòng/Điều TRƯỚC khi đưa vào re-rank (đúng fix cho vấn đề "Điều 15 nhiều Khoản chiếm nhiều slot" đã phát hiện ở B) - 1 lời gọi Gemini nhẹ chấm điểm 0-10 cho từng Điều DUY NHẤT, đọc câu hỏi GỐC (không phải HyDE passage). Exact-match Điều vẫn luôn ưu tiên tuyệt đối, không qua re-rank. Fail-closed về đúng thứ tự similarity cũ nếu lời gọi Gemini lỗi/JSON hỏng (không vỡ request).
+  **Cập nhật 17/10/2026 (đổi ngữ nghĩa):** lời gọi sinh đoạn HyDE giờ có ngân sách cứng `HYDE_TIMEOUT_SECONDS = 4.0` (timeout httpx) và **`max_attempts=1` — không thử lại**; quá hạn hoặc lỗi thì embed thẳng câu hỏi (hành vi trước khi có HyDE), telemetry ghi `hyde:timeout` / `hyde:error`. Lý do và số liệu chọn ngưỡng: mục "Case study — chẩn đoán độ trễ Chat" ở cuối file. Thí nghiệm HyDE bật/tắt (18/10/2026): cùng mục đó, phần Mục 4.
+
+[x] A — LLM re-ranking: implement xong trên nhánh legal_text semantic (`_rerank_legal_candidates` + `_retrieve_legal` trong `backend/app/services/rag_service.py`, prompt/schema mới `RERANK_SYSTEM_PROMPT`/`RERANK_RESPONSE_SCHEMA`/`build_rerank_user_prompt` trong `rag_prompts.py`). Dedup top-25 ứng viên (chunk-level) xuống 1 dòng/Điều TRƯỚC khi đưa vào re-rank (đúng fix cho vấn đề "Điều 15 nhiều Khoản chiếm nhiều slot" đã phát hiện ở B) - 1 lời gọi Gemini nhẹ chấm điểm 0-10 cho từng Điều DUY NHẤT, đọc câu hỏi GỐC (không phải HyDE passage). Exact-match Điều vẫn luôn ưu tiên tuyệt đối, không qua re-rank. Fail-closed về đúng thứ tự similarity cũ nếu lời gọi Gemini lỗi/JSON hỏng (không vỡ request). **Cập nhật 17/10/2026 (đổi ngữ nghĩa):** lời gọi re-rank giờ có ngân sách cứng `RERANK_TIMEOUT_SECONDS = 6.0` đặt ở timeout của httpx và **`max_attempts=1` — không còn thử lại**; quá hạn hoặc lỗi đều đi thẳng về thứ tự similarity như trên, telemetry ghi `rerank:timeout` / `rerank:error`. Trước đó lời gọi này kế thừa timeout 60s và 3 lần thử (backoff 5s/10s) của `_post_with_retry`. Xem mục "Case study — chẩn đoán độ trễ Chat" ở cuối file.
 
 Test case Điều 109 (tinhhuong-q4) - đo đủ 4 tổ hợp (baseline/B-only/A-only/A+B) để tách bạch đóng góp riêng của A:
 - baseline (không B không A): 109 có mặt primary (rank 4), 117 có mặt (rank 6), 123 KHÔNG có mặt (rank 12, ngoài top-8).
@@ -1101,3 +1103,113 @@ Những chỗ ĐỌC cột này (chỉ liệt kê, không sửa):
 
 Ngoài `run_evaluation.py`, không có chỗ nào khác trong backend hay frontend đọc cột này để quyết
 định hành vi.
+
+---
+
+Case study — chẩn đoán độ trễ Chat production ("chậm / có lúc không trả lời"), 12–18/10/2026
+
+**Lưu ý về nguồn số liệu (đọc trước mọi bảng bên dưới):**
+- Số đo **production** chỉ gồm thời gian nhìn từ phía client (headers, first byte, câu trả lời, tổng) đo vào `https://tths-buddy.onrender.com`. Log Render không đọc được từ phía phát triển, nên **mọi số liệu theo từng giai đoạn bên trong** (retrieval, HyDE, re-rank, Qdrant, Supabase) đều **đo trên máy phát triển**, không phải trên Render. Hình dạng (bước nào chiếm phần lớn) chuyển sang được; giá trị tuyệt đối thì không.
+- **Vùng đặt máy:** Qdrant xác nhận là AWS **eu-central-1** (Frankfurt) qua bản ghi PTR. **Render chưa xác nhận** (`render.yaml` ghi `singapore`, nhưng file này chỉ là tài liệu tham khảo và đã lệch so với dịch vụ thật ở `plan` và `PYTHON_VERSION`). **Supabase chưa xác nhận** (API nằm sau Cloudflare; `cf-ray` chỉ cho biết edge gần máy đo, không phải vùng database).
+- Mẫu nhỏ (thường n = 5–25). Kết luận dưới đây là kết luận theo hướng, không phải kết luận thống kê.
+
+**1. Giả thuyết ban đầu — "Vở ghi làm Chat chậm" — bị bác bỏ bằng số đo.** Đo hai tài khoản test cùng câu hỏi, một có 4 ghi chú, một không: phần việc liên quan tới ghi chú chỉ chiếm khoảng **1,3s**, và cả hai tài khoản đều chậm như nhau. Ghi chú không phải nguyên nhân. Chat vẫn được gỡ khỏi việc đọc ghi chú (vì lý do sản phẩm, xem mục Vở ghi), nhưng việc đó không giải quyết được độ chậm.
+
+**2. Các nguyên nhân thật, theo mức độ ảnh hưởng tới sinh viên:**
+
+| # | Nguyên nhân | Bằng chứng | Trạng thái |
+|---|---|---|---|
+| 1 | **Cold start của Render Free** (~15 phút không có request thì máy ngủ) | Request đầu sau khi ngủ: **46,45s** và **44,14s**; khi máy thức: 0,18–0,27s | Chỉ hết khi nâng gói Render. Đã giảm nhẹ trải nghiệm bằng warm-up khi mở trang và thông báo "Máy chủ đang khởi động lại…" sau 7s |
+| 2 | **80,2% lưu lượng đi đường buffer** (guard rule 9 giữ toàn bộ câu trả lời tới khi kiểm xong trích dẫn) | Đếm từ `retrieved_chunks` (xem mục "Sửa số liệu — 80,2%") | **Giữ nguyên guard** (quyết định 12/10). Chỉ báo hiệu tiến trình chỉ thoát được ~1,6% lưu lượng. Bù bằng các sự kiện `status` |
+| 3 | **Xác thực JWT chạy hai lần mỗi request, client JWKS không cache** | Mỗi lần verify tải lại JWK set (~0,3s); route chat verify 2 lần (rate-limit key + auth). Đếm được 10 lần tải cho 10 lần verify | Đã sửa (`7a64c7a`, `966a17f`) |
+| 4 | **Truy vấn Supabase đồng bộ chặn event loop** | Trước E2, `get_recent_turns` chạy đồng bộ ngay trên event loop, chặn mọi request khác trong lúc chờ; hai lượt đọc lịch sử chưa bao giờ chạy song song | Đã sửa (`7a2745d`, `e4e0f1b`) |
+| 5 | **Chuỗi bốn lời gọi Gemini trong retrieval** | Retrieval median **4,90s** (telemetry, n=63): HyDE 1,30s + re-rank 1,95s + phần còn lại 1,56s. Đo trực tiếp: sinh HyDE 1,04s ‖ embed câu hỏi 0,52s → embed đoạn HyDE 0,53s → 3 truy vấn Qdrant song song ≈ 0,22s → re-rank 1,93s. **Qdrant chỉ tốn ~0,2s và gần như toàn bộ là RTT mạng** (RTT trần 0,210s, tính toán 0,011s, collection 2.958 điểm) | Chưa đổi kiến trúc; xem Mục 4 về HyDE |
+| 6 | **Một lời gọi Gemini bị treo có thể kéo request tới hơn 1 phút** | Ca tệ nhất: stage HyDE **66,45s**, tổng **75,2s**. Log: `Gemini request failed (attempt 1/3): The read operation timed out` → 60s timeout + 5s backoff + 1,45s lần 2 | Đã sửa (`f82156b`) |
+| 7 | **Lỗi đọc Supabase bị nuốt thành dữ liệu rỗng** ("có lúc không trả lời" / mất lịch sử) | Lịch sử trống, dashboard toàn số 0, "Không có chủ đề nào cần ôn lại" — giống hệt tài khoản mới (sự cố PGRST303 ngày 10/10) | Đã sửa (`1104f4b` + `164558f`) |
+| 8 | **Kết nối HTTP/2 dùng chung bị nhiều thread làm hỏng** → lượt chat mất ngữ cảnh âm thầm | Hai lượt đọc lịch sử song song làm hỏng trạng thái HPACK của kết nối chung. 300 vòng đo: **9/300 lượt chat mất ngữ cảnh** (HTTP/2) so với **0/300** (HTTP/1.1). Lỗi này do chính thay đổi `e4e0f1b` lộ ra | Đã sửa (`773d07c`) |
+
+**3. Bảng trước/sau của từng thay đổi** (L = đo local, P = production, n = số mẫu):
+
+| Thay đổi | Commit | Chỉ số | Trước | Sau |
+|---|---|---|---|---|
+| D/E — log có cấu trúc, sự kiện `status`, warm-up, thông báo chờ | `518fd6d`, `18789e5`, `e50fd4d` | sinh viên thấy gì trong lúc buffer | spinner trống | dòng tiến trình |
+| E2 — đưa 2 lượt đọc + query understanding vào generator | `7a2745d` | P headers_s (n=25) | — | 1,21s (baseline Việc 1) |
+| Việc 2 — chạy song song hai lượt đọc lịch sử | `e4e0f1b` | L first_byte median (n=10) | 3,483s (2,52–5,83) | 3,096s (2,15–3,88) |
+| Việc 3 — mốc 0: `status` ngay khi bắt đầu | `dd57157` | L first_byte median | 3,096s | 0,661s |
+| Việc 4 — cache JWKS, verify 1 lần/request | `7a64c7a` | L GET conversations / L headers_s | 1,332s / 1,639s | 0,355s / 0,028s |
+| (tổng hợp E2 + Việc 2–4) | — | **P headers / first byte / câu trả lời / tổng / GET conversations** (n=25, cùng 5 câu) | **1,21 / 3,46 / 11,32 / 11,49 / 2,106s** | **0,28 / 0,28 / 9,22 / 9,39 / 0,835s** |
+| Mục 1 — ngân sách cứng HyDE 4s / re-rank 6s, `max_attempts=1` | `f82156b` | trần thời gian của từng stage khi Gemini treo | HyDE tới 195s (3×60s + 15s) | HyDE 4,0s, re-rank 6,0s (đo 4,004s / 6,004s khi chèn treo 10s) |
+| Mục 2 — nạp sẵn JWKS khi khởi động | `966a17f` | L request có xác thực đầu tiên sau boot | 2,045s | 1,317s |
+| HTTP/1.1 cho client Supabase | `773d07c` | L lượt chat mất ngữ cảnh (300 vòng, 2 đọc song song) / 4 lượt chồng nhau (1.200 lượt) | 9/300 / 8/1.200 | 0/300 / 0/1.200 |
+| Mục 3 — báo lỗi đọc thay vì trả rỗng | `1104f4b`, `164558f` | thời gian tới khi báo lỗi khi Supabase 503 kéo dài | ~7s (retry nội bộ postgrest), rồi trả rỗng 200 | 0,32s, trả 503 có CORS |
+
+Hai ngoại lệ đáng ghi khi đọc bảng: (a) số production trước/sau không đo cùng khung giờ (05:10Z ngày 13/10 so với 03:19Z ngày 16/10). Mức giảm của headers/first byte (−77%/−92%) quá lớn để giải thích bằng giờ đo; mức giảm của thời gian tới câu trả lời (−19%) thì có thể một phần do tải của Gemini. (b) Mỗi lượt chat production vẫn còn ~9s, và phần lớn là các lời gọi Gemini (query understanding ~1,2s, retrieval ~4,9s, sinh câu trả lời ~3,1s). Phần đó không phải vấn đề hạ tầng.
+
+**4. Ngưỡng 4s / 6s (Mục 1) cần kiểm chứng lại trên Render.** Hai ngưỡng được chọn từ telemetry của **61 request trên máy phát triển** (HyDE p95 1,58s, re-rank p95 2,41s, re-rank lớn nhất 3,15s). Khi đã có log Render, cần đếm tỷ lệ dòng `chat_request_end` có `fallback_reasons` chứa `hyde:timeout` hoặc `rerank:timeout`:
+- Tỷ lệ vượt quá vài phần trăm nghĩa là ngưỡng quá chặt so với độ trễ thật từ Render tới Gemini, và chất lượng retrieval đang bị đánh đổi âm thầm.
+- Tỷ lệ bằng 0 trong thời gian dài thì ngưỡng vẫn đúng vai trò: chỉ bắt các lần treo thật.
+
+**5. Bài học quy trình (đã gây sai số trong chính đợt chẩn đoán này):**
+- Cột `chat_query_logs.used_academic_reference` không đo đường đi (xem mục 80,2%).
+- Hai test đầu tiên tự báo PASS sai vì lỗi trong test: một marker không khớp vì `json.dumps` escape tiếng Việt, một bộ đếm luôn ra 5/5. Đọc từng dòng dữ liệu, không chỉ đọc dòng tổng kết.
+- Log DEBUG của `hpack` đã làm lộ service-role key Supabase ra màn hình (key đã được xoay ngày 17/10). Đồng thời phát hiện log INFO của `httpx` ghi Google API key qua `?key=` trên production. Cả hai đã chặn ở `379c0ac`; **Google API key nên được xoay**.
+
+**6. Mục 4 — Thí nghiệm HyDE bật/tắt (18/10/2026). Chỉ đọc, KHÔNG đổi mặc định.**
+
+Công cụ:
+- Cờ chỉ dùng cho thí nghiệm `RAG_EXPERIMENT_DISABLE_HYDE=1` trong `rag_service.retrieve_context`. Khi bật: không sinh đoạn HyDE, không embed lần hai, chỉ một truy vấn legal_text bằng vector của câu hỏi gốc. Mỗi request chạy với cờ này đều ghi `hyde:disabled_by_experiment_flag` vào telemetry, nên không thể bị để quên mà không ai thấy. **Không đặt cờ này trên Render.**
+- Bộ chẩn đoán: `backend/evaluation/hyde_diagnostic_set.json`.
+- Bộ chạy: `backend/evaluation/run_hyde_experiment.py`.
+- Kết quả: `backend/evaluation/hyde_experiment_results.json`.
+
+Bộ chẩn đoán tự soạn (11 câu) dựa **chỉ trên văn bản luật trong `ingestion/chunks.json`**, không dựa trên ngân hàng câu hỏi đã gỡ. Nhân vật ẩn danh A, B, C. Mỗi Điều đúng đã được tự kiểm (số, tiêu đề, khoản quyết định đáp án). Các nhóm:
+- **(a)** Tình huống dài, nhiều chi tiết thủ tục lặp, Điều cốt lõi ít trùng từ khóa: a1 → Điều 15, a2 → Điều 86 (+ Điều 10), a3 → Điều 357.
+- **(b)** Nhiều lượt, đổi tội danh: b1 → Điều 298 khoản 2 (sang tội nhẹ hơn), b2 → Điều 298 khoản 3 (sang tội nặng hơn).
+- **(c)** Câu ngắn, cần truy xuất rộng: c1, c2 → Điều 280 khoản 1 điểm c.
+- **(d)** Tra cứu trực tiếp làm đối chứng: Điều 118, 333, 60.
+- **(e)** Câu nhiều phần làm đối chứng: Điều 118, 119, 121.
+
+**Đối chiếu với nội dung đã gỡ:**
+- File `ip_fragment_hashes.json` (bộ hash các đoạn đặc trưng) **không còn**: nó nằm trong thư mục tạm và đã mất trong một đợt dọn thư mục đó.
+- Thay vào đó, đã so trùng n-gram từ với **6 phiên bản lịch sử của `ingestion/question_bank.json` còn trong git**. Phép so chỉ đọc trong bộ nhớ và chỉ in số đếm. Mỗi n-gram trùng còn được kiểm có nằm trong văn bản luật không; nếu có thì đó là ngôn ngữ luật chứ không phải văn của ngân hàng.
+- Bản đầu có 1 cụm 8-gram và 14 cụm 6-gram trùng không phải ngôn ngữ luật. Đã viết lại 5 câu (a1, a3, c2, d3, e1).
+- Bản cuối: **0 cụm 8-gram; 2 cụm 6-gram, đều là cách nói thông dụng** ("khám xét chỗ ở của A", "theo Bộ luật Tố tụng hình [sự]").
+- Ghi chú: ngân hàng đã gỡ **vẫn còn trong lịch sử git** (việc dọn lịch sử vẫn còn nợ, xem mục gỡ Tự luận).
+
+Thiết kế đo: **theo cặp**. Mỗi lượt gọi query understanding một lần (kèm các lượt hội thoại trước của câu đó), rồi chạy retrieval với HyDE bật và tắt trên **cùng** câu đã viết lại, đổi thứ tự bật/tắt luân phiên giữa các lượt. n = 5 cặp cho mỗi câu, vì mọi câu đều có yếu tố ngẫu nhiên từ query understanding và re-rank. Hạng tính trong danh sách Điều phân biệt của `legal_primary`. Đo trên máy phát triển.
+
+| Câu | Nhóm | Điều cần có | HyDE bật: có trong primary (hạng) | HyDE tắt: có trong primary (hạng) |
+|---|---|---|---|---|
+| a1 | a | 15 | **5/5** (1,1,1,1,1) | **1/5** (–,–,1,–,–) |
+| a2 | a | 86 | **5/5** (3,1,4,1,4) | **0/5** |
+| a2 | a | 10 | 0/5 | 0/5 |
+| a3 | a | 357 | 5/5 (2,2,2,2,2) | 5/5 (2,2,2,2,2) |
+| b1 | b | 298 | 5/5 (hạng 2) | 5/5 (hạng 2) |
+| b2 | b | 298 | 5/5 (hạng 2) | 5/5 (hạng 2) |
+| c1 | c | 280 | 5/5 (1,2,2,2,2) | 5/5 (2,2,2,2,2) |
+| c2 | c | 280 | 5/5 (2,3,2,2,3) | 5/5 (2,1,1,1,3) |
+| d1/d2/d3 | d | 118 / 333 / 60 | 5/5, hạng 1 (d3 có một lần hạng 2) | 5/5, hạng 1 |
+| e1 | e | 118, 119, 121 | 5/5 cả ba, hạng 1 | 5/5 cả ba, hạng 1 |
+
+| Độ trễ retrieval (n = 55 mỗi nhánh) | median | p90 |
+|---|---|---|
+| HyDE bật | 5,06s | 6,24s |
+| HyDE tắt | 3,53s | 4,02s |
+
+**29 câu eval** (mỗi nhánh chạy với backend riêng, cờ đặt cho cả tiến trình backend lẫn tiến trình eval):
+
+| | exact_match | recall | precision | groundedness | correct_refusal | citation_grounding pooled |
+|---|---|---|---|---|---|---|
+| HyDE bật | 100% (20/20) | 100% | 78,3% | 100% | 100% | 100% (36/36) |
+| HyDE tắt | 100% (20/20) | 100% | 75,8% | 100% | 100% | 100% (37/37) |
+
+Không câu nào cho kết quả Điều kỳ vọng khác nhau giữa hai nhánh. **Bộ 29 câu không phân biệt được HyDE**, vì phần lớn là câu tra cứu trực tiếp.
+
+**Kết luận theo hướng (mẫu nhỏ, không phải kết luận thống kê):**
+- HyDE tốn khoảng **1,5s mỗi lượt hỏi luật**, tức khoảng 30% stage retrieval.
+- Trên bộ này, lợi ích của HyDE **tập trung đúng vào nhóm (a)**, là loại câu nó được thiết kế để xử lý. Không có HyDE thì Điều 15 chỉ vào primary 1/5 lần, Điều 86 là 0/5. Đó là những câu tình huống mà sinh viên thật hay hỏi, nên bỏ HyDE sẽ là một hồi quy chất lượng mà eval 29 câu **không phát hiện được**.
+- Ở các nhóm b–e, bỏ HyDE không làm mất Điều nào. Ở nhóm (b), tác dụng chính đến từ quy tắc nêu rõ tương phản tội danh trong query understanding, không phải từ HyDE.
+- Không phải mọi câu dài đều cần HyDE: a3 (Điều 357) tìm được ở cả hai nhánh.
+- Điều 10 (cấm bức cung) không vào primary ở nhánh nào. Câu a2 được giải bằng Điều 86; đây là giới hạn của câu hỏi chứ không phải khác biệt giữa hai nhánh.
+
+**Không đổi mặc định.** Một hướng đáng đo tiếp, chưa làm và cần quyết định riêng: **chỉ bật HyDE cho câu tình huống dài** (nhóm a), giữ lợi ích ở đó và tiết kiệm ~1,5s cho câu ngắn và câu tra cứu. Muốn làm hướng này cần một tiêu chí phân loại đáng tin và một bộ chẩn đoán lớn hơn 11 câu để kiểm.
