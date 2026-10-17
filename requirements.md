@@ -1,10 +1,11 @@
 TTHS Buddy — Trợ lý AI học tập Luật Tố tụng Hình sự
 File ngữ cảnh gốc — đọc trước khi thực hiện bất kỳ tác vụ nào.
 
-ĐIỀU KIỆN BẮT BUỘC TRƯỚC KHI MỞ PUBLIC / CẤP QUYỀN NGƯỜI NGOÀI
+ĐIỀU KIỆN BẮT BUỘC TRƯỚC KHI MỞ PUBLIC / CẤP QUYỀN NGƯỜI NGOÀI / NHẬP NGÂN HÀNG MCQ MỚI
 
 CHƯA THỰC HIỆN. Phải làm xong việc dưới đây TRƯỚC khi chuyển repo sang public, thêm
-collaborator ngoài nhóm, hoặc đưa link repo cho bất kỳ ai ngoài dự án.
+collaborator ngoài nhóm, đưa link repo cho bất kỳ ai ngoài dự án, HOẶC nhập ngân hàng MCQ mới
+vào `ingestion/question_bank.json` — tùy việc nào đến trước (quyết định 18/10/2026).
 
 Vấn đề: `ingestion/question_bank.json` còn nằm trong TOÀN BỘ lịch sử git và đã được push lên
 GitHub. Phiên bản hiện tại của file là mảng rỗng, nhưng các commit cũ vẫn chứa:
@@ -37,8 +38,9 @@ Hệ quả phải lường trước:
     cả hai: deploy có thể tự chạy lại, có thể báo lỗi vì không còn tìm thấy commit cũ, hoặc
     cần bấm redeploy thủ công. Xác nhận bản production vẫn chạy được trước khi coi là xong.
   - File `ingestion/question_bank.json` sẽ biến mất khỏi lịch sử hoàn toàn — nếu lúc đó
-    ngân hàng đề mới đã nằm trong file này thì nó cũng bị xóa khỏi lịch sử. Cân nhắc chạy
-    việc này TRƯỚC khi nhập ngân hàng mới, hoặc chấp nhận mất lịch sử của ngân hàng mới.
+    ngân hàng đề mới đã nằm trong file này thì nó cũng bị xóa khỏi lịch sử. Vì vậy việc này
+    là BẮT BUỘC TRƯỚC khi nhập ngân hàng MCQ mới (không còn là "cân nhắc"): chạy sau thì
+    filter-repo xóa luôn lịch sử của chính ngân hàng mới.
   - Nếu repo đã từng được fork, hoặc nội dung đã bị GitHub cache, phải liên hệ GitHub Support
     để xóa triệt để. Force-push không xóa được dữ liệu trong fork của người khác.
 
@@ -1056,7 +1058,7 @@ Xử lý dữ liệu người dùng (Supabase):
 Rủi ro còn lại — ghi đúng sắc thái, KHÔNG phải "đã xóa sạch":
 (1) Cột answer của chat_query_logs: 93 dòng có ≥12 từ liên tiếp trùng với đáp án mẫu/rubric của câu tự luận đã gỡ, sau khi đã loại các đoạn vốn là trích dẫn văn bản luật. Chuỗi trùng DÀI NHẤT toàn bảng là 22 từ; không dòng nào đạt 30+ từ; 56/93 chỉ ở mức 12-14 từ. Đánh giá: PHẦN LỚN là dương tính giả — văn phong pháp lý tiếng Việt rất khuôn mẫu, câu trả lời do RAG sinh ra từ điều luật còn rubric cũng viết từ chính điều luật đó, nên hội tụ vài chục từ là tự nhiên; ngoài ra phép loại trừ dùng corpus luật HIỆN TẠI trong khi corpus đã được nạp lại/thay nhiều lần, nên cách diễn đạt hồi tháng 8/2026 có thể không còn trong corpus hôm nay và bị gắn cờ oan. Quyết định: KHÔNG che, vì che answer sẽ phá lịch sử hội thoại của 11 user thật mà không giảm được rủi ro thực chất. Danh sách 93 id lưu ở thư mục archive để sau truy lại được.
 (2) citations và related_articles có 39 và 28 dòng khớp, nhưng khớp ở trường dieu_title — tức TIÊU ĐỀ ĐIỀU LUẬT (27-36 ký tự), là văn bản luật công khai, không phải nội dung ngân hàng. Một số câu tự luận ngắn được đặt gần giống tiêu đề Điều. Không xử lý.
-(3) Nội dung vẫn còn trong git history — xem mục "ĐIỀU KIỆN BẮT BUỘC TRƯỚC KHI MỞ PUBLIC / CẤP QUYỀN NGƯỜI NGOÀI" ở đầu file. CHƯA thực hiện.
+(3) Nội dung vẫn còn trong git history — xem mục "ĐIỀU KIỆN BẮT BUỘC TRƯỚC KHI MỞ PUBLIC / CẤP QUYỀN NGƯỜI NGOÀI / NHẬP NGÂN HÀNG MCQ MỚI" ở đầu file. CHƯA thực hiện.
 (4) 561/972 dòng chat_query_logs thuộc 21 tài khoản đã bị xóa khỏi Supabase Auth (dữ liệu mồ côi). Không liên quan bản quyền, chưa xử lý, chỉ ghi nhận.
 
 [x] Chạy lại 29 câu evaluation sau khi gỡ module — xác nhận không hồi quy (gỡ Tự luận không đụng gì tới RAG).
@@ -1231,7 +1233,7 @@ Quản lý rủi ro — lộ secret qua log, và các lớp phòng thủ hiện 
 - Đường lộ thứ hai: thông điệp của `httpx.HTTPStatusError` (sinh từ `raise_for_status`) cũng chứa URL, và vòng retry ghi nó ở mức WARNING qua logger của chính ta.
 
 **Đã xử lý:**
-- Xoay service-role key Supabase (17/10) và Google API key (18/10). Key cũ đã thu hồi hoặc xóa.
+- Xoay service-role key Supabase (17/10) và Google API key (18/10). Render và `.env` local đều đã dùng key mới. Key Supabase cũ đã thu hồi. **Key Google cũ CHƯA bị xóa** (tính đến 18/10): cho tới khi xóa nó trên Google AI Studio, bản key đó trong log Render cũ vẫn dùng được.
 - Xóa các file log tạm có chứa key.
 - Quét, tất cả đều 0 kết quả:
   - các file được git theo dõi, working tree, và toàn bộ lịch sử git (109 commit, mọi ref);
@@ -1252,12 +1254,12 @@ Quản lý rủi ro — lộ secret qua log, và các lớp phòng thủ hiện 
 
 **Rủi ro còn lại / việc phải nhớ:**
 - **Transcript của phiên làm việc** (thư mục `~/.claude/projects/`) vẫn chứa service-role key cũ. Key đó đã bị thu hồi nên bản chép vô hiệu; muốn kỹ hơn có thể xóa file transcript sau khi phiên kết thúc.
-- **Log Render từ trước khi deploy `379c0ac`** vẫn có thể còn các dòng chứa Google API key cũ. Key đó đã bị xóa nên vô hiệu, nhưng không nên chia sẻ hay xuất các log đó ra ngoài.
+- **Log Render từ trước khi deploy `379c0ac`** vẫn có thể còn các dòng chứa Google API key cũ. Key đó chỉ vô hiệu **sau khi bị xóa trên Google AI Studio** (việc còn phải làm); trước và sau đó đều không nên chia sẻ hay xuất các log này ra ngoài.
 - **Không bao giờ chạy backend ở mức DEBUG với key thật** rồi đưa đầu ra cho người khác hay công cụ khác đọc. Khi cần log chi tiết, dùng `ENVIRONMENT=test` (mức INFO).
 - **Lưu ý về mức log local:** `configure_logging` trong lifespan không đổi được mức log gốc đã đặt lúc import (`main.py:26`), vì `basicConfig` không làm gì khi đã có handler. Vì vậy chạy local với `ENVIRONMENT` chỉ khai báo trong `.env` vẫn ra DEBUG; bộ lọc che vẫn có hiệu lực trong trường hợp đó. Chưa sửa theo quyết định ngày 18/10.
 - **Bộ chẩn đoán HyDE** (`backend/evaluation/hyde_diagnostic_set.json`) là nội dung ta tự soạn, 11 câu, chỉ dựa trên văn bản luật.
   - Bản đầu có **5 câu** (a1, a3, c2, d3, e1) trùng cụm từ với ngân hàng đã gỡ khi so với các phiên bản `ingestion/question_bank.json` còn trong lịch sử git, nên đã phải viết lại.
   - File hash gốc của các đoạn đặc trưng (`ip_fragment_hashes.json`) **đã mất**, nên không đối chiếu được theo cách ban đầu.
   - **Cần một người đọc lướt bộ này trước khi repo ra public.**
-  - Ngân hàng đã gỡ vẫn còn trong lịch sử git; việc dọn lịch sử vẫn còn nợ trước khi public.
+  - Ngân hàng đã gỡ vẫn còn trong lịch sử git. **`git filter-repo` là BẮT BUỘC trước khi repo ra public HOẶC trước khi nhập ngân hàng MCQ mới**, tùy việc nào đến trước; quy trình, sao lưu mirror và hệ quả (mọi commit hash đổi, Render/Vercel phải kiểm lại) ở mục đầu file. Bộ chẩn đoán HyDE nằm ở đường dẫn khác (`backend/evaluation/`) nên không bị lệnh đó ảnh hưởng.
 - **Eval 29 câu không phân biệt được HyDE bật hay tắt** (cùng 20/20 exact_match, cùng 100% grounding). Đừng dùng nó làm bằng chứng cho bất kỳ quyết định nào về HyDE; phải dùng bộ chẩn đoán HyDE (mục Case study, phần 6).
