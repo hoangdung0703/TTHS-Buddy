@@ -1152,7 +1152,7 @@ Hai ngoại lệ đáng ghi khi đọc bảng: (a) số production trước/sau 
 **5. Bài học quy trình (đã gây sai số trong chính đợt chẩn đoán này):**
 - Cột `chat_query_logs.used_academic_reference` không đo đường đi (xem mục 80,2%).
 - Hai test đầu tiên tự báo PASS sai vì lỗi trong test: một marker không khớp vì `json.dumps` escape tiếng Việt, một bộ đếm luôn ra 5/5. Đọc từng dòng dữ liệu, không chỉ đọc dòng tổng kết.
-- Log DEBUG của `hpack` đã làm lộ service-role key Supabase ra màn hình (key đã được xoay ngày 17/10). Đồng thời phát hiện log INFO của `httpx` ghi Google API key qua `?key=` trên production. Cả hai đã chặn ở `379c0ac`; **Google API key nên được xoay**.
+- Log DEBUG của `hpack` đã làm lộ service-role key Supabase ra màn hình (key đã được xoay ngày 17/10). Đồng thời phát hiện log INFO của `httpx` ghi Google API key qua `?key=` trên production. Cả hai đã chặn ở `379c0ac`, Google API key đã được xoay ngày 18/10. Xem mục "Quản lý rủi ro — lộ secret qua log" ngay dưới.
 
 **6. Mục 4 — Thí nghiệm HyDE bật/tắt (18/10/2026). Chỉ đọc, KHÔNG đổi mặc định.**
 
@@ -1213,3 +1213,51 @@ Không câu nào cho kết quả Điều kỳ vọng khác nhau giữa hai nhán
 - Điều 10 (cấm bức cung) không vào primary ở nhánh nào. Câu a2 được giải bằng Điều 86; đây là giới hạn của câu hỏi chứ không phải khác biệt giữa hai nhánh.
 
 **Không đổi mặc định.** Một hướng đáng đo tiếp, chưa làm và cần quyết định riêng: **chỉ bật HyDE cho câu tình huống dài** (nhóm a), giữ lợi ích ở đó và tiết kiệm ~1,5s cho câu ngắn và câu tra cứu. Muốn làm hướng này cần một tiêu chí phân loại đáng tin và một bộ chẩn đoán lớn hơn 11 câu để kiểm.
+
+
+---
+
+Quản lý rủi ro — lộ secret qua log, và các lớp phòng thủ hiện có (17–18/10/2026)
+
+**Sự cố 1 — service-role key Supabase lộ ra màn hình (17/10).**
+- Trong lúc chẩn đoán lỗi HTTP/2, một lệnh in log DEBUG của backend chạy local (`ENVIRONMENT=development`).
+- Thư viện `hpack` ghi giá trị từng header HTTP/2 ở mức DEBUG, gồm cả `b'apikey'=b'sb_secret_...'`, mà chính `hpack` còn đánh dấu là "sensitive:False".
+- Bộ lọc che dùng lúc đó chỉ che dạng `apikey=` trong URL và `Bearer ...`, nên key lọt qua.
+- Key đã vào transcript của phiên làm việc và vào bốn file log tạm.
+
+**Sự cố 2 — Google API key ghi vào log production (phát hiện 18/10).**
+- Mọi lời gọi Gemini gửi key qua query string `?key=`.
+- `httpx` ghi URL đầy đủ của mỗi request ở mức INFO. Production chạy ở INFO và lúc đó chưa hạ mức `httpx`, nên **mỗi lời gọi Gemini trên Render đều ghi key vào log**.
+- Đường lộ thứ hai: thông điệp của `httpx.HTTPStatusError` (sinh từ `raise_for_status`) cũng chứa URL, và vòng retry ghi nó ở mức WARNING qua logger của chính ta.
+
+**Đã xử lý:**
+- Xoay service-role key Supabase (17/10) và Google API key (18/10). Key cũ đã thu hồi hoặc xóa.
+- Xóa các file log tạm có chứa key.
+- Quét, tất cả đều 0 kết quả:
+  - các file được git theo dõi, working tree, và toàn bộ lịch sử git (109 commit, mọi ref);
+  - `/private/tmp`, `/private/var/tmp`, `$TMPDIR`;
+  - bundle frontend production (20 file JS).
+- `chmod 600` cho mọi file `.env`.
+- Xác minh key mới hoạt động trên production bằng cách ghi rồi đọc lại (notes) và bằng dòng `chat_query_logs` do production ghi.
+
+**Các lớp phòng thủ hiện có, theo thứ tự từ gốc ra ngoài:**
+
+| Lớp | Commit | Chặn gì |
+|---|---|---|
+| Key Gemini đi bằng header `x-goog-api-key`, không bao giờ nằm trong URL | `64083f7` | URL (và mọi thứ chép lại URL: log request, thông điệp lỗi) không còn chứa key. Đã kiểm bằng key giả qua đúng các client thật: 0 lần xuất hiện, so với 18 lần trên code cũ |
+| `hpack`, `h2`, `httpcore`, `httpx` giữ ở mức WARNING trong **mọi** môi trường, kể cả development, ở cả backend lẫn ingestion | `379c0ac` | Log header ở mức DEBUG và log URL ở mức INFO |
+| Bộ lọc che `SecretRedactingFilter` gắn trên mọi handler (root, uvicorn, gunicorn), che cả thông điệp lẫn traceback | `379c0ac`, `64083f7` | `sb_secret_...`, JWT, key Google `AIza...`, tham số `key=`/`apikey=`/`token=` trong URL, giá trị của `apikey`/`authorization`/`x-goog-api-key` ở mọi dạng (thường, dict repr, bytes repr của hpack) |
+| `/docs`, `/redoc`, `/openapi.json` tắt mặc định, chỉ bật khi `ENABLE_API_DOCS=true` (chỉ local) | `f1a9f4b` | Không công bố toàn bộ lược đồ API trên production |
+| Cờ thí nghiệm HyDE bị bỏ qua khi `ENVIRONMENT=production`, kèm cảnh báo lúc khởi động | `a85f92a` | Một biến lạc trên Render không thể âm thầm tắt HyDE |
+
+**Rủi ro còn lại / việc phải nhớ:**
+- **Transcript của phiên làm việc** (thư mục `~/.claude/projects/`) vẫn chứa service-role key cũ. Key đó đã bị thu hồi nên bản chép vô hiệu; muốn kỹ hơn có thể xóa file transcript sau khi phiên kết thúc.
+- **Log Render từ trước khi deploy `379c0ac`** vẫn có thể còn các dòng chứa Google API key cũ. Key đó đã bị xóa nên vô hiệu, nhưng không nên chia sẻ hay xuất các log đó ra ngoài.
+- **Không bao giờ chạy backend ở mức DEBUG với key thật** rồi đưa đầu ra cho người khác hay công cụ khác đọc. Khi cần log chi tiết, dùng `ENVIRONMENT=test` (mức INFO).
+- **Lưu ý về mức log local:** `configure_logging` trong lifespan không đổi được mức log gốc đã đặt lúc import (`main.py:26`), vì `basicConfig` không làm gì khi đã có handler. Vì vậy chạy local với `ENVIRONMENT` chỉ khai báo trong `.env` vẫn ra DEBUG; bộ lọc che vẫn có hiệu lực trong trường hợp đó. Chưa sửa theo quyết định ngày 18/10.
+- **Bộ chẩn đoán HyDE** (`backend/evaluation/hyde_diagnostic_set.json`) là nội dung ta tự soạn, 11 câu, chỉ dựa trên văn bản luật.
+  - Bản đầu có **5 câu** (a1, a3, c2, d3, e1) trùng cụm từ với ngân hàng đã gỡ khi so với các phiên bản `ingestion/question_bank.json` còn trong lịch sử git, nên đã phải viết lại.
+  - File hash gốc của các đoạn đặc trưng (`ip_fragment_hashes.json`) **đã mất**, nên không đối chiếu được theo cách ban đầu.
+  - **Cần một người đọc lướt bộ này trước khi repo ra public.**
+  - Ngân hàng đã gỡ vẫn còn trong lịch sử git; việc dọn lịch sử vẫn còn nợ trước khi public.
+- **Eval 29 câu không phân biệt được HyDE bật hay tắt** (cùng 20/20 exact_match, cùng 100% grounding). Đừng dùng nó làm bằng chứng cho bất kỳ quyết định nào về HyDE; phải dùng bộ chẩn đoán HyDE (mục Case study, phần 6).
