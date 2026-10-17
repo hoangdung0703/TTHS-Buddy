@@ -81,13 +81,19 @@ def crop_left_half_if_mirrored(image: Image.Image) -> Image.Image:
     return image
 
 
+# The API key travels in the x-goog-api-key header, never in the URL - see
+# backend/app/services/gemini_client.py for why (request URLs end up in logs and exception messages).
+GOOGLE_API_KEY_HEADER = "x-goog-api-key"
+
+
 def _post_with_retry(url: str, api_key: str, body: dict) -> httpx.Response:
     """Retries transient network/5xx failures with backoff. Does not retry 4xx (including
     the RECITATION-carrying 200 responses, which are handled separately by the caller)."""
     last_error: Exception | None = None
     for attempt in range(1, MAX_TRANSIENT_RETRIES + 1):
         try:
-            response = httpx.post(url, params={"key": api_key}, json=body, timeout=REQUEST_TIMEOUT_SECONDS)
+            response = httpx.post(url, headers={GOOGLE_API_KEY_HEADER: api_key}, json=body,
+                                  timeout=REQUEST_TIMEOUT_SECONDS)
             if response.status_code >= 500:
                 raise httpx.HTTPStatusError("Server error", request=response.request, response=response)
             response.raise_for_status()

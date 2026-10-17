@@ -14,13 +14,14 @@ NOISY_THIRD_PARTY_LOGGERS = ["pdfminer", "pdfplumber", "PIL", "httpx", "httpcore
 
 # Held at WARNING in every environment because they write credentials into the log: hpack/h2
 # log HTTP/2 header values at DEBUG (an `apikey` header included), and httpx logs each request's
-# full URL at INFO - which carries the Gemini API key as `?key=` (embedding_client.py,
-# ocr_fallback.py). httpx/httpcore were already silenced above as noise; hpack and h2 were not.
+# full URL at INFO - which used to carry the Gemini API key as `?key=` (embedding_client.py,
+# ocr_fallback.py; both now send it in the x-goog-api-key header instead). httpx/httpcore were
+# already silenced above as noise; hpack and h2 were not.
 CREDENTIAL_LEAKING_LOGGERS = ["hpack", "h2", "httpcore", "httpx"]
 
 _REDACTED = "<REDACTED>"
 _REDACTIONS = (
-    (re.compile(r"""(?i)(b?['"]?(?:apikey|api-key|x-api-key|authorization)['"]?\s*(?:[:=]|,)\s*b?['"]?)"""
+    (re.compile(r"""(?i)(b?['"]?(?:x-goog-api-key|apikey|api-key|x-api-key|authorization)['"]?\s*(?:[:=]|,)\s*b?['"]?)"""
                 r"""(?:bearer\s+)?[^'"\s,)}\]]+"""), r"\1" + _REDACTED),
     (re.compile(r"(?i)([?&](?:key|apikey|api_key|access_token|token)=)[^&\s'\"]+"), r"\1" + _REDACTED),
     (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"), "Bearer " + _REDACTED),

@@ -18,6 +18,9 @@ BATCH_EMBED_URL_TEMPLATE = (
 )
 EMBEDDING_TASK_TYPE = "RETRIEVAL_DOCUMENT"
 OUTPUT_DIMENSIONALITY = 768  # matches DEFAULT_VECTOR_SIZE in backend/app/core/config.py
+# The API key travels in the x-goog-api-key header, never in the URL - see
+# backend/app/services/gemini_client.py for why (request URLs end up in logs and exception messages).
+GOOGLE_API_KEY_HEADER = "x-goog-api-key"
 MAX_TEXTS_PER_BATCH = 50
 REQUEST_TIMEOUT_SECONDS = 60.0
 MAX_TRANSIENT_RETRIES = 5
@@ -29,7 +32,8 @@ def _post_with_retry(url: str, api_key: str, body: dict) -> httpx.Response:
     last_error: Exception | None = None
     for attempt in range(1, MAX_TRANSIENT_RETRIES + 1):
         try:
-            response = httpx.post(url, params={"key": api_key}, json=body, timeout=REQUEST_TIMEOUT_SECONDS)
+            response = httpx.post(url, headers={GOOGLE_API_KEY_HEADER: api_key}, json=body,
+                                  timeout=REQUEST_TIMEOUT_SECONDS)
             if response.status_code >= 500 or response.status_code == 429:
                 raise httpx.HTTPStatusError(
                     f"Retryable HTTP {response.status_code}: {response.text[:200]}",

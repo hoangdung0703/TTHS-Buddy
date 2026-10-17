@@ -10,8 +10,10 @@ DEFAULT_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 #   2026-10-17 that put the Supabase service-role key on screen from a local development run:
 #   `b'apikey'=b'sb_secret_...'`, marked "sensitive:False" by hpack itself.
 # - httpx logs every request at INFO as 'HTTP Request: POST <full url> ...'. Every Gemini call
-#   carries its API key as a query parameter (`?key=...`, see gemini_client.py), so at the INFO
-#   level production runs at, each Gemini call wrote the Google API key into the log.
+#   used to carry its API key as a query parameter (`?key=...`), so at the INFO level production
+#   runs at, each Gemini call wrote the Google API key into the log. The key now travels in the
+#   x-goog-api-key header (gemini_client.py), so the URL no longer holds it at all; the logger
+#   level and the `key=` / AIza rules below remain as defence in depth.
 # - httpcore logs connection and request internals at DEBUG.
 #
 # WARNING still lets their real failures through (connection errors, protocol violations).
@@ -29,7 +31,7 @@ _REDACTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
     # A credential header in any of the shapes it reaches a log in: plain `apikey: v`, a query
     # or form `apikey=v`, a dict repr `'apikey': 'v'`, and hpack's bytes reprs `b'apikey'=b'v'` and
     # `(b'apikey', b'v')`. Group 1 keeps the name and the punctuation before the value.
-    (re.compile(r"""(?i)(b?['"]?(?:apikey|api-key|x-api-key|authorization)['"]?\s*(?:[:=]|,)\s*b?['"]?)"""
+    (re.compile(r"""(?i)(b?['"]?(?:x-goog-api-key|apikey|api-key|x-api-key|authorization)['"]?\s*(?:[:=]|,)\s*b?['"]?)"""
                 r"""(?:bearer\s+)?[^'"\s,)}\]]+"""), r"\1" + _REDACTED),
     # A credential in a URL query string, e.g. Gemini's ?key=...
     (re.compile(r"(?i)([?&](?:key|apikey|api_key|access_token|token)=)[^&\s'\"]+"), r"\1" + _REDACTED),

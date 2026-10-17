@@ -23,6 +23,13 @@ STREAM_GENERATE_CONTENT_URL_TEMPLATE = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
 )
 
+# The API key travels in the x-goog-api-key header, never in the URL. As a `?key=` query parameter
+# it was part of every request URL, and URLs get written down: httpx logs each request's full URL at
+# INFO, and httpx.HTTPStatusError (from raise_for_status) puts the URL in its message, which the
+# retry loop below logs at WARNING through this module's own logger. Both put the Gemini key in the
+# production log until 2026-10-18; the key was rotated. A header is never part of the URL.
+GOOGLE_API_KEY_HEADER = "x-goog-api-key"
+
 QUERY_EMBEDDING_TASK_TYPE = "RETRIEVAL_QUERY"
 OUTPUT_DIMENSIONALITY = 768  # must match the collection vector size and ingestion's embedding output
 REQUEST_TIMEOUT_SECONDS = 60.0
@@ -59,7 +66,7 @@ def _post_with_retry(url: str, api_key: str, body: dict, *,
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
         try:
-            response = httpx.post(url, params={"key": api_key}, json=body, timeout=timeout)
+            response = httpx.post(url, headers={GOOGLE_API_KEY_HEADER: api_key}, json=body, timeout=timeout)
             if response.status_code >= 500 or response.status_code == 429:
                 raise httpx.HTTPStatusError(
                     f"Retryable HTTP {response.status_code}: {response.text[:200]}",
@@ -195,7 +202,8 @@ async def stream_generate_answer(
             try:
                 async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
                     stream_cm = client.stream(
-                        "POST", url, params={"key": settings.google_api_key, "alt": "sse"}, json=body
+                        "POST", url, params={"alt": "sse"},
+                        headers={GOOGLE_API_KEY_HEADER: settings.google_api_key}, json=body
                     )
                     response = (
                         await asyncio.wait_for(stream_cm.__aenter__(), timeout=_remaining())
