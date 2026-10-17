@@ -132,6 +132,21 @@ export function QuizSetRunner({ quizSetId }: QuizSetRunnerProps) {
             </CardContent>
           </Card>
 
+          {/* The grade above is real either way; only storing it failed, so the attempt will not
+              count towards progress or stats. Strictly === false: an older backend sends no
+              field at all, which means saved. Resubmitting sends the same answers again. */}
+          {result.saved === false ? (
+            <div
+              role="status"
+              className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+            >
+              <span>Chưa lưu được kết quả, bạn có thể nộp lại.</span>
+              <Button variant="outline" size="sm" disabled={isSubmitting} onClick={() => void handleSubmit()}>
+                {isSubmitting ? "Đang nộp lại..." : "Nộp lại"}
+              </Button>
+            </div>
+          ) : null}
+
           {questions.map((question, index) => {
             const questionResult = result.results.find((item) => item.question_id === question.question_id);
 

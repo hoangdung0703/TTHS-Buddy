@@ -44,6 +44,9 @@ export interface ChatStreamCitationsEvent {
   related_articles: RelatedArticle[];
   conversation_id: string;
   rewritten_question: string;
+  // True when the earlier turns of this conversation could not be read and the answer was produced
+  // without them. Optional because a backend from before this field omits it - treated as false.
+  context_unavailable?: boolean;
 }
 
 export interface ChatStreamAnswerDeltaEvent {
@@ -146,6 +149,9 @@ export interface QuizSubmitResponse {
   score: number;
   total: number;
   results: QuizResult[];
+  // Whether the attempt was stored. Optional: a backend from before this field existed omits it,
+  // and its absence must read as "saved" - only an explicit false means the write failed.
+  saved?: boolean;
 }
 
 export interface KeywordYesterday {

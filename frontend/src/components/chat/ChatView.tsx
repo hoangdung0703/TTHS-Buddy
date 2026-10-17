@@ -17,6 +17,9 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   citations?: Citation[];
+  // The server could not read this conversation's earlier turns, so the answer may be missing
+  // context the student assumed it had.
+  contextUnavailable?: boolean;
   // Only set for intent=answer_evaluation turns ("Sinh tình huống minh họa" Lượt 2) - see
   // ScenarioGradingResult.
   gradingResult?: ChatStreamGradingEvent;
@@ -255,7 +258,9 @@ export function ChatView({ conversationId }: ChatViewProps) {
           ensureAssistantMessage();
           updateMessages((current) =>
             current.map((message) =>
-              message.id === assistantMessageId ? { ...message, citations: event.citations } : message
+              message.id === assistantMessageId
+                ? { ...message, citations: event.citations, contextUnavailable: event.context_unavailable === true }
+                : message
             )
           );
         },
@@ -404,6 +409,11 @@ export function ChatView({ conversationId }: ChatViewProps) {
                     </button>
                   ) : null}
                 </div>
+                {message.contextUnavailable ? (
+                  <p data-testid="context-unavailable" className="mb-2 text-xs italic text-muted-foreground">
+                    Mạch hội thoại trước đó tạm thời không đọc được, câu trả lời có thể thiếu ngữ cảnh.
+                  </p>
+                ) : null}
                 <FormattedAnswer text={message.content} />
                 <CitationList citations={message.citations ?? []} />
                 {message.gradingResult ? <ScenarioGradingResult result={message.gradingResult} /> : null}

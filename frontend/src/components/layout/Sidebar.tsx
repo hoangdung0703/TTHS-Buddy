@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { deleteConversation, getConversations, renameConversation } from "@/lib/api";
 import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
@@ -68,6 +68,11 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
   const router = useRouter();
   const [historyQuery, setHistoryQuery] = useState<string>("");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  // "ready" only once the server has actually answered. An empty list is shown as "Chưa có hội
+  // thoại nào" ONLY in that state; a failed load is its own state with a retry, so a read outage
+  // can no longer look exactly like a brand-new account (which is what the old swallowed .catch
+  // made it look like).
+  const [historyStatus, setHistoryStatus] = useState<"loading" | "ready" | "error">("loading");
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState<string>("");
   const { isSlow: isHistorySlow, start: startSlowNotice, stop: stopSlowNotice } = useSlowRequestNotice();
@@ -75,20 +80,34 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
   // Re-fetched on every pathname change (not just once on mount) so sending a first message on
   // the bare /chat route - which creates a brand new conversation server-side - makes it appear
   // in this list without requiring a full page reload.
+  // The single way this component reads the list - every refresh goes through it, so none of them
+  // can leave an unhandled rejection behind. On failure the list already on screen is KEPT (it is
+  // real data, at worst slightly stale) and the error state says the refresh failed. A 503 lands
+  // here like any other failure: signing out is driven only by the Supabase session
+  // (useAuthSession), never by an HTTP status.
+  const loadHistory = useCallback(async (): Promise<void> => {
+    try {
+      setConversations(await getConversations());
+      setHistoryStatus("ready");
+    } catch {
+      setHistoryStatus("error");
+    }
+  }, []);
+
+  const retryHistory = useCallback((): void => {
+    setHistoryStatus("loading");
+    startSlowNotice();
+    void loadHistory().finally(() => stopSlowNotice());
+  }, [loadHistory, startSlowNotice, stopSlowNotice]);
+
   useEffect(() => {
     startSlowNotice();
-    void getConversations()
-      .then(setConversations)
-      .catch(() => {
-        // Pre-existing behaviour: a failed history fetch leaves the list as-is rather than
-        // breaking the whole shell. Only the notice is new, and it must be cleared either way.
-      })
-      .finally(() => stopSlowNotice());
-    // Depends on the two stable callbacks, NOT on the object the hook returns - that object is a
-    // fresh literal every render, and depending on it turned this into an infinite fetch loop
+    void loadHistory().finally(() => stopSlowNotice());
+    // Depends on the stable callbacks, NOT on the object useSlowRequestNotice returns - that object
+    // is a fresh literal every render, and depending on it turned this into an infinite fetch loop
     // (fetch -> setState -> render -> new object -> fetch). Keeps the original "re-fetch on
     // pathname change" trigger and nothing else.
-  }, [pathname, startSlowNotice, stopSlowNotice]);
+  }, [pathname, loadHistory, startSlowNotice, stopSlowNotice]);
 
   const filteredHistory = useMemo(
     () =>
@@ -127,11 +146,13 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
 
     try {
       await renameConversation(conversationId, trimmed);
+    } catch {
+      // Reported by the re-fetch below, which reverts the optimistic title to what the server has.
     } finally {
       // Re-fetch regardless of success/failure - on success this picks up the server-resolved
       // title (identical to the optimistic one here, but keeps a single source of truth); on
       // failure it reverts the optimistic update back to what the server actually has.
-      void getConversations().then(setConversations);
+      void loadHistory();
     }
   }
 
@@ -153,7 +174,7 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
     } catch {
       // Deletion failed server-side - restore the real list instead of leaving a conversation
       // permanently hidden by the optimistic removal above.
-      void getConversations().then(setConversations);
+      void loadHistory();
       return;
     }
 
@@ -228,6 +249,27 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
         <p className="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Lịch sử</p>
         {isHistorySlow && conversations.length === 0 ? (
           <p className="px-1 pb-2 text-xs leading-relaxed text-muted-foreground">{SLOW_REQUEST_NOTICE}</p>
+        ) : null}
+        {historyStatus === "error" ? (
+          <div
+            role="alert"
+            data-testid="history-error"
+            className="mb-2 flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700"
+          >
+            <span>Không tải được lịch sử hội thoại.</span>
+            <button
+              type="button"
+              onClick={retryHistory}
+              className="shrink-0 rounded border border-red-300 bg-white px-2 py-0.5 font-medium hover:bg-red-100"
+            >
+              Thử lại
+            </button>
+          </div>
+        ) : null}
+        {historyStatus === "ready" && conversations.length === 0 ? (
+          <p data-testid="history-empty" className="px-1 pb-2 text-xs text-muted-foreground">
+            Chưa có hội thoại nào
+          </p>
         ) : null}
         <ul className="space-y-1">
           {filteredHistory.map((conversation) => {
