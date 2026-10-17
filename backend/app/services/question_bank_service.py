@@ -14,6 +14,7 @@ from typing import Any
 from supabase import Client
 
 from app.core.config import QUESTION_BANK_PATH
+from app.core.data_access import execute_with_retry
 from app.core.logging import get_logger
 from app.services.quiz_service import is_valid_mcq_question
 
@@ -82,18 +83,17 @@ def _get_latest_attempt_per_set(supabase_client: Client, user_id: str) -> dict[i
     """Returns {quiz_set: {"score": int, "total": int}} for the user's most recent attempt at
     each set they've touched - the single source both get_quiz_set_summaries (per-set status)
     and get_quiz_stats (overall %/sets-touched) are built from, so they can never disagree with
-    each other about which attempt is "the" latest one for a given set."""
-    try:
-        response = (
-            supabase_client.table(QUIZ_ATTEMPTS_TABLE)
-            .select("quiz_set, score, total, question_ids, created_at")
-            .eq("user_id", user_id)
-            .order("created_at", desc=True)
-            .execute()
-        )
-    except Exception:
-        logger.exception("Failed to read quiz_attempts for user_id=%s - treating all sets as untouched", user_id)
-        return {}
+    each other about which attempt is "the" latest one for a given set.
+
+    Raises DataUnavailable when the read fails. It used to return {}, which showed every set as
+    "untouched" and reset the student's visible progress to zero."""
+    response = execute_with_retry(
+        lambda: supabase_client.table(QUIZ_ATTEMPTS_TABLE)
+        .select("quiz_set, score, total, question_ids, created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True),
+        "read quiz_attempts for latest-attempt-per-set",
+    )
 
     latest: dict[int, dict[str, int]] = {}
     for row in response.data or []:
@@ -151,7 +151,13 @@ def select_quiz_questions(quiz_set: int) -> list[dict[str, Any]]:
 
 def save_quiz_attempt(supabase_client: Client, user_id: str, quiz_set: int,
                        question_ids: list[str], answers: list[dict[str, Any]],
-                       score: int, total: int) -> None:
+                       score: int, total: int) -> bool:
+    """Returns whether the attempt was stored. Never raises: the submission has already been
+    graded, and the student is entitled to see that grade whatever happens to the write. But the
+    route passes the outcome on as `saved`, because a silent failure here meant the student saw
+    their score and then found the set "untouched" next time, with no hint of why.
+
+    One attempt, no retry - an insert that timed out after it committed would be stored twice."""
     row = {
         "user_id": user_id,
         "quiz_set": quiz_set,
@@ -163,6 +169,6 @@ def save_quiz_attempt(supabase_client: Client, user_id: str, quiz_set: int,
     try:
         supabase_client.table(QUIZ_ATTEMPTS_TABLE).insert(row).execute()
     except Exception:
-        # Persistence feeds rotation history and Phase 7 stats, but a transient DB failure
-        # must not turn an already-graded submission into a 500 for the student.
         logger.exception("Failed to save quiz attempt (user_id=%s, quiz_set=%d)", user_id, quiz_set)
+        return False
+    return True

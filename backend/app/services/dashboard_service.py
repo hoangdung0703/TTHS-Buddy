@@ -1,6 +1,12 @@
 """Phase 7: aggregates data already logged by Phase 4 (chat_query_logs) and Phase 5a
 (quiz_attempts) into the dashboard's views. No new logging is introduced here - everything is
 computed on read from tables that already exist.
+
+Every read here raises DataUnavailable when it fails (after one retry on a transient error) instead
+of returning an empty result. An empty result is not a neutral fallback on this page: an empty
+weak-topics list renders as "Không có chủ đề nào cần ôn lại" - actively reassuring a student about
+data that was never read - and empty stats render as 0% and zero attempts. get_dashboard_stats
+makes two reads and fails as a whole if either does, rather than showing half-real numbers.
 """
 from __future__ import annotations
 
@@ -11,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 from supabase import Client
 
+from app.core.data_access import execute_with_retry
 from app.core.logging import get_logger
 from app.services.question_bank_service import get_question_ids, is_stale_attempt
 
@@ -34,18 +41,14 @@ def _yesterday_vn_range_utc() -> tuple[str, str]:
 
 def get_keywords_yesterday(supabase_client: Client, user_id: str) -> list[dict[str, Any]]:
     start_utc, end_utc = _yesterday_vn_range_utc()
-    try:
-        response = (
-            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
-            .select("citations")
-            .eq("user_id", user_id)
-            .gte("created_at", start_utc)
-            .lt("created_at", end_utc)
-            .execute()
-        )
-    except Exception:
-        logger.exception("Failed to read chat_query_logs for keywords-yesterday (user_id=%s)", user_id)
-        return []
+    response = execute_with_retry(
+        lambda: supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+        .select("citations")
+        .eq("user_id", user_id)
+        .gte("created_at", start_utc)
+        .lt("created_at", end_utc),
+        "read chat_query_logs for keywords-yesterday",
+    )
 
     counts: dict[str, int] = defaultdict(int)
     titles: dict[str, str] = {}
@@ -71,16 +74,12 @@ def get_keywords_yesterday(supabase_client: Client, user_id: str) -> list[dict[s
 
 def _accumulate_quiz_topic_scores(supabase_client: Client, user_id: str,
                                    correct: dict[str, int], total: dict[str, int]) -> None:
-    try:
-        response = (
-            supabase_client.table(QUIZ_ATTEMPTS_TABLE)
-            .select("answers")
-            .eq("user_id", user_id)
-            .execute()
-        )
-    except Exception:
-        logger.exception("Failed to read quiz_attempts for weak-topics (user_id=%s)", user_id)
-        return
+    response = execute_with_retry(
+        lambda: supabase_client.table(QUIZ_ATTEMPTS_TABLE)
+        .select("answers")
+        .eq("user_id", user_id),
+        "read quiz_attempts for weak-topics",
+    )
 
     live_question_ids = get_question_ids()
     for row in response.data or []:
@@ -121,36 +120,31 @@ def get_dashboard_stats(supabase_client: Client, user_id: str) -> dict[str, Any]
     attempt_percentages: list[float] = []
     total_quiz_attempts = 0
 
-    try:
-        quiz_response = (
-            supabase_client.table(QUIZ_ATTEMPTS_TABLE)
-            .select("score, total, question_ids")
-            .eq("user_id", user_id)
-            .execute()
-        )
-        for row in quiz_response.data or []:
-            if is_stale_attempt(row.get("question_ids")):
-                continue
-            total_quiz_attempts += 1
-            if row["total"] > 0:
-                attempt_percentages.append(100 * row["score"] / row["total"])
-    except Exception:
-        logger.exception("Failed to read quiz_attempts for stats (user_id=%s)", user_id)
+    quiz_response = execute_with_retry(
+        lambda: supabase_client.table(QUIZ_ATTEMPTS_TABLE)
+        .select("score, total, question_ids")
+        .eq("user_id", user_id),
+        "read quiz_attempts for stats",
+    )
+    for row in quiz_response.data or []:
+        if is_stale_attempt(row.get("question_ids")):
+            continue
+        total_quiz_attempts += 1
+        if row["total"] > 0:
+            attempt_percentages.append(100 * row["score"] / row["total"])
 
     average_score = round(sum(attempt_percentages) / len(attempt_percentages)) if attempt_percentages else 0
 
     dieu_studied: set[str] = set()
-    try:
-        chat_response = supabase_client.table(CHAT_QUERY_LOGS_TABLE).select("citations").eq(
-            "user_id", user_id
-        ).execute()
-        for row in chat_response.data or []:
-            for citation in row.get("citations") or []:
-                dieu_number = citation.get("dieu_number")
-                if dieu_number:
-                    dieu_studied.add(dieu_number)
-    except Exception:
-        logger.exception("Failed to read chat_query_logs for stats (user_id=%s)", user_id)
+    chat_response = execute_with_retry(
+        lambda: supabase_client.table(CHAT_QUERY_LOGS_TABLE).select("citations").eq("user_id", user_id),
+        "read chat_query_logs for stats",
+    )
+    for row in chat_response.data or []:
+        for citation in row.get("citations") or []:
+            dieu_number = citation.get("dieu_number")
+            if dieu_number:
+                dieu_studied.add(dieu_number)
 
     return {
         "total_quiz_attempts": total_quiz_attempts,

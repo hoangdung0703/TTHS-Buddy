@@ -70,6 +70,12 @@ class RequestTelemetry:
     time_to_first_token: float | None = None
     is_fallback_answer: bool | None = None
     guard_tripped: str | None = None
+    # True when the conversation's earlier turns could not be read and the answer was generated
+    # without them. None (omitted from the log line) in the normal case.
+    context_unavailable: bool | None = None
+    # Whether log_chat_query stored the turn. Only meaningful when there was an answer to store;
+    # False means the student will not find this turn in their history after a reload.
+    history_saved: bool | None = None
 
     def elapsed(self) -> float:
         return time.monotonic() - self.started_monotonic
@@ -160,6 +166,16 @@ def set_answer_flags(is_fallback: bool | None = None, guard_tripped: str | None 
         telemetry.guard_tripped = guard_tripped
 
 
+def mark_context_unavailable() -> None:
+    if (telemetry := _current.get()) is not None:
+        telemetry.context_unavailable = True
+
+
+def set_history_saved(saved: bool) -> None:
+    if (telemetry := _current.get()) is not None:
+        telemetry.history_saved = saved
+
+
 def finish_request(outcome: str, error: BaseException | None = None) -> None:
     """Emits the END line. `outcome` is "ok", "client_disconnected", or "error".
 
@@ -179,6 +195,8 @@ def finish_request(outcome: str, error: BaseException | None = None) -> None:
         "fallback_reasons": telemetry.fallback_reasons or None,
         "is_fallback_answer": telemetry.is_fallback_answer,
         "guard_tripped": telemetry.guard_tripped,
+        "context_unavailable": telemetry.context_unavailable,
+        "history_saved": telemetry.history_saved,
         "stages": telemetry.stage_seconds or None,
         "stage_counts": {k: v for k, v in telemetry.stage_counts.items() if v > 1} or None,
         "seconds_since_process_start": telemetry.seconds_since_process_start,

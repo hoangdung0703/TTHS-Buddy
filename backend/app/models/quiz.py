@@ -64,3 +64,7 @@ class QuizSubmitResponse(BaseModel):
     score: int
     total: int
     results: list[QuizResultOut]
+    # Whether the attempt was stored. The grade above is valid either way; False means it will not
+    # appear in progress or stats, and the page tells the student they can submit again. Defaults
+    # to True so the field's absence (an older backend) reads as "saved", matching old behaviour.
+    saved: bool = True

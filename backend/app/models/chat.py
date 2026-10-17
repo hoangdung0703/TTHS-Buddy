@@ -55,6 +55,10 @@ class ChatStreamCitationsEvent(BaseModel):
     # Surfaced (not just logged) so a bad answer can be diagnosed as "rewrite went wrong" vs
     # "retrieval went wrong" without needing direct Postgres access.
     rewritten_question: str
+    # True when this turn's earlier conversation could not be read, so the answer was produced
+    # without it and may be missing context the student assumed. A new field with a False default:
+    # a client that does not know it ignores it, and existing payloads keep their meaning.
+    context_unavailable: bool = False
 
 
 class ChatStreamAnswerDeltaEvent(BaseModel):

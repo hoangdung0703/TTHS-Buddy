@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import get_settings
+from app.core.data_access import DataUnavailable
 from app.core.rate_limit import limiter
 from app.models.errors import ErrorResponse
 
@@ -45,6 +46,25 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
         payload = ErrorResponse(error={"code": "http_error", "message": str(exc.detail)})
         return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
+
+    # Registered as its OWN handler, not left to the catch-all Exception handler below, because of
+    # where Starlette runs each one. Handlers for specific exception classes run in
+    # ExceptionMiddleware, which sits INSIDE CORSMiddleware, so their responses get CORS headers
+    # like any other. The Exception/500 handler runs in ServerErrorMiddleware, OUTSIDE
+    # CORSMiddleware, so its responses carry no Access-Control-Allow-Origin - and a browser then
+    # reports a CORS failure instead of the error, hiding the status code from the frontend
+    # entirely. A data outage has to reach the page as "could not load, try again", not as an
+    # opaque network error.
+    @app.exception_handler(DataUnavailable)
+    async def data_unavailable_handler(_: Request, exc: DataUnavailable) -> JSONResponse:
+        if exc.transient:
+            payload = ErrorResponse(error={
+                "code": "data_unavailable",
+                "message": "Data is temporarily unavailable - please try again.",
+            })
+            return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload.model_dump())
+        payload = ErrorResponse(error={"code": "data_read_failed", "message": "Data could not be read."})
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=payload.model_dump())
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:

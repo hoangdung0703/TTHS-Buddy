@@ -118,10 +118,10 @@ async def submit_quiz(
 
     score = sum(1 for r in results if r.is_correct)
 
-    save_quiz_attempt(
+    saved = save_quiz_attempt(
         request.app.state.supabase_client, current_user.user_id, body.quiz_set,
         question_ids=[a.question_id for a in body.answers], answers=stored_answers,
         score=score, total=len(results),
     )
 
-    return QuizSubmitResponse(score=score, total=len(results), results=results)
+    return QuizSubmitResponse(score=score, total=len(results), results=results, saved=saved)

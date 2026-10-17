@@ -10,6 +10,7 @@ from typing import Any
 
 from supabase import Client
 
+from app.core.data_access import execute_with_retry
 from app.core.logging import get_logger
 from app.services.rag_service import RagAnswer, RetrievedChunk
 
@@ -30,26 +31,22 @@ def get_recent_turns(supabase_client: Client, user_id: str, conversation_id: uui
     """Returns up to RECENT_TURNS_LIMIT prior turns of this conversation, oldest first, as
     {"question", "answer"} pairs - the rewritten_question (self-contained) is preferred over the
     raw question when available, since that's what the history should read like for the next
-    rewrite/generation step."""
-    try:
-        response = (
-            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
-            .select("question, rewritten_question, answer")
-            .eq("user_id", user_id)
-            .eq("conversation_id", str(conversation_id))
-            .order("created_at", desc=True)
-            .limit(RECENT_TURNS_LIMIT)
-            .execute()
-        )
-    except Exception:
-        # Missing/unreachable history must degrade to "first turn of the conversation", not
-        # break the chat request - e.g. before migrations/0004_chat_multiturn.sql has been
-        # applied.
-        logger.exception(
-            "Failed to read conversation history (user_id=%s, conversation_id=%s) - "
-            "proceeding as if this is the first turn", user_id, conversation_id
-        )
-        return []
+    rewrite/generation step.
+
+    Raises DataUnavailable if the read still fails after one retry. It used to return [] instead,
+    which silently answered a follow-up ("vậy nó có được gia hạn không?") as if it opened the
+    conversation, with nothing pointing at what "nó" meant. Degrading is still the right call - a
+    history outage must not cost the student the answer - but that decision now belongs to the
+    caller (api/chat.py), which can also TELL the student their answer may lack context."""
+    response = execute_with_retry(
+        lambda: supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+        .select("question, rewritten_question, answer")
+        .eq("user_id", user_id)
+        .eq("conversation_id", str(conversation_id))
+        .order("created_at", desc=True)
+        .limit(RECENT_TURNS_LIMIT),
+        "read conversation history",
+    )
 
     rows = list(reversed(response.data or []))
     return [{"question": row.get("rewritten_question") or row["question"], "answer": row["answer"]} for row in rows]
@@ -67,23 +64,19 @@ def get_last_assistant_turn(supabase_client: Client, user_id: str,
       fact is part of what the classifier itself needs to decide intent - a chicken-and-egg
       requirement summarize_previous's original conditional fetch (fetched only after intent was
       already known) didn't have.
+
+    Raises DataUnavailable on a read that still fails after one retry - same reasoning as
+    get_recent_turns, and the same caller decides how to degrade.
     """
-    try:
-        response = (
-            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
-            .select("answer, citations, scenario_key_points")
-            .eq("user_id", user_id)
-            .eq("conversation_id", str(conversation_id))
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-    except Exception:
-        logger.exception(
-            "Failed to read last turn (user_id=%s, conversation_id=%s) - treating as no prior turn",
-            user_id, conversation_id
-        )
-        return None
+    response = execute_with_retry(
+        lambda: supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+        .select("answer, citations, scenario_key_points")
+        .eq("user_id", user_id)
+        .eq("conversation_id", str(conversation_id))
+        .order("created_at", desc=True)
+        .limit(1),
+        "read last conversation turn",
+    )
 
     rows = response.data or []
     if not rows:
@@ -113,19 +106,18 @@ def list_conversations(supabase_client: Client, user_id: str) -> list[dict[str, 
 
     Ownership: filtered by user_id in this same query (the backend uses the Supabase
     service-role key, which bypasses RLS - per migrations/0001 comments - so this explicit
-    filter is the ONLY thing preventing one user's rows from leaking into another's list)."""
-    try:
-        response = (
-            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
-            .select("conversation_id, question, created_at, title")
-            .eq("user_id", user_id)
-            .not_.is_("conversation_id", "null")
-            .order("created_at", desc=False)
-            .execute()
-        )
-    except Exception:
-        logger.exception("Failed to list conversations (user_id=%s)", user_id)
-        return []
+    filter is the ONLY thing preventing one user's rows from leaking into another's list).
+
+    Raises DataUnavailable when the read fails. Returning [] - as this did until 2026-10-17 - made
+    a student with fifty conversations look exactly like a brand-new account."""
+    response = execute_with_retry(
+        lambda: supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+        .select("conversation_id, question, created_at, title")
+        .eq("user_id", user_id)
+        .not_.is_("conversation_id", "null")
+        .order("created_at", desc=False),
+        "list conversations",
+    )
 
     # Rows arrive oldest-first (asc), so the first time a conversation_id is seen its question
     # is the conversation's opening question (-> fallback title), and each subsequent sighting
@@ -160,21 +152,19 @@ def get_conversation_detail(supabase_client: Client, user_id: str,
     doesn't belong to this user - both cases are indistinguishable on purpose (404, not 403):
     ownership is enforced by filtering on user_id in the SAME query as conversation_id, so a
     nonexistent conversation_id and another user's real conversation_id both come back as an
-    empty result here, never revealing to a caller that a given id belongs to someone else."""
-    try:
-        response = (
-            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
-            .select("question, answer, created_at")
-            .eq("user_id", user_id)
-            .eq("conversation_id", str(conversation_id))
-            .order("created_at", desc=False)
-            .execute()
-        )
-    except Exception:
-        logger.exception(
-            "Failed to read conversation detail (user_id=%s, conversation_id=%s)", user_id, conversation_id
-        )
-        return None
+    empty result here, never revealing to a caller that a given id belongs to someone else.
+
+    None means "not found" and nothing else: a read that FAILS raises DataUnavailable instead. The
+    two used to share None, so a database outage told the student their conversation did not
+    exist."""
+    response = execute_with_retry(
+        lambda: supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+        .select("question, answer, created_at")
+        .eq("user_id", user_id)
+        .eq("conversation_id", str(conversation_id))
+        .order("created_at", desc=False),
+        "read conversation detail",
+    )
 
     rows = response.data or []
     if not rows:
@@ -188,20 +178,17 @@ def delete_conversation(supabase_client: Client, user_id: str, conversation_id: 
     actually deleted. SECURITY: same ownership pattern as get_conversation_detail - user_id and
     conversation_id are filtered in the SAME delete query, so a nonexistent conversation_id and
     another user's real conversation_id both delete 0 rows and return False here, letting the
-    route 404 either way instead of ever confirming "that id belongs to someone else"."""
-    try:
-        response = (
-            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
-            .delete()
-            .eq("user_id", user_id)
-            .eq("conversation_id", str(conversation_id))
-            .execute()
-        )
-    except Exception:
-        logger.exception(
-            "Failed to delete conversation (user_id=%s, conversation_id=%s)", user_id, conversation_id
-        )
-        return False
+    route 404 either way instead of ever confirming "that id belongs to someone else".
+
+    False means "nothing matched" only; a delete that FAILS raises DataUnavailable. Safe to retry:
+    deleting by the same id twice removes the same rows once."""
+    response = execute_with_retry(
+        lambda: supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+        .delete()
+        .eq("user_id", user_id)
+        .eq("conversation_id", str(conversation_id)),
+        "delete conversation",
+    )
 
     return len(response.data or []) > 0
 
@@ -211,20 +198,17 @@ def rename_conversation(supabase_client: Client, user_id: str, conversation_id: 
     """Sets (or clears, if title is None) the custom title on every row of this conversation and
     returns whether anything matched. Same ownership pattern as delete_conversation/
     get_conversation_detail - user_id + conversation_id filtered in the same update query, 0 rows
-    matched (wrong owner or nonexistent) -> False -> route 404s."""
-    try:
-        response = (
-            supabase_client.table(CHAT_QUERY_LOGS_TABLE)
-            .update({"title": title})
-            .eq("user_id", user_id)
-            .eq("conversation_id", str(conversation_id))
-            .execute()
-        )
-    except Exception:
-        logger.exception(
-            "Failed to rename conversation (user_id=%s, conversation_id=%s)", user_id, conversation_id
-        )
-        return False
+    matched (wrong owner or nonexistent) -> False -> route 404s.
+
+    As with delete_conversation, a write that FAILS raises DataUnavailable rather than returning
+    False. Safe to retry: setting the same title twice is the same as setting it once."""
+    response = execute_with_retry(
+        lambda: supabase_client.table(CHAT_QUERY_LOGS_TABLE)
+        .update({"title": title})
+        .eq("user_id", user_id)
+        .eq("conversation_id", str(conversation_id)),
+        "rename conversation",
+    )
 
     return len(response.data or []) > 0
 
@@ -243,7 +227,14 @@ def _serialize_retrieved_chunk(chunk: RetrievedChunk) -> dict[str, Any]:
 
 
 def log_chat_query(supabase_client: Client, user_id: str, conversation_id: uuid.UUID, question: str,
-                    rewritten_question: str, result: RagAnswer) -> None:
+                    rewritten_question: str, result: RagAnswer) -> bool:
+    """Returns whether the turn was saved. Still never raises - this runs after the answer has
+    already been streamed, so there is no response left to fail - but the caller records a False in
+    the request telemetry, so a turn that will be missing from the student's history on reload is
+    visible in the logs as a field, not only as a traceback.
+
+    One attempt, no retry: this is an insert, and an insert that timed out after Postgres committed
+    it would be stored twice if sent again."""
     row = {
         "user_id": user_id,
         "conversation_id": str(conversation_id),
@@ -270,6 +261,7 @@ def log_chat_query(supabase_client: Client, user_id: str, conversation_id: uuid.
     try:
         supabase_client.table(CHAT_QUERY_LOGS_TABLE).insert(row).execute()
     except Exception:
-        # Logging is for later evaluation, not part of the user-facing contract - a logging
-        # failure must never turn a successful answer into a 500 for the student.
+        # A logging failure must never turn a successful answer into an error for the student.
         logger.exception("Failed to log chat query to Postgres (user_id=%s)", user_id)
+        return False
+    return True

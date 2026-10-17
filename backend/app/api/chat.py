@@ -6,9 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
+from app.core.data_access import DataUnavailable
 from app.core.logging import get_logger
 from app.core.rate_limit import DEFAULT_RATE_LIMIT, LLM_ROUTE_RATE_LIMIT, limiter
-from app.core.request_telemetry import finish_request, stage, start_request
+from app.core.request_telemetry import (
+    finish_request,
+    mark_context_unavailable,
+    set_history_saved,
+    stage,
+    start_request,
+)
 from app.core.security import require_supabase_user
 from app.models.auth import AuthUser
 from app.models.chat import (
@@ -110,6 +117,18 @@ async def rename_conversation_route(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
 
 
+def _degrade_unreadable(outcome, fallback):  # noqa: ANN001, ANN202 - gather() result, either type
+    """Unwraps one asyncio.gather(return_exceptions=True) result. A DataUnavailable becomes
+    (fallback, True) - the history read failed and the turn proceeds without it. Any OTHER
+    exception is a real bug, not an outage, and is re-raised so the stream reports it as an error
+    rather than quietly answering without context."""
+    if isinstance(outcome, DataUnavailable):
+        return fallback, True
+    if isinstance(outcome, BaseException):
+        raise outcome
+    return outcome, False
+
+
 def _sse_format(event: str, payload) -> str:  # noqa: ANN001 - payload is one of the ChatStream*Event models
     return f"event: {event}\ndata: {payload.model_dump_json()}\n\n"
 
@@ -170,6 +189,10 @@ async def query_chat(
         # happened before query understanding ran. Falls back to the student's original wording,
         # which is what rewrite_question itself does on failure.
         rewritten_question = body.question
+        # Read by the finally block, which now emits the telemetry END line after the history
+        # write instead of each branch emitting it before.
+        outcome: str = "ok"
+        failure: BaseException | None = None
 
         # EVERYTHING that touches the network now lives inside this generator, including the two
         # Supabase reads and the query-understanding Gemini call that used to run in the handler
@@ -208,14 +231,26 @@ async def query_chat(
             # Lượt 2) - has_pending_scenario below must be known BEFORE rewrite_question runs,
             # since query_understanding_service needs it as part of its own classification (and
             # as the deterministic gate on intent=answer_evaluation).
-            recent_turns, last_turn = await asyncio.gather(
+            #
+            # If either read still fails after its retry, the turn goes ahead WITHOUT that context
+            # rather than failing - but no longer silently: context_unavailable is set on this
+            # turn's citations event so the page can say the answer may be missing context, and on
+            # the telemetry line so it is countable. return_exceptions=True so one failed read
+            # does not discard the other's result.
+            recent_turns_outcome, last_turn_outcome = await asyncio.gather(
                 asyncio.to_thread(
                     get_recent_turns, supabase_client, current_user.user_id, conversation_id
                 ),
                 asyncio.to_thread(
                     get_last_assistant_turn, supabase_client, current_user.user_id, conversation_id
                 ),
+                return_exceptions=True,
             )
+            recent_turns, recent_turns_lost = _degrade_unreadable(recent_turns_outcome, [])
+            last_turn, last_turn_lost = _degrade_unreadable(last_turn_outcome, None)
+            context_unavailable = recent_turns_lost or last_turn_lost
+            if context_unavailable:
+                mark_context_unavailable()
             has_pending_scenario = bool(last_turn and last_turn.get("scenario_key_points"))
             # rewrite_question calls Gemini synchronously (httpx.post, not AsyncClient) - offloaded
             # to a thread so it doesn't block the event loop for every other in-flight request.
@@ -232,6 +267,10 @@ async def query_chat(
                 anonymized_names=query_understanding.anonymized_names,
                 sub_questions=query_understanding.sub_questions
             ):
+                # Every branch of stream_answer_question emits exactly one citations event, so the
+                # flag is attached here once instead of at each of its construction sites.
+                if event_name == "citations" and context_unavailable:
+                    event_payload = event_payload.model_copy(update={"context_unavailable": True})
                 yield _sse_format(event_name, event_payload)
         # A client that goes away mid-stream must not be recorded as a failure, or the logs cannot
         # tell "student closed the tab" from "something broke". Measured against a real aborted
@@ -239,7 +278,7 @@ async def query_chat(
         # GeneratorExit; GeneratorExit is kept because Starlette can also close a generator that
         # way. Both are re-raised - swallowing a cancellation would break finalisation.
         except (asyncio.CancelledError, GeneratorExit):
-            finish_request("cancelled")
+            outcome = "cancelled"
             raise
         except BaseException as error:  # noqa: BLE001 - deliberately broad; see below
             # Deliberately broad and deliberately NOT re-raised. Past this point the client is
@@ -249,12 +288,10 @@ async def query_chat(
             # fixed sentence that cannot leak an exception string (which may quote the question).
             logger.exception("Chat request failed after the response started (conversation_id=%s)",
                               conversation_id)
-            finish_request("error", error)
+            outcome, failure = "error", error
             yield _sse_format("error", ChatStreamErrorEvent(
                 message="Xin lỗi, đã có lỗi xảy ra khi xử lý câu hỏi. Bạn vui lòng thử lại."
             ))
-        else:
-            finish_request("ok")
         finally:
             # In `finally` so a turn that errored part-way through still persists whatever it did
             # produce, instead of the answer being shown and then silently lost. Guarded on there
@@ -263,9 +300,13 @@ async def query_chat(
             # the student's own history and in the sidebar conversation list. Nothing is lost
             # diagnostically - request_telemetry already recorded the failure.
             if result.answer:
-                log_chat_query(
+                set_history_saved(log_chat_query(
                     supabase_client, current_user.user_id, conversation_id, body.question,
                     rewritten_question, result
-                )
+                ))
+            # Emitted last, after the history write, so the END line can say whether the turn was
+            # actually saved. It used to be emitted before the write, which made a failed save
+            # visible only as a separate traceback.
+            finish_request(outcome, failure)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
