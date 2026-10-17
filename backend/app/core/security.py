@@ -34,6 +34,26 @@ def _jwk_client(jwks_url: str) -> PyJWKClient:
     return PyJWKClient(jwks_url, cache_jwk_set=True, lifespan=300)
 
 
+def _jwks_url(settings: Settings) -> str:
+    return f"{str(settings.supabase_url).rstrip('/')}/auth/v1/.well-known/jwks.json"
+
+
+def prefetch_jwks(settings: Settings) -> int:
+    """Fetches the JWK set into the process-wide cached client, so the first authenticated request
+    after boot finds the keys already there instead of downloading them itself. Returns the number
+    of keys fetched (for the startup log line).
+
+    Without this, the cache from _jwk_client is only populated by the first request that needs it,
+    and on Render's Free tier "the first request" is exactly the one a student makes right after the
+    ~45s cold start - measured at 0.3-1.2s extra on top of everything else that request pays for.
+
+    Blocking network I/O, so the caller runs it in a thread. Raises on any failure: whether a
+    failure should stop the process is the caller's decision, not this function's - and the only
+    caller, main.lifespan, deliberately decides that it should not.
+    """
+    return len(_jwk_client(_jwks_url(settings)).get_jwk_set().keys)
+
+
 # request.state keys for the single-verification-per-request cache. Private names so nothing else
 # is tempted to treat them as public API; read/written only through verify_supabase_jwt_for_request.
 _STATE_TOKEN = "_verified_auth_token"
@@ -78,8 +98,7 @@ def verify_supabase_jwt(token: str, settings: Settings) -> AuthUser:
 
     try:
         if algorithm == "ES256":
-            jwks_url = f"{str(settings.supabase_url).rstrip('/')}/auth/v1/.well-known/jwks.json"
-            signing_key = _jwk_client(jwks_url).get_signing_key_from_jwt(token)
+            signing_key = _jwk_client(_jwks_url(settings)).get_signing_key_from_jwt(token)
             payload = jwt.decode(
                 token,
                 signing_key.key,

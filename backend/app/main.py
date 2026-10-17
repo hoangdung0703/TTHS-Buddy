@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -20,9 +21,12 @@ from app.core.config import (
 )
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import add_cors_middleware, add_rate_limit_middleware, register_exception_handlers
+from app.core.security import prefetch_jwks
 
 configure_logging(os.getenv("ENVIRONMENT", "development"))
 logger = get_logger(__name__)
+
+JWKS_PREFETCH_TIMEOUT_SECONDS = 5.0
 
 
 @asynccontextmanager
@@ -51,6 +55,27 @@ async def lifespan(app: FastAPI):
     logger.info("Checking Qdrant connection and collection...")
     await ensure_qdrant_collection(qdrant_client, settings.qdrant_collection)
     logger.info("Qdrant connection successful.")
+
+    # Load the Supabase signing keys now rather than on the first authenticated request, which on a
+    # cold-started instance is a student who has already waited ~45s. Unlike the two checks above,
+    # this is an optimisation and NOT a precondition: if it fails, verification still fetches the
+    # keys on demand exactly as it did before this existed, so a failure here is logged and boot
+    # continues. Bounded so a slow or unreachable JWKS endpoint cannot stretch a cold start that
+    # students are already waiting through - PyJWKClient's own urlopen timeout is 30s. If the bound
+    # trips, the worker thread is not cancelled (threads cannot be); it either finishes and fills
+    # the cache anyway, or hits that 30s timeout and exits on its own, holding one executor slot at
+    # most until then.
+    logger.info("Pre-fetching Supabase JWKS...")
+    try:
+        key_count = await asyncio.wait_for(
+            asyncio.to_thread(prefetch_jwks, settings), timeout=JWKS_PREFETCH_TIMEOUT_SECONDS
+        )
+        logger.info("Supabase JWKS pre-fetched (%d key(s)).", key_count)
+    except Exception:
+        logger.warning(
+            "Supabase JWKS pre-fetch failed - continuing startup; the first authenticated request "
+            "will fetch the keys on demand.", exc_info=True
+        )
 
     yield
 
