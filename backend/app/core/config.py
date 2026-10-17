@@ -4,11 +4,13 @@ import asyncio
 from functools import lru_cache
 from pathlib import Path
 
+import httpx
 from pydantic import AnyHttpUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PayloadSchemaType, VectorParams
 from supabase import Client, create_client
+from supabase.lib.client_options import SyncClientOptions
 
 from app.core.logging import get_logger
 
@@ -69,8 +71,54 @@ def get_settings() -> Settings:
     return Settings()
 
 
+# HTTP/1.1 connection pool for the shared Supabase client - see create_supabase_client.
+#
+# max_connections caps simultaneous in-flight Supabase requests per worker process; a request
+# beyond it waits for a free connection (up to the timeout) instead of failing. 32 matches the
+# ceiling on what one process can actually have in flight: the calls run on asyncio's default
+# thread pool, which Python caps at min(32, cpu_count + 4) threads - so a smaller pool could
+# become a queue a busy worker never needed, and a larger one would never be filled. Each of the
+# two gunicorn workers (-w 2) gets its own pool.
+#
+# max_keepalive_connections keeps a handful of connections open between requests so a typical
+# request (one or two reads) reuses a warm connection instead of paying a fresh TLS handshake to
+# Supabase's Cloudflare edge. 8 covers the normal steady state - a chat turn's two concurrent
+# reads, plus the sidebar and dashboard reads that a page load fires at the same time - without
+# holding idle sockets open that would only be closed by keepalive expiry anyway.
+SUPABASE_HTTP_LIMITS = httpx.Limits(max_connections=32, max_keepalive_connections=8)
+# postgrest-py's own defaults for the client it would otherwise build itself. They are restated
+# because a caller-supplied client replaces that client wholesale, defaults included.
+SUPABASE_HTTP_TIMEOUT_SECONDS = 120.0
+
+
 def create_supabase_client(settings: Settings) -> Client:
-    return create_client(str(settings.supabase_url), settings.supabase_service_role_key)
+    """One Supabase client per process, shared by every request - over HTTP/1.1, NOT HTTP/2.
+
+    postgrest-py builds its own httpx client with http2=True, and this one instance is used from
+    many threads at once: every Supabase call runs in asyncio's thread pool, the chat route runs
+    two of them concurrently by design (api/chat.py's asyncio.gather of the two history reads), and
+    two students' requests overlap whenever they happen to. Over HTTP/2 all of those share ONE
+    connection, and httpcore's synchronous HTTP/2 path is not safe for that: two threads encoding
+    request headers at the same moment corrupt the shared HPACK compression state. Observed in a
+    test run on 2026-10-17 as `ProtocolError("Received pseudo-header in trailer ...")`, after which
+    Supabase closed the connection with COMPRESSION_ERROR and both in-flight reads failed together.
+    The chat route's history readers turned such failures into an empty history, so a follow-up
+    question was silently answered without its conversation.
+
+    Over HTTP/1.1 the pool hands each concurrent request its own connection; there is no shared
+    per-connection state for threads to race on. The same client is also what supabase-py's auth
+    and storage clients use, so they move to HTTP/1.1 with it.
+    """
+    http_client = httpx.Client(
+        http2=False,
+        limits=SUPABASE_HTTP_LIMITS,
+        timeout=SUPABASE_HTTP_TIMEOUT_SECONDS,
+        follow_redirects=True,
+    )
+    return create_client(
+        str(settings.supabase_url), settings.supabase_service_role_key,
+        options=SyncClientOptions(httpx_client=http_client),
+    )
 
 
 def create_qdrant_client(settings: Settings) -> QdrantClient:
