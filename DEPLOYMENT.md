@@ -9,7 +9,7 @@ files in this repo that make the dashboard steps line up.
 
 | | URL |
 |---|---|
-| Backend (Render) | `https://tths-buddy.onrender.com` — health: `/api/health` |
+| Backend (Render) | `https://tths-buddy.onrender.com` — health: `/api/health` (its `version` field is the short commit SHA actually running, from Render's `RENDER_GIT_COMMIT`; use it to confirm a deploy went live) |
 | Frontend (Vercel) | `https://tths-buddyy.vercel.app` |
 
 Note the spelling: the backend host is **`tths-`** (two `t`s, not three) and the Vercel host ends
@@ -114,6 +114,7 @@ the only step needed.
 | `QDRANT_API_KEY` | Qdrant Cloud API key — **secret** |
 | `QDRANT_COLLECTION` | e.g. `ttths_law_chunks` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated. Must include the real Vercel URL (`https://tths-buddyy.vercel.app`) — defaults to `http://localhost:3000` if unset, which will block the deployed frontend |
+| `ENABLE_API_DOCS` | **Do NOT set on Render.** Enables `/docs`, `/redoc` and `/openapi.json`, which are off by default in every environment (they used to publish the full API schema in production). Local development only. |
 | `PYTHON_VERSION` | Optional, pins the Render Python version (e.g. `3.12.7`); `render.yaml` sets this already |
 
 **Do not set `GEMINI_CHAT_MODEL_COMPLEX` on Render without re-measuring.** Measured locally on

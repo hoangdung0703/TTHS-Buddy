@@ -81,7 +81,15 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="TTHS Buddy API", version="0.1.0", lifespan=lifespan)
+    # See Settings.enable_api_docs. FastAPI serves no route at all for a None URL, so with the
+    # switch off these paths are plain 404s, indistinguishable from any other unknown path.
+    docs_enabled = get_settings().enable_api_docs
+    app = FastAPI(
+        title="TTHS Buddy API", version="0.1.0", lifespan=lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
+    )
     add_cors_middleware(app)
     add_rate_limit_middleware(app)
     register_exception_handlers(app)

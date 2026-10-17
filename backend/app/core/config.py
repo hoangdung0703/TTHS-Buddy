@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     qdrant_api_key: str = Field(alias="QDRANT_API_KEY", min_length=1)
     qdrant_collection: str = Field(alias="QDRANT_COLLECTION", min_length=1)
     cors_allowed_origins: str = Field(default="http://localhost:3000", alias="CORS_ALLOWED_ORIGINS")
+    # Interactive API docs (/docs, /redoc) and the schema behind them (/openapi.json). OFF unless
+    # explicitly enabled, in every environment - deliberately its own switch and not derived from
+    # ENVIRONMENT, so that no environment value can expose them by accident. Meant for local
+    # development only; not set on Render. Before 2026-10-18 all three were always on in production,
+    # publishing every route, parameter and response shape of the API.
+    enable_api_docs: bool = Field(default=False, alias="ENABLE_API_DOCS")
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
