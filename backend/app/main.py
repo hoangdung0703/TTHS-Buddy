@@ -22,6 +22,7 @@ from app.core.config import (
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import add_cors_middleware, add_rate_limit_middleware, register_exception_handlers
 from app.core.security import prefetch_jwks
+from app.services.rag_service import HYDE_EXPERIMENT_DISABLE_ENV, hyde_experiment_flag_present
 
 configure_logging(os.getenv("ENVIRONMENT", "development"))
 logger = get_logger(__name__)
@@ -40,6 +41,19 @@ async def lifespan(app: FastAPI):
     configure_logging(settings.environment)
 
     logger.info("Starting TTHS Buddy backend in %s mode", settings.environment)
+
+    # The HyDE on/off switch exists for local experiments only (rag_service.retrieve_context).
+    # In production it is ignored by the code itself; this only makes a stray setting visible.
+    if hyde_experiment_flag_present():
+        if settings.environment == "production":
+            logger.warning(
+                "%s is set in production and is being IGNORED - HyDE stays on. It is an "
+                "experiment-only switch; remove it from this service's environment.",
+                HYDE_EXPERIMENT_DISABLE_ENV,
+            )
+        else:
+            logger.warning("%s is set (%s mode): the experiment switch is honoured and HyDE may be "
+                           "OFF for this process.", HYDE_EXPERIMENT_DISABLE_ENV, settings.environment)
 
     supabase_client = create_supabase_client(settings)
     qdrant_client = create_qdrant_client(settings)

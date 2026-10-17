@@ -994,14 +994,23 @@ def _generate_hyde_passage(question: str, settings: Settings) -> str:
 # backend/evaluation/hyde_diagnostic_set.json). With RAG_EXPERIMENT_DISABLE_HYDE=1, legal_text is
 # retrieved with the raw-question vector alone: no HyDE generation, no second embed, one legal_text
 # Qdrant search instead of the union of two - i.e. what retrieval would cost and return if HyDE
-# were removed. Unset (the default, and the ONLY intended production state) changes nothing. Read
+# were removed. Unset (the default) changes nothing, and with ENVIRONMENT=production it is IGNORED
+# even when set - see _hyde_disabled_for_experiment and the startup warning in main.lifespan. Read
 # per call so an experiment can flip it inside one process; every request that runs with it on
 # records "hyde:disabled_by_experiment_flag" in telemetry, so it cannot be left on silently.
 HYDE_EXPERIMENT_DISABLE_ENV = "RAG_EXPERIMENT_DISABLE_HYDE"
 
 
-def _hyde_disabled_for_experiment() -> bool:
-    return os.getenv(HYDE_EXPERIMENT_DISABLE_ENV) == "1"
+def hyde_experiment_flag_present() -> bool:
+    """Whether the variable is set at all, to any value - used by main.lifespan's startup warning."""
+    return os.getenv(HYDE_EXPERIMENT_DISABLE_ENV) is not None
+
+
+def _hyde_disabled_for_experiment(settings: Settings) -> bool:
+    """Honoured ONLY outside production. In production the switch is ignored outright - HyDE stays
+    on whatever the variable says - and main.lifespan logs a warning at every startup that finds it
+    set, so a stray value on Render is both harmless and visible."""
+    return settings.environment != "production" and os.getenv(HYDE_EXPERIMENT_DISABLE_ENV) == "1"
 
 
 async def retrieve_context(question: str, settings: Settings,
@@ -1015,7 +1024,7 @@ async def retrieve_context(question: str, settings: Settings,
     # generation call and the academic embed don't depend on each other, so they run concurrently
     # - only the legal embed (which needs the HyDE passage as input) has to wait for it, keeping
     # the added latency to roughly one extra Gemini round trip rather than two serialized ones.
-    if _hyde_disabled_for_experiment():
+    if _hyde_disabled_for_experiment(settings):
         telemetry.add_fallback_reason("hyde:disabled_by_experiment_flag")
         academic_vector = await asyncio.to_thread(embed_query, question, settings)
         legal_pool_baseline, academic_chunks = await asyncio.gather(
