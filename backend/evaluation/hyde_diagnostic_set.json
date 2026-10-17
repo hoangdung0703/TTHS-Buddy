@@ -1,0 +1,189 @@
+{
+  "_about": "Self-authored retrieval diagnostics for the HyDE on/off experiment (requirements.md, Muc 4). Written 2026-10-18 from the statute text in ingestion/chunks.json only - not derived from, and not imitating, the withdrawn question bank. Anonymous parties (A, B, C). Each case names the Dieu that MUST reach legal_primary (verified against chunks.json: number, title and the khoan the answer turns on) and the retrieval property it exercises. 'prior_turns' are self-written turns fed to query understanding exactly as the chat route would.",
+  "properties": {
+    "a": "Long scenario, many repeated procedural details; the Dieu holding the core principle shares few surface words with it (risk: crowded out by many neighbouring Dieu of the same code).",
+    "b": "Multi-turn: an earlier turn names the charge, a later turn switches to a different charge (charge contrast) - needs the Dieu on the limits of trial / changing the charge.",
+    "c": "Short question needing broad retrieval: an accomplice not yet prosecuted is found once the case is with the court - needs the Dieu on returning the file for further investigation.",
+    "d": "Direct lookup (control).",
+    "e": "Multi-part question (control for the per-sub-question retrieval path)."
+  },
+  "cases": [
+    {
+      "id": "a1-burden-of-proof",
+      "property": "a",
+      "question": "Cơ quan điều tra khởi tố vụ án và khởi tố A với tư cách bị can về hành vi trộm cắp. Trong giai đoạn điều tra, Điều tra viên đã lấy lời khai của A ba lần, tổ chức đối chất giữa A và người làm chứng B, khám xét chỗ ở của A, thu giữ một số đồ vật, trưng cầu giám định dấu vân tay và lập biên bản thực nghiệm điều tra tại hiện trường. Sau đó Điều tra viên tuyên bố với A: nếu A không tự xuất trình được chứng cứ cho thấy mình không phạm tội thì sẽ bị đề nghị truy tố. Tuyên bố đó có phù hợp với pháp luật tố tụng không?",
+      "expected": [
+        {
+          "dieu_number": "15",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Xác định sự thật của vụ án",
+          "why": "Trách nhiệm chứng minh tội phạm thuộc về cơ quan có thẩm quyền; người bị buộc tội có quyền nhưng không buộc phải chứng minh là mình vô tội."
+        }
+      ],
+      "also_relevant": [
+        {
+          "dieu_number": "13",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Suy đoán vô tội"
+        }
+      ]
+    },
+    {
+      "id": "a2-coerced-statement",
+      "property": "a",
+      "question": "A bị bắt quả tang, bị đưa về trụ sở Cơ quan điều tra, bị tạm giữ ba ngày rồi được gia hạn tạm giữ, sau đó bị khởi tố và tạm giam hai tháng. Trong thời gian tạm giam, Điều tra viên nhiều lần hỏi cung A vào ban đêm và đe dọa sẽ bắt cả người thân của A, nên A đã viết bản tự khai nhận tội. Bản tự khai này có được dùng làm chứng cứ để buộc tội A không?",
+      "expected": [
+        {
+          "dieu_number": "86",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Chứng cứ",
+          "why": "Chứng cứ là những gì có thật, được thu thập theo trình tự, thủ tục do Bộ luật này quy định."
+        },
+        {
+          "dieu_number": "10",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Bảo đảm quyền bất khả xâm phạm về thân thể",
+          "why": "Nghiêm cấm tra tấn, bức cung, dùng nhục hình."
+        }
+      ]
+    },
+    {
+      "id": "a3-appeal-no-worsening",
+      "property": "a",
+      "question": "Bị cáo A bị tuyên phạt 3 năm tù về tội cố ý gây thương tích. A là người duy nhất gửi đơn kháng cáo, với mong muốn được hưởng án treo; Viện kiểm sát không có kháng nghị, người bị hại cũng không kháng cáo. Ở cấp xét xử thứ hai, sau khi xem xét lại toàn bộ chứng cứ, xét hỏi và nghe tranh luận, các thành viên Hội đồng cho rằng cấp dưới đã xử quá nhẹ. Cấp phúc thẩm có quyền nâng mức án của A lên không?",
+      "expected": [
+        {
+          "dieu_number": "357",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Sửa bản án sơ thẩm",
+          "why": "Khoản 2: chỉ khi Viện kiểm sát kháng nghị hoặc bị hại kháng cáo yêu cầu thì Hội đồng xét xử phúc thẩm mới có thể tăng hình phạt."
+        }
+      ]
+    },
+    {
+      "id": "b1-charge-to-lighter",
+      "property": "b",
+      "prior_turns": [
+        {
+          "question": "Viện kiểm sát truy tố bị can A về tội lừa đảo chiếm đoạt tài sản theo Điều 174 Bộ luật Hình sự. Hồ sơ cho thấy A vay tiền của B rồi không trả.",
+          "answer": "Theo nội dung bạn nêu, A đang bị truy tố về tội lừa đảo chiếm đoạt tài sản theo Điều 174 Bộ luật Hình sự."
+        }
+      ],
+      "question": "Tại phiên tòa, chứng cứ lại cho thấy A nhận tiền một cách ngay thẳng, sau đó mới bỏ trốn để không trả. Tòa có thể xét xử A về tội lạm dụng tín nhiệm chiếm đoạt tài sản không?",
+      "expected": [
+        {
+          "dieu_number": "298",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Giới hạn của việc xét xử",
+          "why": "Khoản 2: Tòa án có thể xét xử về một tội khác bằng hoặc nhẹ hơn tội mà Viện kiểm sát đã truy tố."
+        }
+      ]
+    },
+    {
+      "id": "b2-charge-to-heavier",
+      "property": "b",
+      "prior_turns": [
+        {
+          "question": "Viện kiểm sát truy tố bị can C về tội lạm dụng tín nhiệm chiếm đoạt tài sản theo Điều 175 Bộ luật Hình sự.",
+          "answer": "Như vậy C đang bị truy tố theo Điều 175 Bộ luật Hình sự về tội lạm dụng tín nhiệm chiếm đoạt tài sản."
+        }
+      ],
+      "question": "Nhưng khi xét xử, Hội đồng xét xử thấy C đã dùng giấy tờ giả để lấy tiền ngay từ đầu, tức là phạm tội nặng hơn. Tòa phải làm gì?",
+      "expected": [
+        {
+          "dieu_number": "298",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Giới hạn của việc xét xử",
+          "why": "Khoản 3: cần xét xử về tội danh nặng hơn thì Tòa án trả hồ sơ để Viện kiểm sát truy tố lại."
+        }
+      ]
+    },
+    {
+      "id": "c1-accomplice-pretrial",
+      "property": "c",
+      "question": "Khi nghiên cứu hồ sơ để chuẩn bị xét xử, Thẩm phán thấy còn người C cùng tham gia phạm tội với A nhưng chưa bị khởi tố. Thẩm phán xử lý thế nào?",
+      "expected": [
+        {
+          "dieu_number": "280",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Trả hồ sơ để điều tra bổ sung",
+          "why": "Khoản 1 điểm c: có căn cứ cho rằng còn có đồng phạm khác chưa được khởi tố bị can."
+        }
+      ]
+    },
+    {
+      "id": "c2-accomplice-short",
+      "property": "c",
+      "question": "Hồ sơ đã sang Tòa án mới lộ ra một người khác cùng thực hiện tội phạm nhưng chưa bị khởi tố. Giải quyết thế nào?",
+      "expected": [
+        {
+          "dieu_number": "280",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Trả hồ sơ để điều tra bổ sung",
+          "why": "Khoản 1 điểm c."
+        }
+      ]
+    },
+    {
+      "id": "d1-temporary-detention-limit",
+      "property": "d",
+      "question": "Thời hạn tạm giữ tối đa là bao nhiêu ngày?",
+      "expected": [
+        {
+          "dieu_number": "118",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Thời hạn tạm giữ",
+          "why": "Khoản 1 và 2."
+        }
+      ]
+    },
+    {
+      "id": "d2-appeal-deadline",
+      "property": "d",
+      "question": "Thời hạn kháng cáo đối với bản án hình sự sơ thẩm là bao lâu?",
+      "expected": [
+        {
+          "dieu_number": "333",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Thời hạn kháng cáo",
+          "why": "Khoản 1: 15 ngày kể từ ngày tuyên án."
+        }
+      ]
+    },
+    {
+      "id": "d3-accused-rights",
+      "property": "d",
+      "question": "Theo Bộ luật Tố tụng hình sự, người đã bị khởi tố với tư cách bị can được hưởng những quyền nào?",
+      "expected": [
+        {
+          "dieu_number": "60",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Bị can",
+          "why": "Khoản 2."
+        }
+      ]
+    },
+    {
+      "id": "e1-three-part",
+      "property": "e",
+      "question": "Mình có ba câu: (1) tạm giữ được kéo dài tối đa mấy ngày; (2) những ai có thể bị tạm giam; (3) ai đứng ra nhận bảo lĩnh được?",
+      "expected": [
+        {
+          "dieu_number": "118",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Thời hạn tạm giữ"
+        },
+        {
+          "dieu_number": "119",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Tạm giam"
+        },
+        {
+          "dieu_number": "121",
+          "source_document": "Bộ luật TTHS.pdf",
+          "dieu_title": "Bảo lĩnh"
+        }
+      ]
+    }
+  ]
+}

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import random
 import re
 import uuid
@@ -989,6 +990,20 @@ def _generate_hyde_passage(question: str, settings: Settings) -> str:
         return question
 
 
+# EXPERIMENT-ONLY switch for the HyDE on/off comparison (requirements.md Muc 4,
+# backend/evaluation/hyde_diagnostic_set.json). With RAG_EXPERIMENT_DISABLE_HYDE=1, legal_text is
+# retrieved with the raw-question vector alone: no HyDE generation, no second embed, one legal_text
+# Qdrant search instead of the union of two - i.e. what retrieval would cost and return if HyDE
+# were removed. Unset (the default, and the ONLY intended production state) changes nothing. Read
+# per call so an experiment can flip it inside one process; every request that runs with it on
+# records "hyde:disabled_by_experiment_flag" in telemetry, so it cannot be left on silently.
+HYDE_EXPERIMENT_DISABLE_ENV = "RAG_EXPERIMENT_DISABLE_HYDE"
+
+
+def _hyde_disabled_for_experiment() -> bool:
+    return os.getenv(HYDE_EXPERIMENT_DISABLE_ENV) == "1"
+
+
 async def retrieve_context(question: str, settings: Settings,
                            qdrant_client: QdrantClient) -> RetrievalResult:
     # requirements.md muc B (HyDE): legal_text retrieval embeds a generated hypothetical
@@ -1000,6 +1015,17 @@ async def retrieve_context(question: str, settings: Settings,
     # generation call and the academic embed don't depend on each other, so they run concurrently
     # - only the legal embed (which needs the HyDE passage as input) has to wait for it, keeping
     # the added latency to roughly one extra Gemini round trip rather than two serialized ones.
+    if _hyde_disabled_for_experiment():
+        telemetry.add_fallback_reason("hyde:disabled_by_experiment_flag")
+        academic_vector = await asyncio.to_thread(embed_query, question, settings)
+        legal_pool_baseline, academic_chunks = await asyncio.gather(
+            asyncio.to_thread(_retrieve_semantic, qdrant_client, settings.qdrant_collection, academic_vector,
+                               "legal_text", LEGAL_SEMANTIC_TOP_K),
+            asyncio.to_thread(_retrieve_academic, qdrant_client, settings.qdrant_collection, academic_vector),
+        )
+        return await _finish_retrieval(question, settings, qdrant_client,
+                                       legal_pool_baseline[:LEGAL_SEMANTIC_TOP_K], academic_chunks)
+
     hyde_task = asyncio.to_thread(_generate_hyde_passage, question, settings)
     academic_vector_task = asyncio.to_thread(embed_query, question, settings)
     hyde_passage, academic_vector = await asyncio.gather(hyde_task, academic_vector_task)
@@ -1035,7 +1061,14 @@ async def retrieve_context(question: str, settings: Settings,
     # Dieu 109 (it ranked in the baseline pool's own top-25, so survives this cut easily - the
     # problem this whole change fixes was HyDE's pool excluding it, not the union being too wide).
     legal_semantic_pool = _merge_semantic_pools(legal_pool_hyde, legal_pool_baseline)[:LEGAL_SEMANTIC_TOP_K]
+    return await _finish_retrieval(question, settings, qdrant_client, legal_semantic_pool, academic_chunks)
 
+
+async def _finish_retrieval(question: str, settings: Settings, qdrant_client: QdrantClient,
+                            legal_semantic_pool: list[RetrievedChunk],
+                            academic_chunks: list[RetrievedChunk]) -> RetrievalResult:
+    """Everything after the semantic pools are in hand - shared by the normal path and the
+    experiment-only no-HyDE path, so the two differ in how the pool is built and nothing else."""
     legal_primary, legal_related = await asyncio.to_thread(
         _retrieve_legal, qdrant_client, settings.qdrant_collection, question, legal_semantic_pool, settings
     )
