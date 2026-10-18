@@ -105,7 +105,20 @@ Luồng 2 bước, không vào thẳng câu hỏi:
 - Bước 2 — Làm bài: sau khi chọn 1 bộ đề, gọi GET /api/quiz/generate với quiz_set tương ứng, hiển thị lần lượt từng câu hoặc dạng danh sách cuộn (tùy độ dài bộ đề), có nút nộp bài ở cuối.
 - Sau khi nộp: hiển thị điểm số, đáp án đúng/sai từng câu, có thể mở rộng xem giải thích (nếu ngân hàng đề có field giải thích) — style giống citation collapsible ở màn hình Chat để nhất quán toàn app.
 
-3. Màn hình Dashboard (Tổng quan học tập)
+2.6. Màn hình Vở ghi — 2 cột, "Hỏi AI về đoạn này" (Giai đoạn 2, 2026-10-18)
+
+Bố cục:
+- Từ `lg` trở lên: 2 cột. Trái là danh sách ghi chú + trình soạn như cũ; phải là panel AI (`components/notes/NotesAskPanel.tsx`), dính (`sticky`) khi cuộn và tự cuộn bên trong nếu dài. Dưới `lg`: 1 cột, panel nằm dưới danh sách; bấm nút hỏi sẽ cuộn panel vào tầm nhìn.
+- Panel dùng đúng hình khối Card (rounded-xl, border `primary/[0.08]`, shadow mềm) nhưng là `<section>` tự dựng vì có ref để cuộn tới. Không gradient wash (trang đọc/viết, cùng nhóm với Chat/Quiz).
+- Heading panel là sans (`text-sm font-semibold`), KHÔNG serif — trang đã có 1 heading serif ("Vở ghi cá nhân"), theo quy tắc serif density-aware.
+
+Tương tác:
+- Bôi chọn chữ trong cột ghi chú (cả nội dung thẻ lẫn ô soạn thảo đang mở) → hiện nút nổi pill "Hỏi AI về đoạn này · N ký tự" ở giữa đáy màn hình (CTA duy nhất lúc đó nên dùng `rounded-full`). Chọn chữ ở nơi khác (panel, sidebar) không hiện nút.
+- Bấm nút → đoạn chọn vào ô "Đoạn bạn chọn" (sửa được để tự cắt bớt), bộ đếm `N/3.000 ký tự`; quá 3.000 thì bộ đếm đỏ, có câu nhắc, nút gửi bị khoá. Một đoạn chọn mới = một cuộc hỏi mới; câu hỏi tiếp theo dùng lại đúng đoạn đó và cùng conversation_id.
+- Trạng thái chờ dùng lại đúng ngôn ngữ Chat: 3 chấm + câu status từ server, nhắc "Máy chủ đang khởi động lại..." sau 7s (useSlowRequestNotice), lỗi khung đỏ kèm "Thử lại". 429 hiện câu dễ hiểu, không hiện JSON thô.
+- Dòng phụ dưới tiêu đề panel nói rõ AI "giải thích, đối chiếu với điều luật và gợi ý chỗ cần sửa, không viết lại hộ bạn" — khớp với hành vi từ chối viết hộ ở backend.
+
+
 
 Header: lời chào theo buổi ("Chào buổi sáng, [Tên]"), câu trạng thái ngắn về tiến độ hiện tại, nút "Hỏi trợ lý AI" nổi bật góc phải.
 

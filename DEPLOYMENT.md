@@ -161,3 +161,20 @@ real data too — otherwise Preview will fall back to mock mode per the flag abo
 4. Note the Vercel production URL.
 5. Update `CORS_ALLOWED_ORIGINS` on Render to the real Vercel URL, redeploy the backend.
 6. Smoke test: sign in on the deployed frontend, run a chat query, confirm it hits the real backend (Network tab should show requests to the Render URL, not mock data).
+
+## Database migrations (Supabase, run by hand)
+
+There is no migration runner: each file in `backend/migrations/` is pasted into the Supabase SQL
+editor once, in number order. Every file is idempotent (`if not exists`), so re-running one is
+harmless.
+
+- `0011_chat_query_logs_source.sql` adds `chat_query_logs.source` (`'chat'` | `'notes'`), used by
+  Vở ghi "Hỏi AI về đoạn này" (`POST /api/notes/ask`). The backend tolerates the column being
+  absent: Chat keeps working and is stored without it, but Vở ghi turns are then NOT stored (they
+  would be indistinguishable from Chat turns and appear in the Chat sidebar). Run it before, or
+  right after, deploying a backend that contains `/api/notes/ask`.
+
+When a release needs both a frontend and a backend change and the frontend only CALLS something
+new (as with `/api/notes/ask`), deploy the frontend first and the backend second: until the
+backend is live, the new button fails with the page's own error message rather than anything
+breaking for pages that already work.
