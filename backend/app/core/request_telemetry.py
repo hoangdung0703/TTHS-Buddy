@@ -1,4 +1,4 @@
-"""Structured per-request server logging for the chat path.
+"""Structured per-request server logging for the chat path and the Vở ghi passage-ask path.
 
 Why this exists: `log_chat_query` only runs AFTER the SSE stream finishes, so a request that hung,
 errored, or had its connection dropped left no trace anywhere - the exact failures worth
@@ -9,8 +9,9 @@ itself the signal that something broke.
 Deliberately log-only: no DB write, no schema change, no migration. Render's log stream is the
 consumer.
 
-NEVER logs question or answer text. The user is identified by a truncated SHA-256 of their id, so
-rows can be correlated within the logs without carrying an identifier back to a person.
+NEVER logs question or answer text, and never the Vở ghi selected passage - only its length. The
+user is identified by a truncated SHA-256 of their id, so rows can be correlated within the logs
+without carrying an identifier back to a person.
 
 Timings are collected through a ContextVar rather than threaded through every signature.
 `asyncio.to_thread` propagates the current context, and the ContextVar holds one mutable
@@ -58,6 +59,14 @@ class RequestTelemetry:
     seconds_since_process_start: float
     first_request_after_boot: bool
     started_monotonic: float
+    # Which surface the request came from: "chat" (POST /api/chat/query) or "notes"
+    # (POST /api/notes/ask). Same value as the chat_query_logs.source column the turn is stored with.
+    source: str = "chat"
+    # Vở ghi only: length in characters of the selected passage - the passage itself is never
+    # logged anywhere. None (omitted) on chat requests.
+    passage_chars: int | None = None
+    # Vở ghi only: how many "Dieu N" in the passage were masked as unverified before the prompt.
+    passage_masked_dieu: int | None = None
     # Stage name -> seconds. Several stages can repeat (one retrieval per sub-question on the
     # multi-part path), so repeats accumulate and a count is kept alongside.
     stage_seconds: dict[str, float] = field(default_factory=dict)
@@ -90,7 +99,7 @@ def current() -> RequestTelemetry | None:
     return _current.get()
 
 
-def start_request(user_id: str) -> RequestTelemetry:
+def start_request(user_id: str, source: str = "chat", passage_chars: int | None = None) -> RequestTelemetry:
     """Emits the START line and binds the telemetry object to the current context.
 
     Called as early in the handler as possible - after auth and rate limiting (a rejected request
@@ -104,14 +113,20 @@ def start_request(user_id: str) -> RequestTelemetry:
         seconds_since_process_start=round(time.monotonic() - _PROCESS_START, 2),
         first_request_after_boot=_requests_seen == 1,
         started_monotonic=time.monotonic(),
+        source=source,
+        passage_chars=passage_chars,
     )
     _current.set(telemetry)
-    logger.info("%s %s", START_EVENT, json.dumps({
+    start_payload: dict[str, Any] = {
         "request_id": telemetry.request_id,
         "user": telemetry.user_hash,
+        "source": telemetry.source,
+        "passage_chars": telemetry.passage_chars,
         "seconds_since_process_start": telemetry.seconds_since_process_start,
         "first_request_after_boot": telemetry.first_request_after_boot,
-    }, ensure_ascii=False))
+    }
+    logger.info("%s %s", START_EVENT, json.dumps(
+        {k: v for k, v in start_payload.items() if v is not None}, ensure_ascii=False))
     return telemetry
 
 
@@ -171,13 +186,18 @@ def mark_context_unavailable() -> None:
         telemetry.context_unavailable = True
 
 
+def set_passage_masked_dieu(count: int) -> None:
+    if (telemetry := _current.get()) is not None:
+        telemetry.passage_masked_dieu = count
+
+
 def set_history_saved(saved: bool) -> None:
     if (telemetry := _current.get()) is not None:
         telemetry.history_saved = saved
 
 
 def finish_request(outcome: str, error: BaseException | None = None) -> None:
-    """Emits the END line. `outcome` is "ok", "client_disconnected", or "error".
+    """Emits the END line. `outcome` is "ok", "cancelled" (the client went away), or "error".
 
     Only the exception TYPE and a truncated message are logged - an exception string can quote the
     payload that caused it, which on this path could include the student's question."""
@@ -187,8 +207,11 @@ def finish_request(outcome: str, error: BaseException | None = None) -> None:
     payload: dict[str, Any] = {
         "request_id": telemetry.request_id,
         "user": telemetry.user_hash,
+        "source": telemetry.source,
         "outcome": outcome,
         "path": telemetry.path,
+        "passage_chars": telemetry.passage_chars,
+        "passage_masked_dieu": telemetry.passage_masked_dieu,
         "total_seconds": round(telemetry.elapsed(), 3),
         "time_to_first_token": telemetry.time_to_first_token,
         "answering_model": telemetry.answering_model,
