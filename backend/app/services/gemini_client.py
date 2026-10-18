@@ -137,7 +137,8 @@ def generate_answer(system_prompt: str, user_prompt: str, settings: Settings, re
 
 async def stream_generate_answer(
     system_prompt: str, user_prompt: str, settings: Settings, model: str | None = None,
-    fallback_model: str | None = None, first_token_timeout: float | None = None
+    fallback_model: str | None = None, first_token_timeout: float | None = None,
+    thinking_level: str | None = None
 ) -> AsyncIterator[str]:
     """Async generator yielding answer text deltas as they arrive from Gemini's SSE streaming
     endpoint (?alt=sse) - used only for the final answer generation in the chat SSE path
@@ -162,6 +163,12 @@ async def stream_generate_answer(
     the long-question path) sees unchanged behavior. Once any answer text has actually been
     yielded to the caller, neither a same-model retry nor a fallback is attempted - either would
     duplicate already-sent tokens - so failures past that point simply propagate.
+
+    `thinking_level` (Gemini 3 thinkingConfig.thinkingLevel, e.g. "low") lets the model reason
+    before its first output token. Only the Vở ghi passage path sets it (see
+    notes_ask_service.NOTES_THINKING_LEVEL); every other caller leaves it None, which sends exactly
+    the request body sent before this parameter existed. Thought summaries are never requested,
+    and any part flagged as a thought is skipped regardless, so reasoning never reaches the caller.
     """
     primary_model = model or settings.gemini_chat_model
     models_to_try = [primary_model]
@@ -173,6 +180,8 @@ async def stream_generate_answer(
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
         "generationConfig": {"temperature": 0.1}
     }
+    if thinking_level is not None:
+        body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": thinking_level}
 
     last_error: Exception | None = None
     for model_index, current_model in enumerate(models_to_try):
@@ -240,7 +249,7 @@ async def stream_generate_answer(
                                 continue
                             for part in candidates[0].get("content", {}).get("parts", []):
                                 text = part.get("text")
-                                if text:
+                                if text and not part.get("thought"):
                                     if not yielded_any:
                                         # The model that actually answered, which is not
                                         # necessarily models_to_try[0] - a preview-tier primary

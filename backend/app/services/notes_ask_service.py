@@ -77,6 +77,16 @@ logger = get_logger(__name__)
 # longer one can never appear whole in an answer, and therefore never in chat_query_logs.answer.
 PASSAGE_ECHO_LIMIT_CHARS = 250
 
+# Gemini thinking for this path's generation call only. Without it the model writes the verdict
+# that RAG_USER_PASSAGE_ADDENDUM point (k) requires BEFORE it has checked the passage, then
+# justifies that verdict: measured 2026-10-18, a correct passage whose total is derived by simple
+# addition (Dieu 118 03 + 03 + 03 = 09 ngày; Dieu 173 04 + 03 = 07 tháng) was answered "Đúng một
+# phần" with a false contradiction 10/10, and prompt wording alone did not move it. With "low" it
+# was 0/30 on those cases (n=10 each) while true contradictions were still flagged 30/30; median
+# answer time went from ~5.9s to ~9.7s (in-process, same machine, same 10-run sample per case).
+# Safe to add here because this path is always buffered: nothing streams to the student anyway.
+NOTES_THINKING_LEVEL = "low"
+
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -155,7 +165,8 @@ async def stream_answer_about_passage(
     with telemetry.stage("generation"):
         async for text_chunk in stream_generate_answer(
             system_prompt, user_prompt, settings, model=generation_model,
-            fallback_model=fallback_model, first_token_timeout=first_token_timeout
+            fallback_model=fallback_model, first_token_timeout=first_token_timeout,
+            thinking_level=NOTES_THINKING_LEVEL,
         ):
             answer_parts.append(text_chunk)
     answer_text = "".join(answer_parts)
