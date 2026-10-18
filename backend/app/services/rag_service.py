@@ -923,11 +923,9 @@ UNVERIFIED_PASSAGE_DIEU_PLACEHOLDER = "[một Điều do bạn tự ghi, chưa �
 
 
 def _mask_unverified_dieu_numbers(passage_text: str, allowed: set[str]) -> str:
-    """RETAINED BUT NOT WIRED (2026-10-12). No caller today: Chat stopped reading the student's
-    notes when the feature moved to "ask about the passage you selected", and the passage endpoint
-    that will call this does not exist yet. Kept because the failure it fixes is a property of
-    feeding ANY unreviewed student-written text to the model, not of notes specifically, so the
-    replacement flow needs it unchanged.
+    """Called by notes_ask_service (POST /api/notes/ask) on the student's selected passage. Kept
+    from the note-era Chat integration unchanged when Chat stopped reading notes (2026-10-12): the
+    failure it fixes is a property of feeding ANY unreviewed student-written text to the model.
 
     Replaces every "Dieu N" in `passage_text` whose N is NOT in rule 9's allowed list
     (_rule9_allowed_dieu_numbers of this question's legal_primary) with
