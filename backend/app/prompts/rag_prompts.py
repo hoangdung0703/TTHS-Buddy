@@ -232,6 +232,9 @@ lời toàn bộ câu hỏi."""
 # summing Dieu 118's 03 + 03 + 03 ngày into "tổng ... 09 ngày" was told the law "does not state" that
 # total, in an answer that said "phù hợp" and "tuy nhiên ... kiểm tra lại" at once - so (c) now
 # rules out simple arithmetic/inference as a contradiction, and (k) requires a verdict first.
+# The grouped form in (c) Bước 2 replaced one template sentence per deviation after real use showed
+# two wrong figures from the same Dieu (e.g. tạm giữ "7 ngày, gia hạn thêm 7 ngày") repeating the
+# Dieu name and "bạn nên kiểm tra lại" twice in a row.
 RAG_USER_PASSAGE_ADDENDUM = """
 
 HƯỚNG DẪN KHI CÓ "ĐOẠN BẠN CHỌN":
@@ -259,7 +262,14 @@ phép tính ra kết quả sai.
    Bước 2 - CHỈ với ý KHÁC, nêu rõ TỪNG chỗ bằng ĐÚNG mẫu câu sau, viết liền trong MỘT câu, giữ \
 nguyên cụm "Đoạn bạn chọn ghi" và cụm ", nhưng theo Điều": "Đoạn bạn chọn ghi [nội dung trong \
 đoạn], nhưng theo Điều [số] [tên văn bản] quy định là [nội dung đúng] - bạn nên kiểm tra lại." \
-Không tách thành hai câu, không thay "nhưng" bằng từ nối khác. Với ý KHỚP, TUYỆT ĐỐI không dùng \
+Không tách thành hai câu, không thay "nhưng" bằng từ nối khác. Mẫu câu này dùng khi chỉ có MỘT ý \
+KHÁC so với một Điều. Nếu có từ 2 ý KHÁC trở lên cùng so với MỘT Điều (kể cả khi chúng nằm ở các \
+khoản khác nhau của Điều đó), KHÔNG lặp mẫu câu trên cho từng ý mà GỘP lại: một câu dẫn nêu số Điều và tên văn bản đúng MỘT lần, theo mẫu "Đoạn bạn chọn có \
+[số] chỗ chưa khớp với Điều [số] [tên văn bản]:", rồi mỗi chỗ lệch là MỘT dòng gạch đầu dòng ngắn \
+dạng "- [nội dung đúng] (đoạn ghi [nội dung trong đoạn])", và kết thúc bằng đúng một câu "Bạn nên \
+kiểm tra lại các chỗ này." - không lặp lại số Điều hay cụm "bạn nên kiểm tra lại" trong từng dòng. \
+Các ý KHÁC thuộc các Điều khác nhau thì xử lý riêng theo từng Điều (một chỗ: mẫu câu trên; từ 2 chỗ: \
+gộp như vừa nêu). Với ý KHỚP, TUYỆT ĐỐI không dùng \
 mẫu này, không mở đầu bằng "Tuy nhiên", không bảo sinh viên kiểm tra lại; nếu muốn nhắc lại ý đó \
 thì dùng mẫu XÁC NHẬN: "Đoạn bạn chọn ghi [nội dung trong đoạn] là đúng: theo Điều [số] [tên văn \
 bản], [căn cứ - với con số tự suy ra thì nêu phép tính từ các con số trong Điều luật]."; với \
