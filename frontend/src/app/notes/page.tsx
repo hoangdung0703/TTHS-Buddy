@@ -1,9 +1,10 @@
 "use client";
 
-import { NotebookPen, Pencil, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { NotebookPen, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
+import { NotesAskPanel, type NotesAskPanelHandle } from "@/components/notes/NotesAskPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -154,6 +155,7 @@ function NoteCard({
         </div>
       </div>
       <p
+        data-testid="note-content"
         className={`min-w-0 whitespace-pre-wrap break-words text-sm font-light leading-relaxed text-foreground/90 ${
           isExpanded || !canCollapse ? "" : "line-clamp-5"
         }`}
@@ -174,11 +176,60 @@ function NoteCard({
   );
 }
 
+// The text the student currently has selected inside the notes column, or "" if none. Reads a
+// textarea's own selection range when the editor has focus - window.getSelection() does not expose
+// text selected inside a form control in every browser - and otherwise the document selection,
+// counted only when it lies inside the notes column (selecting text in the AI panel or the sidebar
+// must not offer "Hỏi AI về đoạn này").
+function useSelectionInside(containerRef: React.RefObject<HTMLElement | null>): string {
+  const [selectedText, setSelectedText] = useState("");
+
+  useEffect(() => {
+    function read(): void {
+      const container = containerRef.current;
+      if (container === null) {
+        return;
+      }
+      const active = document.activeElement;
+      if (active instanceof HTMLTextAreaElement && container.contains(active)) {
+        const text = active.value.slice(active.selectionStart ?? 0, active.selectionEnd ?? 0);
+        setSelectedText(text.trim().length > 0 ? text : "");
+        return;
+      }
+      const selection = window.getSelection();
+      if (selection === null || selection.isCollapsed || selection.rangeCount === 0) {
+        setSelectedText("");
+        return;
+      }
+      const inside = container.contains(selection.getRangeAt(0).commonAncestorContainer);
+      const text = selection.toString();
+      setSelectedText(inside && text.trim().length > 0 ? text : "");
+    }
+
+    // selectionchange covers mouse, keyboard and touch-handle selection on the document; the
+    // pointer/key listeners cover textarea selections in browsers that report those only on the
+    // element itself.
+    document.addEventListener("selectionchange", read);
+    document.addEventListener("pointerup", read);
+    document.addEventListener("keyup", read);
+    return () => {
+      document.removeEventListener("selectionchange", read);
+      document.removeEventListener("pointerup", read);
+      document.removeEventListener("keyup", read);
+    };
+  }, [containerRef]);
+
+  return selectedText;
+}
+
 export default function NotesPage() {
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const notesColumnRef = useRef<HTMLDivElement>(null);
+  const askPanelRef = useRef<NotesAskPanelHandle>(null);
+  const selectedText = useSelectionInside(notesColumnRef);
 
   useEffect(() => {
     loadNotes();
@@ -219,88 +270,113 @@ export default function NotesPage() {
 
   return (
     <AuthenticatedLayout title="Vở ghi">
-      <div className="mx-auto max-w-3xl px-6 py-8">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="mb-1.5 font-serif text-3xl font-light tracking-tight text-foreground">Vở ghi cá nhân</h1>
-            <p className="text-sm font-light text-muted-foreground">Ghi chú tự do theo chủ đề bạn đang học</p>
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
+        <div ref={notesColumnRef} className="min-w-0">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="mb-1.5 font-serif text-3xl font-light tracking-tight text-foreground">Vở ghi cá nhân</h1>
+              <p className="text-sm font-light text-muted-foreground">Ghi chú tự do theo chủ đề bạn đang học</p>
+            </div>
+
+            {!isCreating ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditingNoteId(null);
+                  setIsCreating(true);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                Ghi chú mới
+              </Button>
+            ) : null}
           </div>
 
-          {!isCreating ? (
-            <Button
-              size="sm"
-              onClick={() => {
-                setEditingNoteId(null);
-                setIsCreating(true);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Ghi chú mới
-            </Button>
+          {isCreating ? (
+            <div className="mb-6">
+              <NoteForm
+                editingNoteId={null}
+                initial={{ title: "", content: "", tag: "" }}
+                onCancel={() => setIsCreating(false)}
+                onSaved={handleCreated}
+              />
+            </div>
+          ) : null}
+
+          {loadError ? (
+            <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <span>Không tải được danh sách ghi chú.</span>
+              <Button variant="outline" size="sm" onClick={loadNotes}>
+                Thử lại
+              </Button>
+            </div>
+          ) : null}
+
+          {notes === null && !loadError ? (
+            <div className="flex flex-col gap-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="h-32 animate-pulse rounded-xl border border-border bg-muted/60" />
+              ))}
+            </div>
+          ) : null}
+
+          {notes !== null && notes.length === 0 && !isCreating ? (
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
+              <NotebookPen className="h-8 w-8 text-muted-foreground" strokeWidth={1.4} />
+              <p className="text-sm text-muted-foreground">Bạn chưa có ghi chú nào. Bắt đầu bằng nút &quot;Ghi chú mới&quot;.</p>
+            </div>
+          ) : null}
+
+          {notes !== null ? (
+            <div className="flex flex-col gap-4">
+              {notes.map((note) =>
+                editingNoteId === note.id ? (
+                  <NoteForm
+                    key={note.id}
+                    editingNoteId={note.id}
+                    initial={{ title: note.title ?? "", content: note.content, tag: note.tag ?? "" }}
+                    onCancel={() => setEditingNoteId(null)}
+                    onSaved={handleUpdated}
+                  />
+                ) : (
+                  <NoteCard
+                    key={note.id}
+                    note={note}
+                    onEdit={() => {
+                      setIsCreating(false);
+                      setEditingNoteId(note.id);
+                    }}
+                    onDelete={() => void handleDelete(note)}
+                  />
+                )
+              )}
+            </div>
           ) : null}
         </div>
 
-        {isCreating ? (
-          <div className="mb-6">
-            <NoteForm
-              editingNoteId={null}
-              initial={{ title: "", content: "", tag: "" }}
-              onCancel={() => setIsCreating(false)}
-              onSaved={handleCreated}
-            />
-          </div>
-        ) : null}
-
-        {loadError ? (
-          <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <span>Không tải được danh sách ghi chú.</span>
-            <Button variant="outline" size="sm" onClick={loadNotes}>
-              Thử lại
-            </Button>
-          </div>
-        ) : null}
-
-        {notes === null && !loadError ? (
-          <div className="flex flex-col gap-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="h-32 animate-pulse rounded-xl border border-border bg-muted/60" />
-            ))}
-          </div>
-        ) : null}
-
-        {notes !== null && notes.length === 0 && !isCreating ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
-            <NotebookPen className="h-8 w-8 text-muted-foreground" strokeWidth={1.4} />
-            <p className="text-sm text-muted-foreground">Bạn chưa có ghi chú nào. Bắt đầu bằng nút &quot;Ghi chú mới&quot;.</p>
-          </div>
-        ) : null}
-
-        {notes !== null ? (
-          <div className="flex flex-col gap-4">
-            {notes.map((note) =>
-              editingNoteId === note.id ? (
-                <NoteForm
-                  key={note.id}
-                  editingNoteId={note.id}
-                  initial={{ title: note.title ?? "", content: note.content, tag: note.tag ?? "" }}
-                  onCancel={() => setEditingNoteId(null)}
-                  onSaved={handleUpdated}
-                />
-              ) : (
-                <NoteCard
-                  key={note.id}
-                  note={note}
-                  onEdit={() => {
-                    setIsCreating(false);
-                    setEditingNoteId(note.id);
-                  }}
-                  onDelete={() => void handleDelete(note)}
-                />
-              )
-            )}
-          </div>
-        ) : null}
+        <div className="min-w-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto">
+          <NotesAskPanel ref={askPanelRef} />
+        </div>
       </div>
+
+      {selectedText.length > 0 ? (
+        <button
+          type="button"
+          data-testid="ask-about-selection"
+          // preventDefault on press keeps the selection alive until the click lands - otherwise the
+          // press itself collapses it on some browsers and the text is gone before we read it.
+          onPointerDown={(event) => event.preventDefault()}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => askPanelRef.current?.loadPassage(selectedText)}
+          className="fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-medium text-primary-foreground shadow-lg transition hover:bg-primary/90"
+        >
+          <Sparkles className="h-4 w-4 shrink-0" />
+          <span className="truncate">Hỏi AI về đoạn này</span>
+          <span className="shrink-0 text-xs font-light opacity-80">
+            {selectedText.length.toLocaleString("vi-VN")} ký tự
+          </span>
+        </button>
+      ) : null}
     </AuthenticatedLayout>
   );
 }

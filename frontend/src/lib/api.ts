@@ -156,6 +156,36 @@ function dispatchSseBlock(block: string, handlers: ChatStreamHandlers): void {
   }
 }
 
+// Shared by sendChatQuery and askAboutPassage - both routes speak the same SSE event format. Throws
+// ApiError for a non-2xx response (auth, rate limit, validation), which arrives before the stream
+// starts; failures after that arrive as an `error` event instead.
+async function readSseStream(response: Response, handlers: ChatStreamHandlers): Promise<void> {
+  if (!response.ok || response.body === null) {
+    const errorMessage = await response.text();
+    throw new ApiError(response.status, errorMessage || `Request failed with status ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+
+    let separatorIndex = buffer.indexOf("\n\n");
+    while (separatorIndex !== -1) {
+      dispatchSseBlock(buffer.slice(0, separatorIndex), handlers);
+      buffer = buffer.slice(separatorIndex + 2);
+      separatorIndex = buffer.indexOf("\n\n");
+    }
+  }
+}
+
 export async function sendChatQuery(
   question: string,
   conversationId: string | null,
@@ -181,30 +211,7 @@ export async function sendChatQuery(
     body: JSON.stringify(conversationId ? { question, conversation_id: conversationId } : { question })
   });
 
-  if (!response.ok || response.body === null) {
-    const errorMessage = await response.text();
-    throw new ApiError(response.status, errorMessage || `Request failed with status ${response.status}`);
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true });
-
-    let separatorIndex = buffer.indexOf("\n\n");
-    while (separatorIndex !== -1) {
-      dispatchSseBlock(buffer.slice(0, separatorIndex), handlers);
-      buffer = buffer.slice(separatorIndex + 2);
-      separatorIndex = buffer.indexOf("\n\n");
-    }
-  }
+  await readSseStream(response, handlers);
 }
 
 export async function getConversations(): Promise<ConversationSummary[]> {
@@ -351,9 +358,9 @@ export async function submitQuizV2(quizSetId: number, answers: QuizSubmitRequest
 }
 
 // ============================================================================
-// Vở ghi cá nhân (requirements.md "Feature - Vở ghi cá nhân + Chat trả lời dựa trên nội dung ghi
-// chú"). Storage/CRUD foundation only - NOT wired into Chat yet, always hits the real backend
-// (no NEXT_PUBLIC_USE_MOCK_DATA branch, same as the V2 quiz routes above).
+// Vở ghi cá nhân: CRUD plus Giai đoạn 2 "Hỏi AI trên đoạn được chọn" (askAboutPassage). Notes are
+// never read by Chat. Always hits the real backend (no NEXT_PUBLIC_USE_MOCK_DATA branch, same as
+// the V2 quiz routes above).
 // ============================================================================
 
 export async function getNotes(): Promise<Note[]> {
@@ -373,3 +380,30 @@ export async function deleteNote(noteId: string): Promise<void> {
   await apiFetch<void>(`/api/notes/${noteId}`, { method: "DELETE" });
 }
 
+// Same limit as the backend's NotesAskRequest.passage (backend/app/models/notes.py). Both count
+// UTF-16 units / code points the same way for Vietnamese text, which is all in the BMP.
+export const PASSAGE_MAX_CHARS = 3000;
+export const NOTES_QUESTION_MAX_CHARS = 2000;
+
+export type NotesAskHandlers = Pick<ChatStreamHandlers, "onCitations" | "onDelta" | "onStatus" | "onError">;
+
+// POST /api/notes/ask - SSE in the same format as /api/chat/query: status -> answer_delta (one,
+// the answer is checked before it is sent) -> citations -> done, or an `error` event. The passage
+// is sent to the model and discarded server-side; it is never stored.
+export async function askAboutPassage(
+  passage: string,
+  question: string,
+  conversationId: string | null,
+  handlers: NotesAskHandlers
+): Promise<void> {
+  const authHeader = await getAuthHeader();
+  const response = await fetch(`${getApiBaseUrl()}/api/notes/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader },
+    body: JSON.stringify(
+      conversationId ? { passage, question, conversation_id: conversationId } : { passage, question }
+    )
+  });
+
+  await readSseStream(response, { ...handlers, onSuggestedFollowups: () => {}, onGradingResult: () => {} });
+}
