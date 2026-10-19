@@ -112,8 +112,11 @@ CRIMES: dict[str, CrimeConfig] = {
 # group so a turn only sees its own slice.
 BLHS_GENERAL_PART: tuple[str, ...] = ("32", "35", "36", "38", "46", "47", "48", "50", "51", "52", "54", "65")
 
-# 243 (quyết định truy tố bằng bản cáo trạng) is what an indictment cites as its own basis.
-BLTTHS_ROLE_ARTICLES: tuple[str, ...] = ("42", "45", "46", "47", "61", "62", "65", "66", "72", "73", "243")
+# 243 (quyết định truy tố bằng bản cáo trạng) is what an indictment cites as its own basis. 13 (suy đoán
+# vô tội) and 106 (xử lý vật chứng) were cited naturally by the defence/prosecution in the B4 rerun
+# (2026-10-19) and rejected only because no slice held them; they now belong to the speech slices.
+BLTTHS_ROLE_ARTICLES: tuple[str, ...] = ("13", "42", "45", "46", "47", "61", "62", "65", "66", "72", "73", "106",
+                                         "243")
 
 BLTTHS_STEP_SLICES: dict[str, tuple[str, ...]] = {
     "opening": tuple(str(n) for n in range(288, 307)),       # steps 1-3
@@ -183,11 +186,11 @@ MAX_STATEMENT_SIMILARITY = 0.7
 CHARGE = "@charge"
 _SENTENCING = (CHARGE, "50", "51", "52", "54", "65", "38", "36", "35", "46", "47", "48")
 SLOT_LEGAL_SLICES: dict[str, dict[str, tuple[str, ...]]] = {
-    "luan_toi": {BLTTHS_DOCUMENT: ("319", "320", "321"), BLHS_DOCUMENT: _SENTENCING},
-    "bao_chua": {BLTTHS_DOCUMENT: ("320", "322"), BLHS_DOCUMENT: (CHARGE, "50", "51", "54", "65", "36", "38")},
-    "doi_dap": {BLTTHS_DOCUMENT: ("322", "323"), BLHS_DOCUMENT: (CHARGE, "51", "52", "54", "65")},
+    "luan_toi": {BLTTHS_DOCUMENT: ("106", "319", "320", "321"), BLHS_DOCUMENT: _SENTENCING},
+    "bao_chua": {BLTTHS_DOCUMENT: ("13", "320", "322"), BLHS_DOCUMENT: (CHARGE, "50", "51", "54", "65", "36", "38")},
+    "doi_dap": {BLTTHS_DOCUMENT: ("13", "322", "323"), BLHS_DOCUMENT: (CHARGE, "51", "52", "54", "65")},
     "nghi_an": {BLTTHS_DOCUMENT: ("298", "326"), BLHS_DOCUMENT: _SENTENCING},
-    "tuyen_an": {BLTTHS_DOCUMENT: ("260", "298", "327", "331", "333"), BLHS_DOCUMENT: _SENTENCING},
+    "tuyen_an": {BLTTHS_DOCUMENT: ("106", "260", "298", "327", "331", "333"), BLHS_DOCUMENT: _SENTENCING},
     "bi_hai_trinh_bay": {BLTTHS_DOCUMENT: ("320",), BLHS_DOCUMENT: (CHARGE,)},
     "loi_sau_cung": {BLTTHS_DOCUMENT: ("324",), BLHS_DOCUMENT: (CHARGE,)},
 }

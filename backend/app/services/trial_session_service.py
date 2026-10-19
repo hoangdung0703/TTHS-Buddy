@@ -97,10 +97,26 @@ def _render_tree(value: Any, case: CaseFile) -> Any:
     return value
 
 
+# Character cards are acting notes for the AI, not part of the file a KSV or defence lawyer reads:
+# showing them would tell the student in advance how each person will testify.
+HIDDEN_PERSON_FIELDS = ("stance", "knowledge", "demeanor")
+HIDDEN_CASE_FIELDS = ("defendant_plea",)
+
+
 def student_case_view(case: CaseFile) -> dict[str, Any]:
     """The hồ sơ the student's role may read (KSV and luật sư both read the file, BLTTHS Điều 73).
-    The knobs are generation internals and the verdict lives on the session, not here."""
-    return _render_tree(case.draft.model_dump(), case)
+    The knobs are generation internals, the character cards are hidden (HIDDEN_PERSON_FIELDS),
+    and the verdict lives on the session and is never returned."""
+    data = case.draft.model_dump()
+    for key in HIDDEN_CASE_FIELDS:
+        data.pop(key, None)
+    people = [data["defendant"], data["victim"], *data["witnesses"]]
+    if data.get("related_party"):
+        people.append(data["related_party"])
+    for person in people:
+        for key in HIDDEN_PERSON_FIELDS:
+            person.pop(key, None)
+    return _render_tree(data, case)
 
 
 def steps_view() -> list[dict[str, Any]]:

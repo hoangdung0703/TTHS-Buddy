@@ -147,8 +147,11 @@ SLOT_INSTRUCTIONS: dict[str, str] = {
     ),
     "answer_question": (
         "{asker_label} vừa đặt câu hỏi cho {addressee_id}. {addressee_id} trả lời câu hỏi cuối cùng đó, đúng lập "
-        "trường và hiểu biết của mình trong hồ sơ, 1-3 câu. Chỉ khi câu hỏi không liên quan tới vụ án, mang tính "
-        "xúc phạm hoặc là yêu cầu trái trình tự, {{CHU_TOA}} được nhắc nhở thay cho câu trả lời."
+        "trường và hiểu biết của mình trong hồ sơ, 1-3 câu. Nếu câu hỏi nêu một sự kiện hoặc con số trái hồ sơ, "
+        "câu ĐẦU TIÊN của câu trả lời phải phủ nhận ngay, theo mẫu: \"Thưa, không đúng ạ. Theo hồ sơ thì ...\" "
+        "(nêu sự việc hoặc con số đúng trong hồ sơ); tuyệt đối không nhắc lại con số sai. Chỉ khi câu hỏi không "
+        "liên quan tới vụ án, mang tính xúc phạm hoặc là yêu cầu trái trình tự, {{CHU_TOA}} được nhắc nhở thay cho "
+        "câu trả lời."
     ),
     "ai_qa_loop": (
         "{asker_label} ({asker_id}) tham gia xét hỏi (Điều 307 Bộ luật Tố tụng hình sự). {asker_id} đặt 3-5 câu hỏi "

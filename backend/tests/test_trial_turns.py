@@ -133,6 +133,12 @@ class SegmentGuardTests(unittest.TestCase):
         self.assertNotIn("900.000.000", " ".join(u.text for u in produced))
         self.assertIn("900.000.000", ctx.transcript[-2].text)       # stored verbatim
 
+    def test_answer_instruction_carries_the_correction_template(self):
+        from app.prompts.trial_prompts import SLOT_INSTRUCTIONS
+        text = SLOT_INSTRUCTIONS["answer_question"].format(asker_label="Kiểm sát viên", addressee_id="{BI_CAO}")
+        self.assertIn("Thưa, không đúng ạ. Theo hồ sơ thì", text)
+        self.assertIn("không nhắc lại con số sai", text)
+
     def test_legal_speaker_may_quote_a_threshold_from_the_law(self):
         text = seg(("CHU_TOA", "Khoản 1 Điều 173 Bộ luật Hình sự áp dụng khi tài sản trị giá dưới 50.000.000 đồng."),)
         ctx = make_ctx([text])

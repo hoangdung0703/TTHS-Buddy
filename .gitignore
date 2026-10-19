@@ -7,6 +7,9 @@ __pycache__/
 !frontend.md
 !DEPLOYMENT.md
 !ingestion/question_bank.TEMPLATE.md
+# Mock-trial design + frontend contract (no sample-judgment content; checked before each commit).
+!docs/phien-toa-gia-dinh/THIET-KE.md
+!docs/phien-toa-gia-dinh/API-CONTRACT.md
 /.next/
 frontend/.next/
 frontend/node_modules/

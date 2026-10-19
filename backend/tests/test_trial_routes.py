@@ -114,7 +114,7 @@ class TrialRouteTests(unittest.TestCase):
         app.dependency_overrides[trials_api.get_trial_repository] = lambda: self.repo
         app.dependency_overrides[require_supabase_user] = lambda: AuthUser(user_id=self.user, email=None, claims={})
         app.dependency_overrides[get_settings] = lambda: SimpleNamespace(gemini_chat_model="fake",
-                                                                         trial_court_name=None)
+                                                                         trial_court_name=None, trial_enabled=True)
         app.state.qdrant_client = None
         limiter.enabled = False
         self.client = TestClient(app)
@@ -187,7 +187,11 @@ class TrialRouteTests(unittest.TestCase):
         self.assertNotIn("{BI_CAO}", text)
         detail = self.client.get(f"/api/trials/{sid}").json()
         self.assertEqual(detail["state"]["status"], "completed")
-        self.assertNotIn("verdict_json", json.dumps(detail))
+        dumped = json.dumps(detail)
+        for hidden in ("verdict_json", "reasoning_summary", "knobs", '"stance"', '"knowledge"', '"demeanor"',
+                       "defendant_plea"):
+            self.assertNotIn(hidden, dumped)
+        self.assertNotIn("{BI_CAO}", json.dumps(detail["case_file"]))   # names rendered
 
     def test_a_b_invented_or_wrong_code_citation_in_judgment_pauses_then_recovers(self):
         sid, state = self.create()
@@ -357,6 +361,34 @@ class TrialRouteTests(unittest.TestCase):
         self.assertEqual(response.json()["error"]["code"], "trial_daily_case_limit")
         self.assertEqual(self.client.post("/api/trials", json={"crime_key": "blhs_249",
                                                                "user_role": "ksv"}).status_code, 400)
+
+    def test_feature_flag_off_hides_every_route(self):
+        sid, state = self.create()
+        app.dependency_overrides[get_settings] = lambda: SimpleNamespace(gemini_chat_model="fake",
+                                                                         trial_court_name=None, trial_enabled=False)
+        anonymous = TestClient(app)
+        del app.dependency_overrides[require_supabase_user]   # no auth at all: still 404, never 401
+        for method, path, body in (("get", "/api/trials", None), ("post", "/api/trials", {"crime_key": "blhs_173",
+                                    "user_role": "ksv"}), ("get", f"/api/trials/{sid}", None),
+                                   ("post", f"/api/trials/{sid}/turn", {"expected_step": 1, "expected_version": 0,
+                                                                         "action": "continue"}),
+                                   ("post", f"/api/trials/{sid}/abandon", None), ("delete", f"/api/trials/{sid}", None),
+                                   ("get", f"/api/trials/{sid}/record", None)):
+            response = getattr(anonymous, method)(path, **({"json": body} if body is not None else {}))
+            self.assertEqual(response.status_code, 404, (method, path))
+            self.assertEqual(response.json(), anonymous.get("/api/no-such-route").json())
+
+    def test_list_carries_config_and_remaining_quota(self):
+        config = self.client.get("/api/trials").json()["config"]
+        self.assertEqual({c["crime_key"] for c in config["crimes"]}, {"blhs_173", "blhs_174", "blhs_134", "blhs_171"})
+        self.assertEqual(config["user_roles"], ["ksv", "luat_su"])
+        self.assertEqual(config["limits"], {"max_cases_per_day": 5, "max_active_sessions": 3, "max_witnesses": 2,
+                                            "abandon_after_days": 14})
+        self.assertEqual(config["remaining"], {"cases_today": 5, "active_sessions": 3})
+        self.create()
+        self.create()
+        self.assertEqual(self.client.get("/api/trials").json()["config"]["remaining"],
+                         {"cases_today": 3, "active_sessions": 1})
 
     def test_lazy_abandon_and_hard_delete(self):
         sid, state = self.create()

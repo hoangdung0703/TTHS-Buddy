@@ -64,8 +64,36 @@ class TrialSummaryOut(BaseModel):
     updated_at: datetime
 
 
+class TrialCrimeOut(BaseModel):
+    crime_key: str
+    crime_name: str
+    dieu: str
+    allowed_khoan: list[str]
+
+
+class TrialLimitsOut(BaseModel):
+    max_cases_per_day: int
+    max_active_sessions: int
+    max_witnesses: int
+    abandon_after_days: int
+
+
+class TrialRemainingOut(BaseModel):
+    cases_today: int
+    active_sessions: int
+
+
+class TrialConfigOut(BaseModel):
+    crimes: list[TrialCrimeOut]
+    user_roles: list[str]
+    limits: TrialLimitsOut
+    remaining: TrialRemainingOut
+
+
 class TrialListResponse(BaseModel):
     sessions: list[TrialSummaryOut]
+    # Everything the new-hearing screen needs, in the same call (no separate config route).
+    config: TrialConfigOut
 
 
 class TrialDetailResponse(BaseModel):

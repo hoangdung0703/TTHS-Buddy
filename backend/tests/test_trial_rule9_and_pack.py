@@ -54,9 +54,11 @@ class LegalPackTests(unittest.TestCase):
     def test_slot_slices_are_trimmed_and_carry_what_each_speech_needs(self):
         pack = pack_for("blhs_173")
         closing = {a.key for a in pack.slice_for_step(8, "173")}
-        expected = {"luan_toi": {("321", BLTTHS_DOCUMENT), ("52", BLHS_DOCUMENT)},
-                    "bao_chua": {("322", BLTTHS_DOCUMENT), ("65", BLHS_DOCUMENT)},
-                    "tuyen_an": {("327", BLTTHS_DOCUMENT), ("331", BLTTHS_DOCUMENT), ("51", BLHS_DOCUMENT)}}
+        expected = {"luan_toi": {("321", BLTTHS_DOCUMENT), ("106", BLTTHS_DOCUMENT), ("52", BLHS_DOCUMENT)},
+                    "bao_chua": {("322", BLTTHS_DOCUMENT), ("13", BLTTHS_DOCUMENT), ("65", BLHS_DOCUMENT)},
+                    "doi_dap": {("322", BLTTHS_DOCUMENT), ("13", BLTTHS_DOCUMENT)},
+                    "tuyen_an": {("327", BLTTHS_DOCUMENT), ("331", BLTTHS_DOCUMENT), ("106", BLTTHS_DOCUMENT),
+                                 ("51", BLHS_DOCUMENT)}}
         for slot, needed in expected.items():
             keys = {a.key for a in pack.slice_for_slot(slot, 8, "173")}
             with self.subTest(slot=slot):

@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.chat import _sse_format
 from app.core import request_telemetry as telemetry
@@ -32,11 +33,15 @@ from app.models.auth import AuthUser
 from app.models.chat import ChatStreamErrorEvent, ChatStreamStatusEvent
 from app.models.trial import CaseOptions
 from app.models.trial_api import (
+    TrialConfigOut,
     TrialCreateRequest,
+    TrialCrimeOut,
     TrialDetailResponse,
+    TrialLimitsOut,
     TrialDoneEvent,
     TrialListResponse,
     TrialRecordResponse,
+    TrialRemainingOut,
     TrialSessionEvent,
     TrialTurnRequest,
 )
@@ -63,14 +68,34 @@ from app.services.trial_session_service import (
     utterance_out,
     utterance_rows,
 )
-from app.services.trial_state_machine import STEP_BY_NUMBER, TrialConflict, UserAction, awaiting, new_session
+from app.services.trial_state_machine import (
+    PHASE1_USER_ROLES,
+    STEP_BY_NUMBER,
+    TrialConflict,
+    UserAction,
+    awaiting,
+    new_session,
+)
 from app.services.trial_turn_service import TrialContext, TrialGuardFailure, Utterance, apply_student_action, run_ai_turn
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/trials", tags=["trials"])
+def require_trial_enabled(settings: Settings = Depends(get_settings)) -> None:
+    """Feature flag TRIAL_ENABLED. Router-level, so it runs before authentication: with the flag
+    off even an anonymous request gets the same 404 as an unknown path, and the response never
+    reveals that the feature exists."""
+    if not getattr(settings, "trial_enabled", False):
+        # Starlette's own HTTPException, not FastAPI's: the app's handler (core/middleware.py) only
+        # catches the FastAPI subclass, so this one renders exactly like an unknown path -
+        # {"detail": "Not Found"} - instead of the app's {"error": ...} envelope.
+        raise StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+
+router = APIRouter(prefix="/api/trials", tags=["trials"], dependencies=[Depends(require_trial_enabled)])
 
 VIETNAM_TZ = timezone(timedelta(hours=7))
+# Must match TrialCreateRequest.witness_count's bound.
+MAX_WITNESSES = 2
 # An AI turn takes seconds (spike: <= 15s for one call, two calls with a regeneration); a lock
 # older than this belongs to a worker that died and is ignored.
 GENERATION_LOCK_SECONDS = 180
@@ -215,9 +240,21 @@ async def run_ai_stream(repo: TrialRepository, user_id: str, session_id: str, ct
 @limiter.limit(DEFAULT_RATE_LIMIT)
 async def list_trials(request: Request, current_user: AuthUser = Depends(require_supabase_user),
                       repo: TrialRepository = Depends(get_trial_repository)) -> TrialListResponse:
-    await asyncio.to_thread(repo.abandon_stale, current_user.user_id, _stale_cutoff())
-    rows = await asyncio.to_thread(repo.list_sessions, current_user.user_id)
-    return TrialListResponse(sessions=[summary_out(r) for r in rows])
+    user_id = current_user.user_id
+    await asyncio.to_thread(repo.abandon_stale, user_id, _stale_cutoff())
+    rows = await asyncio.to_thread(repo.list_sessions, user_id)
+    cases_today = await asyncio.to_thread(repo.count_cases_since, user_id, _today_start_utc())
+    active = sum(1 for r in rows if r["status"] == "active")
+    config = TrialConfigOut(
+        crimes=[TrialCrimeOut(crime_key=c.key, crime_name=c.crime_name, dieu=c.dieu, allowed_khoan=list(c.allowed_khoan))
+                for c in CRIMES.values()],
+        user_roles=sorted(PHASE1_USER_ROLES),
+        limits=TrialLimitsOut(max_cases_per_day=MAX_CASES_PER_DAY, max_active_sessions=MAX_ACTIVE_SESSIONS,
+                              max_witnesses=MAX_WITNESSES, abandon_after_days=ABANDON_AFTER_DAYS),
+        remaining=TrialRemainingOut(cases_today=max(0, MAX_CASES_PER_DAY - cases_today),
+                                    active_sessions=max(0, MAX_ACTIVE_SESSIONS - active)),
+    )
+    return TrialListResponse(sessions=[summary_out(r) for r in rows], config=config)
 
 
 @router.post("")

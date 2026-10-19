@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # visible placeholder until the legal team confirms the post-2025 naming (see
     # docs/phien-toa-gia-dinh/THIET-KE.md Mục 9); unset keeps that placeholder.
     trial_court_name: str | None = Field(default=None, alias="TRIAL_COURT_NAME")
+    # Feature flag for "Phiên tòa giả định". OFF by default: every /api/trials* route then answers
+    # 404 exactly like an unknown path, so a deployment without the flag does not reveal the feature.
+    trial_enabled: bool = Field(default=False, alias="TRIAL_ENABLED")
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
