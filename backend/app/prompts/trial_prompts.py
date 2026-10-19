@@ -49,8 +49,8 @@ theo văn bản luật được cung cấp. Không dùng điểm hoặc tình ti
 2. Mọi người tham gia đều từ 18 tuổi trở lên. Không có người dưới 18 tuổi ở bất kỳ vai trò hay tình tiết nào.
 3. KHÔNG đặt tên người. Gọi người bằng placeholder: {BI_CAO}, {BI_HAI}, {NLC_1}, {NLC_2}, {NLQ}; người tiến hành \
 tố tụng: {CHU_TOA}, {KSV}, {THU_KY}, {LUAT_SU}. Không dùng tên người thật, tên tổ chức thật hay địa danh thật.
-4. Nơi cư trú (residence_place) chọn đúng một trong danh sách địa danh giả định được cho. Địa điểm trong các sự việc \
-cũng chỉ dùng các địa danh đó (có thể kèm mô tả chung như "một quán cà phê tại phường A, tỉnh X").
+4. Nơi cư trú của từng người do hệ thống gán, không cần ghi. Địa điểm trong các sự việc chỉ dùng các địa danh giả \
+định được cho (có thể kèm mô tả chung như "một quán cà phê tại phường A, tỉnh X"); không dùng địa danh thật.
 5. measure_value là con số quyết định khoản (giá trị tài sản bằng đồng, hoặc tỷ lệ tổn thương cơ thể %). Phải có \
 một chứng cứ kết luận định giá (type=dinh_gia, value_vnd) hoặc kết luận giám định (type=giam_dinh, injury_percent) \
 bằng đúng con số đó. Mọi số tiền và tỷ lệ % viết trong bất kỳ trường văn bản nào phải trùng với một giá trị đã khai \

@@ -20,6 +20,7 @@ from app.services.trial_state_machine import (
     SessionState,
     allowed_actions,
     awaiting,
+    text_limits,
 )
 from app.services.trial_turn_service import TrialContext, Utterance, role_of
 
@@ -74,9 +75,11 @@ def state_out(session_id: str, state: SessionState, guard_exhausted: bool = Fals
     actions = allowed_actions(state)
     if state.status == "active" and awaiting(state) == "ai":
         actions = [] if guard_exhausted else ["continue"]
+    limits = text_limits(state)
     return TrialStateOut(session_id=session_id, current_step=state.current_step,
                          step_title=STEP_BY_NUMBER[state.current_step].title, status=state.status,
-                         awaiting=awaiting(state), allowed_actions=actions, version=state.version)
+                         awaiting=awaiting(state), allowed_actions=actions, version=state.version,
+                         text_limits={"min": limits[0], "max": limits[1]} if limits else None)
 
 
 def utterance_out(u: Utterance, case: CaseFile) -> TrialUtteranceOut:

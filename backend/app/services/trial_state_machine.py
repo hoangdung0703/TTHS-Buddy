@@ -267,6 +267,23 @@ def allowed_actions(state: SessionState) -> list[str]:
     return actions
 
 
+# Student text length per slot (characters). Single source: the turn route enforces it and the
+# state sent to the client carries it (text_limits), so the frontend never derives it.
+SHORT_TEXT_MAX_CHARS = 1500
+LONG_TEXT_MAX_CHARS = 6000
+LONG_TEXT_SLOT_KINDS = frozenset({"long_speech", "debate", "indictment"})
+
+
+def text_limits(state: SessionState) -> tuple[int, int] | None:
+    """(min, max) characters for the student's next "speak", or None when speaking is not allowed."""
+    if not any(a == "speak" or a.startswith("speak:") for a in allowed_actions(state)):
+        return None
+    slot = current_slot(state)
+    assert slot is not None
+    return (max(1, slot.min_chars),
+            LONG_TEXT_MAX_CHARS if slot.kind in LONG_TEXT_SLOT_KINDS else SHORT_TEXT_MAX_CHARS)
+
+
 def apply_user_action(state: SessionState, action: UserAction) -> ActionOutcome:
     if state.status != "active":
         raise TrialConflict("not_active", state)

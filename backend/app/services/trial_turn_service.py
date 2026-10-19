@@ -66,6 +66,7 @@ from app.services.trial_state_machine import (
     current_slot,
     is_user_slot,
     skip_refusal_text,
+    text_limits,
 )
 from app.services.trial_verdict_guard import check_verdict, normalise_verdict
 
@@ -76,7 +77,6 @@ SPEECH_TEMPERATURE = 0.6
 VERDICT_TEMPERATURE = 0.2
 MAX_ATTEMPTS = 2
 TRANSCRIPT_CHAR_BUDGET = 20_000
-STUDENT_TEXT_MAX_CHARS = {"default": 1500, "long": 6000}
 # unknown_amount is hard since 2026-10-19 (B4 rerun conditions): a money amount the case does not
 # hold must never come out of an AI character - a student asserting a false amount was echoed
 # back in B4. unknown_percent stays a soft flag.
@@ -586,10 +586,8 @@ async def run_until_user(ctx: TrialContext) -> list[Utterance]:
 def apply_student_action(ctx: TrialContext, action: UserAction) -> list[Utterance]:
     """Validate and record the student's action. Raises TrialConflict (409) on any rule break.
     The student's text is stored verbatim; masking applies only when it is put into a prompt."""
-    slot = current_slot(ctx.state)
-    limit = STUDENT_TEXT_MAX_CHARS["long" if slot is not None and slot.kind in ("long_speech", "debate",
-                                                                                 "indictment") else "default"]
-    if action.kind == "speak" and action.text and len(action.text) > limit:
+    limits = text_limits(ctx.state)
+    if action.kind == "speak" and action.text and limits is not None and len(action.text) > limits[1]:
         raise TrialConflict("text_too_long", ctx.state)
     outcome = apply_user_action(ctx.state, action)
     produced: list[Utterance] = []

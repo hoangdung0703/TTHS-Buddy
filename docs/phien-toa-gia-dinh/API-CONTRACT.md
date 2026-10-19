@@ -176,12 +176,21 @@ Body:
 
 `expected_step` và `expected_version` phải bằng `state.current_step` và `state.version` mới nhất.
 
-Giới hạn `text` (đếm theo ký tự):
-- Tối đa 6000 theo schema; vượt thì 422.
-- Ở slot thường (nêu ý kiến, đặt câu hỏi), tối đa 1500; vượt thì 409 `trial_text_too_long`.
-- Công bố cáo trạng: tối thiểu 100.
-- Luận tội, bào chữa: tối thiểu 300; thiếu thì 409 `trial_text_too_short`.
-- Đối đáp: tối đa 6000.
+Giới hạn `text` (đếm theo ký tự). **Lấy từ `state.text_limits`**, không tự suy ở client. Bảng dưới chỉ để tham khảo; nguồn duy nhất là `trial_state_machine.text_limits`:
+
+| Slot | min | max |
+|---|---|---|
+| Bước 2: ý kiến về thay đổi người tiến hành tố tụng | 1 | 1500 |
+| Bước 3: công bố cáo trạng | 100 | **6000** |
+| Bước 5: câu hỏi | 1 | 1500 |
+| Bước 6: luận tội / Bước 7: bào chữa | 300 | 6000 |
+| Bước 8: đối đáp | 1 | 6000 |
+
+Lỗi khi vượt giới hạn:
+- Vượt `max` của slot: 409 `trial_text_too_long`.
+- Dưới `min` của slot: 409 `trial_text_too_short`.
+- Chuỗi rỗng: 409 `trial_empty_text`.
+- Trên 6000: luôn 422, do schema chặn trước.
 
 Kiểm trước khi stream: 401, 404, 409 (Mục 6), 422, 429 (`rate_limit_exceeded`).
 
@@ -282,7 +291,8 @@ Payload `utterance`:
   "status": "active",
   "awaiting": "user",
   "allowed_actions": ["speak:BI_CAO|BI_HAI|NLC_1", "end_slot"],
-  "version": 17
+  "version": 17,
+  "text_limits": { "min": 1, "max": 1500 }
 }
 ```
 
@@ -293,12 +303,13 @@ Payload `utterance`:
 | `awaiting` | `user`: đến lượt người dùng. `ai`: AI còn nợ một lượt (thường chỉ thấy khi stream bị đứt, hoặc sau lần tạm nghỉ). `none`: phiên đã kết thúc |
 | `allowed_actions` | Danh sách hành động duy nhất được phép. Giao diện **chỉ** hiện nút hoặc ô nhập tương ứng |
 | `version` | Tăng sau mỗi thay đổi. Gửi lại đúng giá trị này trong `expected_version` |
+| `text_limits` | `{min, max}` số ký tự cho lần `speak` kế tiếp ở slot hiện tại; `null` khi không có action nói. Dùng cho bộ đếm, khóa nút gửi và câu nhắc ("cần ít nhất 300 ký tự") |
 
 Các dạng `allowed_actions`:
 
 | Giá trị | Giao diện |
 |---|---|
-| `speak` | Ô nhập lời. Bước 3: textarea, có thể điền sẵn `case_file.indictment_text` cho KSV đọc. Bước 6/7: textarea lớn có bộ đếm và ngưỡng 300 ký tự. Bước 8: ô đối đáp |
+| `speak` | Ô nhập lời. Bước 3: textarea, có thể điền sẵn `case_file.indictment_text` cho KSV đọc. Bước 6/7: textarea lớn có bộ đếm. Bước 8: ô đối đáp. Ngưỡng lấy từ `text_limits` |
 | `speak:ID1\|ID2\|...` | Bước 5: chọn người được hỏi trong các id liệt kê (gửi `addressee`), cùng ô nhập câu hỏi |
 | `end_slot` | Nút "Kết thúc phần hỏi của tôi" (bước 5), "Kết thúc đối đáp" (bước 8), hoặc "Không có ý kiến" (bước 2) |
 | `advance:N` | Nút "Chuyển sang phần tiếp theo" (gửi `target_step: N`) |
@@ -359,7 +370,7 @@ Body của 409:
 
 ## 7. `case_file` (panel hồ sơ vụ án)
 
-Có trong `GET /{id}`. Tên người đã điền sẵn; địa danh là địa danh giả định ("phường A, tỉnh X"). Server **không bao giờ** trả quyết định nghị án (`verdict_json`), lý do nghị án, các tham số dựng vụ án, hay "thẻ nhân vật". Nội dung phần quyết định chỉ xuất hiện dưới dạng lời tuyên án trong `utterances` ở bước 11.
+Có trong `GET /{id}`. Tên người đã điền sẵn. Nơi cư trú do code gán từ danh sách địa danh giả định ("phường A, tỉnh X"...), giống cách gán tên người; model không đặt nơi cư trú. Server **không bao giờ** trả quyết định nghị án (`verdict_json`), lý do nghị án, các tham số dựng vụ án, hay "thẻ nhân vật". Nội dung phần quyết định chỉ xuất hiện dưới dạng lời tuyên án trong `utterances` ở bước 11.
 
 ```json
 {
