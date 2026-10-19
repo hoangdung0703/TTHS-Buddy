@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # development only; not set on Render. Before 2026-10-18 all three were always on in production,
     # publishing every route, parameter and response shape of the API.
     enable_api_docs: bool = Field(default=False, alias="ENABLE_API_DOCS")
+    # "Phiên tòa giả định": the court name printed on simulated hearings and records. Left as a
+    # visible placeholder until the legal team confirms the post-2025 naming (see
+    # docs/phien-toa-gia-dinh/THIET-KE.md Mục 9); unset keeps that placeholder.
+    trial_court_name: str | None = Field(default=None, alias="TRIAL_COURT_NAME")
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:

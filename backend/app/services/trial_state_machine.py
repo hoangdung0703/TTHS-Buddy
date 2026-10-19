@@ -1,0 +1,392 @@
+"""The 11-step state machine for "Phiên tòa giả định" (design doc Mục 2.1).
+
+Pure logic, no I/O: the session repository (chặng 2) loads a SessionState, calls these functions,
+and persists the result with "update ... where id = $1 and version = $expected". The LLM never
+touches state: it only writes the utterances of slots this module hands to the AI, so no prompt,
+injection or model mistake can skip xét hỏi or tranh luận.
+
+Each step is data (StepSpec) holding its slots in the order the law prescribes. A slot names the
+ROLE that acts in it; at runtime a slot whose role equals the student's role is a student turn and
+every other slot is an AI turn. One script therefore serves every role - adding the Bị cáo or Chủ
+tọa role later needs UI for that role's actions, not a new engine.
+"""
+from __future__ import annotations
+
+import re
+import unicodedata
+from dataclasses import dataclass, replace
+from typing import Literal
+
+Role = Literal["chu_toa", "hoi_tham", "thu_ky", "ksv", "luat_su", "bi_cao", "bi_hai",
+               "nguoi_lam_chung", "nguoi_lq", "hdxx"]
+SlotKind = Literal["template", "segment", "speech", "indictment", "qa_loop", "long_speech", "debate",
+                   "deliberation"]
+Requirement = Literal["witnesses", "victim_present", "related_party"]
+
+ROLE_LABELS: dict[str, str] = {
+    "chu_toa": "Chủ tọa", "hoi_tham": "Hội thẩm", "thu_ky": "Thư ký", "ksv": "Kiểm sát viên",
+    "luat_su": "Luật sư bào chữa", "bi_cao": "Bị cáo", "bi_hai": "Bị hại",
+    "nguoi_lam_chung": "Người làm chứng", "nguoi_lq": "Người có quyền lợi, nghĩa vụ liên quan",
+    "hdxx": "Hội đồng xét xử",
+}
+
+# Participant ids per role; witnesses expand to NLC_1..NLC_n.
+ROLE_TO_IDS: dict[str, tuple[str, ...]] = {
+    "chu_toa": ("CHU_TOA",), "hoi_tham": ("HOI_THAM_1", "HOI_THAM_2"), "thu_ky": ("THU_KY",),
+    "ksv": ("KSV",), "luat_su": ("LUAT_SU",), "bi_cao": ("BI_CAO",), "bi_hai": ("BI_HAI",),
+    "nguoi_lq": ("NLQ",), "hdxx": ("CHU_TOA", "HOI_THAM_1", "HOI_THAM_2"),
+}
+LAY_IDS_PREFIXES = ("BI_CAO", "BI_HAI", "NLC_", "NLQ")
+PHASE1_USER_ROLES: frozenset[str] = frozenset({"ksv", "luat_su"})
+
+
+@dataclass(frozen=True)
+class SlotSpec:
+    key: str
+    role: Role
+    kind: SlotKind
+    # AI segments: who may speak (role names; "nguoi_lam_chung" expands to the case's witnesses).
+    speakers: tuple[str, ...] = ()
+    requires: Requirement | None = None
+    min_user_turns: int = 0
+    max_user_turns: int = 1
+    min_chars: int = 0
+    # Debate only: the other side.
+    opponent: Role | None = None
+
+
+@dataclass(frozen=True)
+class StepSpec:
+    number: int
+    title: str
+    legal_basis: tuple[str, ...]  # BLTTHS Điều numbers
+    slots: tuple[SlotSpec, ...]
+
+
+STEPS: tuple[StepSpec, ...] = (
+    StepSpec(1, "Thư ký báo cáo sự có mặt", ("300", "288", "289", "290", "291", "292", "293"), (
+        SlotSpec("bao_cao_co_mat", "thu_ky", "template"),
+    )),
+    StepSpec(2, "Khai mạc phiên tòa", ("301", "302", "303", "304", "305"), (
+        SlotSpec("khai_mac", "chu_toa", "segment", speakers=("chu_toa", "bi_cao")),
+        SlotSpec("y_kien_ksv_thay_doi", "ksv", "speech", min_user_turns=0),
+        SlotSpec("y_kien_ls_thay_doi", "luat_su", "speech", min_user_turns=0),
+        SlotSpec("cam_doan_nlc", "chu_toa", "segment", speakers=("chu_toa", "nguoi_lam_chung"),
+                 requires="witnesses"),
+    )),
+    StepSpec(3, "Công bố cáo trạng", ("306",), (
+        SlotSpec("cong_bo_cao_trang", "ksv", "indictment", min_user_turns=1, min_chars=100),
+    )),
+    StepSpec(4, "Hội đồng xét xử xét hỏi", ("307", "308", "309", "310", "311", "312"), (
+        SlotSpec("hdxx_hoi_bi_cao", "chu_toa", "segment", speakers=("chu_toa", "hoi_tham", "bi_cao")),
+        SlotSpec("hdxx_hoi_nguoi_khac", "chu_toa", "segment",
+                 speakers=("chu_toa", "hoi_tham", "bi_hai", "nguoi_lam_chung", "nguoi_lq")),
+    )),
+    StepSpec(5, "Kiểm sát viên và luật sư xét hỏi", ("307", "309", "310", "311", "317", "318"), (
+        SlotSpec("ksv_hoi", "ksv", "qa_loop", min_user_turns=1, max_user_turns=8),
+        SlotSpec("ls_hoi", "luat_su", "qa_loop", min_user_turns=1, max_user_turns=8),
+        SlotSpec("ket_thuc_xet_hoi", "chu_toa", "template"),
+    )),
+    StepSpec(6, "Kiểm sát viên luận tội", ("319", "320", "321"), (
+        SlotSpec("luan_toi", "ksv", "long_speech", min_user_turns=1, min_chars=300),
+    )),
+    StepSpec(7, "Luật sư bào chữa", ("320", "322"), (
+        SlotSpec("bao_chua", "luat_su", "long_speech", min_user_turns=1, min_chars=300),
+        SlotSpec("bi_hai_trinh_bay", "chu_toa", "segment", speakers=("chu_toa", "bi_hai"),
+                 requires="victim_present"),
+    )),
+    StepSpec(8, "Tranh luận, đối đáp", ("322",), (
+        SlotSpec("doi_dap", "ksv", "debate", opponent="luat_su", min_user_turns=1, max_user_turns=3),
+        SlotSpec("ket_thuc_tranh_luan", "chu_toa", "template"),
+    )),
+    StepSpec(9, "Bị cáo nói lời sau cùng", ("324",), (
+        SlotSpec("loi_sau_cung", "chu_toa", "segment", speakers=("chu_toa", "bi_cao")),
+    )),
+    StepSpec(10, "Nghị án", ("326",), (
+        SlotSpec("vao_nghi_an", "chu_toa", "template"),
+        SlotSpec("nghi_an", "hdxx", "deliberation"),
+    )),
+    StepSpec(11, "Tuyên án", ("327", "260", "298"), (
+        SlotSpec("tuyen_an", "chu_toa", "long_speech"),
+    )),
+)
+STEP_BY_NUMBER: dict[int, StepSpec] = {s.number: s for s in STEPS}
+LAST_STEP = len(STEPS)
+
+
+@dataclass(frozen=True)
+class CaseShape:
+    victim_present: bool
+    witness_count: int
+    has_related_party: bool
+
+    def satisfies(self, requirement: Requirement | None) -> bool:
+        if requirement is None:
+            return True
+        return {"witnesses": self.witness_count > 0, "victim_present": self.victim_present,
+                "related_party": self.has_related_party}[requirement]
+
+    def ids_for_role(self, role: str) -> tuple[str, ...]:
+        if role == "nguoi_lam_chung":
+            return tuple(f"NLC_{i}" for i in range(1, self.witness_count + 1))
+        if role == "bi_hai" and not self.victim_present:
+            return ()
+        if role == "nguoi_lq" and not self.has_related_party:
+            return ()
+        return ROLE_TO_IDS[role]
+
+    def lay_present_ids(self) -> tuple[str, ...]:
+        ids = ["BI_CAO"]
+        ids += list(self.ids_for_role("bi_hai"))
+        ids += list(self.ids_for_role("nguoi_lam_chung"))
+        ids += list(self.ids_for_role("nguoi_lq"))
+        return tuple(ids)
+
+
+@dataclass(frozen=True)
+class SessionState:
+    user_role: Role
+    shape: CaseShape
+    current_step: int = 1
+    slot_index: int = 0
+    version: int = 0
+    status: Literal["active", "completed", "abandoned"] = "active"
+    slot_user_turns: int = 0
+    # True while the AI owes a reply inside a loop slot (an answer, a debate response) or the
+    # AI owns the slot outright.
+    pending_ai: bool = False
+
+
+class TrialConflict(Exception):
+    """Maps to HTTP 409. `code` is stable and safe to log; never contains student text."""
+
+    def __init__(self, code: str, state: SessionState):
+        super().__init__(code)
+        self.code = code
+        self.state = state
+
+
+def active_slots(step: int, shape: CaseShape) -> tuple[SlotSpec, ...]:
+    return tuple(s for s in STEP_BY_NUMBER[step].slots if shape.satisfies(s.requires))
+
+
+def current_slot(state: SessionState) -> SlotSpec | None:
+    slots = active_slots(state.current_step, state.shape)
+    return slots[state.slot_index] if state.slot_index < len(slots) else None
+
+
+def is_user_slot(slot: SlotSpec, user_role: str) -> bool:
+    if slot.kind == "debate":
+        return user_role in (slot.role, slot.opponent)
+    return slot.role == user_role
+
+
+def ai_speaker_ids(slot: SlotSpec, state: SessionState) -> tuple[str, ...]:
+    """The enum of speaker ids an AI segment for this slot may use - never the student's role."""
+    user_ids = set(ROLE_TO_IDS.get(state.user_role, ()))
+    ids: list[str] = []
+    for role in slot.speakers:
+        ids.extend(i for i in state.shape.ids_for_role(role) if i not in user_ids)
+    return tuple(dict.fromkeys(ids))
+
+
+def _enter(state: SessionState) -> SessionState:
+    """Normalise after moving onto a slot: AI-owned slots and debates the AI opens are pending."""
+    slot = current_slot(state)
+    if slot is None:
+        if state.current_step == LAST_STEP:
+            return replace(state, status="completed", pending_ai=False)
+        return replace(state, pending_ai=False)
+    if not is_user_slot(slot, state.user_role):
+        return replace(state, pending_ai=True)
+    if slot.kind == "debate" and state.user_role != slot.role and state.slot_user_turns == 0:
+        return replace(state, pending_ai=True)  # the AI side opens the debate
+    return replace(state, pending_ai=False)
+
+
+def new_session(user_role: Role, shape: CaseShape) -> SessionState:
+    if user_role not in PHASE1_USER_ROLES:
+        raise ValueError(f"Role not enabled: {user_role}")
+    return _enter(SessionState(user_role=user_role, shape=shape))
+
+
+def _next_slot(state: SessionState) -> SessionState:
+    return _enter(replace(state, slot_index=state.slot_index + 1, slot_user_turns=0, pending_ai=False,
+                          version=state.version + 1))
+
+
+def awaiting(state: SessionState) -> Literal["ai", "user", "none"]:
+    if state.status != "active":
+        return "none"
+    return "ai" if state.pending_ai else "user"
+
+
+def step_complete(state: SessionState) -> bool:
+    return current_slot(state) is None
+
+
+@dataclass(frozen=True)
+class UserAction:
+    kind: Literal["speak", "end_slot", "advance"]
+    expected_step: int
+    expected_version: int
+    text: str | None = None
+    addressee: str | None = None
+    target_step: int | None = None
+
+
+@dataclass(frozen=True)
+class ActionOutcome:
+    state: SessionState
+    # "accepted" (the action counted), or "skip_refused" (the student asked, in words, to jump
+    # ahead: their utterance is recorded and Chủ tọa answers with a canned reminder - no LLM call).
+    result: Literal["accepted", "skip_refused"]
+    skip_target: int | None = None
+
+
+def allowed_actions(state: SessionState) -> list[str]:
+    if awaiting(state) != "user":
+        return []
+    slot = current_slot(state)
+    if slot is None:
+        return [f"advance:{state.current_step + 1}"]
+    actions: list[str] = []
+    if slot.kind == "qa_loop":
+        actions.append("speak:" + "|".join(state.shape.lay_present_ids()))
+        if state.slot_user_turns >= slot.min_user_turns:
+            actions.append("end_slot")
+    elif slot.kind == "debate":
+        if state.slot_user_turns < slot.max_user_turns:
+            actions.append("speak")
+        if state.slot_user_turns >= slot.min_user_turns:
+            actions.append("end_slot")
+    else:
+        actions.append("speak")
+        if slot.min_user_turns == 0:
+            actions.append("end_slot")
+    return actions
+
+
+def apply_user_action(state: SessionState, action: UserAction) -> ActionOutcome:
+    if state.status != "active":
+        raise TrialConflict("not_active", state)
+    if action.expected_version != state.version:
+        raise TrialConflict("version_mismatch", state)
+    if action.expected_step != state.current_step:
+        raise TrialConflict("step_mismatch", state)
+    if awaiting(state) != "user":
+        raise TrialConflict("not_your_turn", state)
+    slot = current_slot(state)
+
+    if action.kind == "advance":
+        if action.target_step != state.current_step + 1:
+            raise TrialConflict("skip_not_allowed", state)
+        if slot is not None:
+            raise TrialConflict("slot_not_finished", state)
+        return ActionOutcome(_enter(replace(state, current_step=state.current_step + 1, slot_index=0,
+                                            slot_user_turns=0, version=state.version + 1)), "accepted")
+
+    if slot is None:
+        raise TrialConflict("action_not_allowed", state)
+
+    if action.kind == "end_slot":
+        if slot.kind not in ("qa_loop", "debate", "speech") or state.slot_user_turns < slot.min_user_turns:
+            raise TrialConflict("slot_not_finished", state)
+        return ActionOutcome(_next_slot(state), "accepted")
+
+    # speak
+    text = (action.text or "").strip()
+    if not text:
+        raise TrialConflict("empty_text", state)
+    skip_target = detect_skip_request(text, state.current_step)
+    if skip_target is not None:
+        return ActionOutcome(replace(state, version=state.version + 1), "skip_refused", skip_target)
+    if slot.kind == "qa_loop":
+        if action.addressee not in state.shape.lay_present_ids():
+            raise TrialConflict("missing_addressee", state)
+        if state.slot_user_turns >= slot.max_user_turns:
+            raise TrialConflict("turn_limit", state)
+        return ActionOutcome(replace(state, pending_ai=True, version=state.version + 1), "accepted")
+    if slot.kind == "debate":
+        if state.slot_user_turns >= slot.max_user_turns:
+            raise TrialConflict("turn_limit", state)
+        if state.user_role == slot.role:
+            return ActionOutcome(replace(state, pending_ai=True, version=state.version + 1), "accepted")
+        turns = state.slot_user_turns + 1
+        moved = replace(state, slot_user_turns=turns, version=state.version + 1)
+        if turns >= slot.max_user_turns:
+            return ActionOutcome(_next_slot(moved), "accepted")
+        return ActionOutcome(replace(moved, pending_ai=True), "accepted")
+    if len(text) < slot.min_chars:
+        raise TrialConflict("text_too_short", state)
+    return ActionOutcome(_next_slot(state), "accepted")
+
+
+def complete_ai_turn(state: SessionState) -> SessionState:
+    """Called once the AI output for the pending turn has passed its guards and been stored."""
+    if awaiting(state) != "ai":
+        raise TrialConflict("not_ai_turn", state)
+    slot = current_slot(state)
+    assert slot is not None
+    if slot.kind == "qa_loop" and is_user_slot(slot, state.user_role):
+        turns = state.slot_user_turns + 1
+        moved = replace(state, slot_user_turns=turns, pending_ai=False, version=state.version + 1)
+        return _next_slot(moved) if turns >= slot.max_user_turns else moved
+    if slot.kind == "debate" and is_user_slot(slot, state.user_role):
+        if state.user_role == slot.role:  # the student opened; the AI answered: one round done
+            turns = state.slot_user_turns + 1
+            moved = replace(state, slot_user_turns=turns, pending_ai=False, version=state.version + 1)
+            return _next_slot(moved) if turns >= slot.max_user_turns else moved
+        return replace(state, pending_ai=False, version=state.version + 1)
+    return _next_slot(state)
+
+
+# --- Skip-request detector (0 LLM calls) -------------------------------------------------------
+
+_SKIP_TARGETS: tuple[tuple[re.Pattern[str], int], ...] = (
+    (re.compile(r"tuyên án|ra bản án"), 11),
+    (re.compile(r"nghị án"), 10),
+    (re.compile(r"lời (?:nói )?sau cùng"), 9),
+    (re.compile(r"tranh luận|đối đáp"), 8),
+    (re.compile(r"bào chữa"), 7),
+    (re.compile(r"luận tội"), 6),
+    (re.compile(r"xét hỏi"), 4),
+)
+# Verbs that make a mention a request to go there now, whatever the step.
+_SKIP_VERBS_STRONG = re.compile(r"bỏ qua|nhảy|chuyển (?:ngay |luôn )?sang|đi thẳng|vào (?:thẳng|luôn|ngay)")
+# Polite request verbs. Only counted before step 6: from luận tội on, "đề nghị Hội đồng xét xử
+# tuyên ..." is the substance of the speech itself, not a request to skip.
+_SKIP_VERBS_WEAK = re.compile(r"(?:cho|xin|đề nghị|yêu cầu|hãy|mời)\s")
+_SKIP_NOW = re.compile(r"\b(?:luôn|ngay(?!\s+sau)|liền)\b")
+_SENTENCE = re.compile(r"[^.!?\n]+")
+_WEAK_VERB_LAST_STEP = 5
+
+
+def _normalise(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFC", text).casefold().split())
+
+
+def detect_skip_request(text: str, current_step: int) -> int | None:
+    """Returns the later step the student asks to jump to, or None.
+
+    A mention alone is not a request ("tôi sẽ nêu trong phần luận tội" at step 5 is fine): the
+    same sentence must carry a request verb shortly before the target, or "luôn/ngay" right after
+    it. Only targets AFTER the current step count; steps are never entered by talking."""
+    for sentence in _SENTENCE.findall(_normalise(text)):
+        for pattern, target in _SKIP_TARGETS:
+            if target <= current_step:
+                continue
+            for match in pattern.finditer(sentence):
+                before = sentence[max(0, match.start() - 40):match.start()]
+                after = sentence[match.end():match.end() + 15]
+                if (_SKIP_VERBS_STRONG.search(before) or _SKIP_NOW.search(after)
+                        or (current_step <= _WEAK_VERB_LAST_STEP and _SKIP_VERBS_WEAK.search(before))):
+                    return target
+    return None
+
+
+def skip_refusal_text(state: SessionState) -> str:
+    step = STEP_BY_NUMBER[state.current_step]
+    return (f"Phiên tòa đang ở phần \"{step.title.lower()}\". Hội đồng xét xử chỉ chuyển sang phần "
+            f"tiếp theo khi phần này kết thúc theo đúng trình tự tố tụng; không thể bỏ qua phần xét hỏi "
+            f"hay tranh luận. Đề nghị {ROLE_LABELS[state.user_role]} tiếp tục phần hiện tại.")

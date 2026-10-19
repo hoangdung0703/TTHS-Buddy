@@ -1315,3 +1315,16 @@ Quản lý rủi ro — lộ secret qua log, và các lớp phòng thủ hiện 
   - **Cần một người đọc lướt bộ này trước khi repo ra public.**
   - Ngân hàng đã gỡ vẫn còn trong lịch sử git. **`git filter-repo` là BẮT BUỘC trước khi repo ra public HOẶC trước khi nhập ngân hàng MCQ mới**, tùy việc nào đến trước; quy trình, sao lưu mirror và hệ quả (mọi commit hash đổi, Render/Vercel phải kiểm lại) ở mục đầu file. Bộ chẩn đoán HyDE nằm ở đường dẫn khác (`backend/evaluation/`) nên không bị lệnh đó ảnh hưởng.
 - **Eval 29 câu không phân biệt được HyDE bật hay tắt** (cùng 20/20 exact_match, cùng 100% grounding). Đừng dùng nó làm bằng chứng cho bất kỳ quyết định nào về HyDE; phải dùng bộ chẩn đoán HyDE (mục Case study, phần 6).
+
+---
+
+Feature — Phiên tòa giả định (mục 5) — CHẶNG 1 XONG (nền backend + spike), chờ duyệt chặng 2 (19/10/2026)
+
+Tài liệu thiết kế: `docs/phien-toa-gia-dinh/THIET-KE.md` (lưu ý: `*.md` bị gitignore, file này chưa được
+git theo dõi). Có mục "Quyết định 19/10/2026" ghi đè phần thân khi mâu thuẫn.
+Migration `backend/migrations/0012_mock_trials.sql`: CHƯA CHẠY, chạy tay. RLS bật, không có policy.
+Code: `backend/app/services/trial_*.py`, `backend/app/models/trial.py`, `backend/app/prompts/trial_prompts.py`.
+Test unit: `cd backend && ../.venv/bin/python -m unittest discover -s tests` (cần `ingestion/chunks.json`
+ở máy local; thiếu file thì các test dùng văn bản luật tự skip). Spike: `backend/evaluation/run_trial_spike.py`.
+Kết quả kiểm corpus: BLHS hợp nhất 2025 đủ 426/426 Điều; BLTTHS Chương XX–XXI (Điều 250–329) đủ.
+Guard Rule 9 của phiên tòa kiểm theo cặp (Điều, văn bản) (`trial_rule9.py`). Guard của Chat và Vở ghi giữ nguyên.

@@ -8,6 +8,7 @@ import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 import httpx
 
@@ -133,6 +134,63 @@ def generate_answer(system_prompt: str, user_prompt: str, settings: Settings, re
         raise RuntimeError(f"Gemini generateContent returned no content (finishReason={finish_reason})")
 
     return parts[0].get("text", "").strip()
+
+
+@dataclass(frozen=True)
+class GeminiJsonResult:
+    text: str
+    model: str
+    latency_seconds: float
+    prompt_tokens: int
+    output_tokens: int
+    thinking_tokens: int
+    cached_tokens: int
+    finish_reason: str | None
+
+
+def generate_json_with_usage(system_prompt: str, user_prompt: str, settings: Settings, response_schema: dict, *,
+                             thinking_level: str | None = None, temperature: float = 0.7,
+                             timeout: float = REQUEST_TIMEOUT_SECONDS,
+                             max_attempts: int = MAX_TRANSIENT_RETRIES) -> GeminiJsonResult:
+    """Structured-output call for the mock trial (trial_case_service / trial_turn_service).
+
+    Separate from generate_answer because these callers need the usageMetadata (prompt, output,
+    thinking and cached token counts) to measure cost per call type, and a per-call thinking level.
+    Always settings.gemini_chat_model - the mock trial never uses the complex model (decision
+    2026-10-19). Thinking parts, if the API returns any, are skipped: only the answer text is
+    returned. Blocking; callers on the event loop use asyncio.to_thread."""
+    model = settings.gemini_chat_model
+    generation_config: dict[str, object] = {
+        "temperature": temperature,
+        "responseMimeType": "application/json",
+        "responseSchema": response_schema,
+    }
+    if thinking_level is not None:
+        generation_config["thinkingConfig"] = {"thinkingLevel": thinking_level}
+    body = {
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+        "generationConfig": generation_config,
+    }
+    started = time.monotonic()
+    response = _post_with_retry(GENERATE_CONTENT_URL_TEMPLATE.format(model=model), settings.google_api_key, body,
+                                timeout=timeout, max_attempts=max_attempts)
+    latency = time.monotonic() - started
+    data = response.json()
+    candidates = data.get("candidates", [])
+    if not candidates:
+        raise RuntimeError("Gemini generateContent returned no candidates")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+    usage = data.get("usageMetadata", {})
+    return GeminiJsonResult(
+        text=text.strip(), model=model, latency_seconds=latency,
+        prompt_tokens=int(usage.get("promptTokenCount", 0)),
+        output_tokens=int(usage.get("candidatesTokenCount", 0)),
+        thinking_tokens=int(usage.get("thoughtsTokenCount", 0)),
+        cached_tokens=int(usage.get("cachedContentTokenCount", 0)),
+        finish_reason=candidates[0].get("finishReason"),
+    )
 
 
 async def stream_generate_answer(
