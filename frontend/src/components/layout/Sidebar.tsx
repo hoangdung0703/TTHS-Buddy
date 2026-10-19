@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Gavel,
   LayoutGrid,
   MessageSquare,
   ListChecks,
@@ -17,6 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { deleteConversation, getConversations, renameConversation } from "@/lib/api";
 import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
+import { useTrialFeature } from "@/hooks/useTrialFeature";
 import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
 import type { ConversationSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -33,6 +35,10 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/quiz", label: "Trắc nghiệm", icon: ListChecks },
   { href: "/notes", label: "Vở ghi", icon: NotebookPen }
 ];
+
+// Shown only once GET /api/trials has answered 200 (the backend TRIAL_ENABLED flag); see
+// useTrialFeature. Active on every /trial/* sub-page, not just the list.
+const TRIAL_NAV_ITEM: NavItem = { href: "/trial", label: "Phiên tòa giả định", icon: Gavel };
 
 // Coarse "Hom nay"/"Hom qua"/dd-mm label, computed client-side from the browser's local
 // timezone - good enough for a Sidebar history list, no need for the VN-timezone precision
@@ -76,6 +82,8 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState<string>("");
   const { isSlow: isHistorySlow, start: startSlowNotice, stop: stopSlowNotice } = useSlowRequestNotice();
+  const trialFeature = useTrialFeature();
+  const navItems = trialFeature === "enabled" ? [...NAV_ITEMS, TRIAL_NAV_ITEM] : NAV_ITEMS;
 
   // Re-fetched on every pathname change (not just once on mount) so sending a first message on
   // the bare /chat route - which creates a brand new conversation server-side - makes it appear
@@ -199,8 +207,8 @@ export function Sidebar({ userLabel, onNavigate }: SidebarProps) {
       </div>
 
       <nav className="flex flex-col gap-1 px-3">
-        {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
+        {navItems.map((item) => {
+          const isActive = item === TRIAL_NAV_ITEM ? pathname.startsWith("/trial") : pathname === item.href;
           const Icon = item.icon;
 
           return (

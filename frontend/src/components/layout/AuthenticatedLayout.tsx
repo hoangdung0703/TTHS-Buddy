@@ -42,8 +42,10 @@ export function AuthenticatedLayout({ title, children }: AuthenticatedLayoutProp
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <div className="hidden md:flex">
+    // print:* lets a page (the trial record) print as a plain document: no sidebar or top bar, and
+    // no fixed-height scroll container clipping it to one screen.
+    <div className="flex h-screen overflow-hidden bg-background print:block print:h-auto print:overflow-visible print:bg-white">
+      <div className="hidden md:flex print:hidden">
         <Sidebar userLabel={email} />
       </div>
 
@@ -69,9 +71,11 @@ export function AuthenticatedLayout({ title, children }: AuthenticatedLayoutProp
         </div>
       ) : null}
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar title={title} userLabel={email} onMenuClick={() => setIsMobileNavOpen(true)} />
-        <div className="flex-1 overflow-y-auto">{children}</div>
+      <div className="flex flex-1 flex-col overflow-hidden print:block print:overflow-visible">
+        <div className="contents print:hidden">
+          <TopBar title={title} userLabel={email} onMenuClick={() => setIsMobileNavOpen(true)} />
+        </div>
+        <div className="flex-1 overflow-y-auto print:overflow-visible">{children}</div>
       </div>
     </div>
   );

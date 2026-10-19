@@ -222,3 +222,166 @@ export interface NoteUpsertRequest {
   content: string;
   tag: string | null;
 }
+
+// ============================================================================
+// Phiên tòa giả định (docs/phien-toa-gia-dinh/API-CONTRACT.md is the source of truth for every
+// shape below). Never persisted client-side: transcript, case file and record live in page memory
+// only and are re-read with GET /api/trials/{id}.
+// ============================================================================
+
+export type TrialUserRole = "ksv" | "luat_su";
+export type TrialStatus = "active" | "completed" | "abandoned";
+export type TrialAwaiting = "user" | "ai" | "none";
+export type TrialUtteranceKind = "speech" | "procedural" | "notice";
+
+export interface TrialSummary {
+  session_id: string;
+  title: string;
+  crime_key: string;
+  user_role: TrialUserRole;
+  current_step: number;
+  status: TrialStatus;
+  updated_at: string;
+}
+
+export interface TrialCrime {
+  crime_key: string;
+  crime_name: string;
+  dieu: string;
+  allowed_khoan: string[];
+}
+
+export interface TrialConfig {
+  crimes: TrialCrime[];
+  user_roles: string[];
+  limits: { max_cases_per_day: number; max_active_sessions: number; max_witnesses: number; abandon_after_days: number };
+  remaining: { cases_today: number; active_sessions: number };
+}
+
+export interface TrialListResponse {
+  sessions: TrialSummary[];
+  config: TrialConfig;
+}
+
+export interface TrialCreateRequest {
+  crime_key: string;
+  user_role: TrialUserRole;
+  victim_present: boolean;
+  witness_count: number;
+  has_related_party: boolean;
+}
+
+export interface TrialState {
+  session_id: string;
+  current_step: number;
+  step_title: string;
+  status: TrialStatus;
+  awaiting: TrialAwaiting;
+  allowed_actions: string[];
+  version: number;
+}
+
+export interface TrialUtterance {
+  seq: number;
+  step: number;
+  speaker_id: string;
+  speaker_role: string;
+  speaker_name: string;
+  is_user: boolean;
+  kind: TrialUtteranceKind;
+  text: string;
+  addressee: string | null;
+}
+
+export interface TrialParticipant {
+  id: string;
+  role: string;
+  name: string;
+  gender?: string;
+}
+
+export interface TrialStepInfo {
+  number: number;
+  title: string;
+  legal_basis: string[];
+}
+
+export interface TrialPerson {
+  id: string;
+  gender?: string | null;
+  age?: number | null;
+  occupation?: string | null;
+  residence_place?: string | null;
+  statement_summary?: string | null;
+  education?: string | null;
+  prior_record?: string | null;
+  preventive_measure?: string | null;
+}
+
+export interface TrialFact {
+  id: string;
+  time?: string | null;
+  place?: string | null;
+  description: string;
+}
+
+export interface TrialEvidence {
+  id: string;
+  type: string;
+  description: string;
+  value_vnd?: number | null;
+  injury_percent?: number | null;
+  fact_id?: string | null;
+}
+
+export interface TrialPretrialStatement {
+  person_id: string;
+  summary: string;
+  inconsistencies?: { text: string; claimed_amount_vnd?: number | null }[];
+}
+
+export interface TrialCircumstance {
+  khoan: string;
+  diem: string;
+  fact_ids?: string[];
+}
+
+// Deliberately no character cards and no defendant_plea: the server never sends them (contract
+// Mục 7), and nothing here may depend on a verdict either.
+export interface TrialCaseFile {
+  title?: string;
+  incident_summary?: string;
+  defendant?: TrialPerson | null;
+  victim?: TrialPerson | null;
+  witnesses?: TrialPerson[];
+  related_party?: TrialPerson | null;
+  facts?: TrialFact[];
+  evidence?: TrialEvidence[];
+  pretrial_statements?: TrialPretrialStatement[];
+  charge?: { dieu: string; khoan: string; diem?: string[]; crime_name: string } | null;
+  measure_value?: number | null;
+  compensation_vnd?: number | null;
+  extra_amounts?: { label: string; amount_vnd: number; evidence_id?: string | null }[];
+  mitigating?: TrialCircumstance[];
+  aggravating?: TrialCircumstance[];
+  civil_claim?: { claimant_id: string; amount_vnd: number; basis?: string | null } | null;
+  indictment_text?: string;
+}
+
+export interface TrialDetail {
+  state: TrialState;
+  title: string;
+  crime_key: string;
+  user_role: TrialUserRole;
+  disclaimer: string;
+  court: { name: string; hearing_date: string; venue: string };
+  participants: Record<string, TrialParticipant>;
+  case_file: TrialCaseFile;
+  steps: TrialStepInfo[];
+  utterances: TrialUtterance[];
+}
+
+export interface TrialRecord {
+  session_id: string;
+  text: string;
+}

@@ -37,8 +37,15 @@ import type {
   QuizStatsV2,
   QuizSubmitRequest,
   QuizSubmitResponse,
+  TrialCreateRequest,
+  TrialDetail,
+  TrialListResponse,
+  TrialRecord,
+  TrialState,
+  TrialUtterance,
   WeakTopic
 } from "@/lib/types";
+import { parseTrialErrorBody, type ParsedTrialError } from "@/lib/trialRules";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -120,11 +127,9 @@ export interface ChatStreamHandlers {
   onError?: (event: ChatStreamErrorEvent) => void;
 }
 
-// Parses one complete "event: <name>\ndata: <json>" block (already split on the blank-line
-// separator by the caller) and dispatches it to the matching handler. Unknown/malformed blocks
-// (e.g. a stray "done" event, which carries no data the UI needs) are ignored rather than
-// thrown - a single unrecognized event must never abort an otherwise-successful stream.
-function dispatchSseBlock(block: string, handlers: ChatStreamHandlers): void {
+// Splits one complete "event: <name>\ndata: <json>" block (already split on the blank-line
+// separator by the caller) into its name and parsed data, or null for a block without both.
+function parseSseBlock(block: string): { eventName: string; data: unknown } | null {
   let eventName: string | null = null;
   let dataLine: string | null = null;
 
@@ -137,10 +142,21 @@ function dispatchSseBlock(block: string, handlers: ChatStreamHandlers): void {
   }
 
   if (eventName === null || dataLine === null || dataLine.length === 0) {
+    return null;
+  }
+  return { eventName, data: JSON.parse(dataLine) as unknown };
+}
+
+// Dispatches one block to the matching chat handler. Unknown/malformed blocks (e.g. a stray
+// "done" event, which carries no data the UI needs) are ignored rather than thrown - a single
+// unrecognized event must never abort an otherwise-successful stream.
+function dispatchSseBlock(block: string, handlers: ChatStreamHandlers): void {
+  const parsed = parseSseBlock(block);
+  if (parsed === null) {
     return;
   }
 
-  const data = JSON.parse(dataLine) as unknown;
+  const { eventName, data } = parsed;
   if (eventName === "citations") {
     handlers.onCitations(data as ChatStreamCitationsEvent);
   } else if (eventName === "answer_delta") {
@@ -156,16 +172,9 @@ function dispatchSseBlock(block: string, handlers: ChatStreamHandlers): void {
   }
 }
 
-// Shared by sendChatQuery and askAboutPassage - both routes speak the same SSE event format. Throws
-// ApiError for a non-2xx response (auth, rate limit, validation), which arrives before the stream
-// starts; failures after that arrive as an `error` event instead.
-async function readSseStream(response: Response, handlers: ChatStreamHandlers): Promise<void> {
-  if (!response.ok || response.body === null) {
-    const errorMessage = await response.text();
-    throw new ApiError(response.status, errorMessage || `Request failed with status ${response.status}`);
-  }
-
-  const reader = response.body.getReader();
+// Reads a 2xx SSE body block by block. Shared by every streaming route (chat, notes, trials).
+async function readSseBlocks(body: ReadableStream<Uint8Array>, onBlock: (block: string) => void): Promise<void> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
 
@@ -179,11 +188,23 @@ async function readSseStream(response: Response, handlers: ChatStreamHandlers): 
 
     let separatorIndex = buffer.indexOf("\n\n");
     while (separatorIndex !== -1) {
-      dispatchSseBlock(buffer.slice(0, separatorIndex), handlers);
+      onBlock(buffer.slice(0, separatorIndex));
       buffer = buffer.slice(separatorIndex + 2);
       separatorIndex = buffer.indexOf("\n\n");
     }
   }
+}
+
+// Shared by sendChatQuery and askAboutPassage - both routes speak the same SSE event format. Throws
+// ApiError for a non-2xx response (auth, rate limit, validation), which arrives before the stream
+// starts; failures after that arrive as an `error` event instead.
+async function readSseStream(response: Response, handlers: ChatStreamHandlers): Promise<void> {
+  if (!response.ok || response.body === null) {
+    const errorMessage = await response.text();
+    throw new ApiError(response.status, errorMessage || `Request failed with status ${response.status}`);
+  }
+
+  await readSseBlocks(response.body, (block) => dispatchSseBlock(block, handlers));
 }
 
 export async function sendChatQuery(
@@ -406,4 +427,205 @@ export async function askAboutPassage(
   });
 
   await readSseStream(response, { ...handlers, onSuggestedFollowups: () => {}, onGradingResult: () => {} });
+}
+
+// ============================================================================
+// Phiên tòa giả định (docs/phien-toa-gia-dinh/API-CONTRACT.md). Always the real backend. Nothing
+// returned here may be written to storage or logs - callers keep it in component state only.
+// ============================================================================
+
+// Carries the parsed error envelope: `code` (trial_*, rate_limit_exceeded...), the server `state`
+// on a 409, and `featureDisabled` for the TRIAL_ENABLED=false 404.
+export class TrialApiError extends ApiError {
+  public readonly code: string | null;
+  public readonly featureDisabled: boolean;
+  public readonly state: TrialState | null;
+
+  public constructor(parsed: ParsedTrialError) {
+    super(parsed.status, parsed.code ?? `HTTP ${parsed.status}`);
+    this.name = "TrialApiError";
+    this.code = parsed.code;
+    this.featureDisabled = parsed.featureDisabled;
+    this.state = parsed.state;
+  }
+}
+
+async function trialRequest(path: string, init: RequestInit = {}): Promise<Response> {
+  const authHeader = await getAuthHeader();
+  const response = await fetch(`${getApiBaseUrl()}/api/trials${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...authHeader, ...init.headers }
+  });
+  if (!response.ok) {
+    throw new TrialApiError(parseTrialErrorBody(response.status, await response.text()));
+  }
+  return response;
+}
+
+// --- Feature probe ---------------------------------------------------------------------------------
+// The flag lives only in the backend: GET /api/trials answering 404 {"detail":"Not Found"} means
+// the feature is off. Probed once per page load and kept in module memory (never in storage).
+// Only a definite answer is cached; a network error or 5xx leaves it unknown so a later page can
+// ask again.
+export type TrialFeatureStatus = "unknown" | "enabled" | "disabled";
+
+let trialFeatureStatus: TrialFeatureStatus = "unknown";
+let trialFeatureProbe: Promise<TrialFeatureStatus> | null = null;
+const trialFeatureListeners = new Set<(status: TrialFeatureStatus) => void>();
+
+export function getTrialFeatureStatus(): TrialFeatureStatus {
+  return trialFeatureStatus;
+}
+
+export function rememberTrialFeature(status: Exclude<TrialFeatureStatus, "unknown">): void {
+  if (trialFeatureStatus === status) {
+    return;
+  }
+  trialFeatureStatus = status;
+  trialFeatureListeners.forEach((listener) => listener(status));
+}
+
+export function subscribeTrialFeature(listener: (status: TrialFeatureStatus) => void): () => void {
+  trialFeatureListeners.add(listener);
+  return () => {
+    trialFeatureListeners.delete(listener);
+  };
+}
+
+export function probeTrialFeature(): Promise<TrialFeatureStatus> {
+  if (trialFeatureStatus !== "unknown") {
+    return Promise.resolve(trialFeatureStatus);
+  }
+  if (trialFeatureProbe === null) {
+    trialFeatureProbe = getTrials()
+      .then(() => "enabled" as const)
+      .catch((error: unknown) => {
+        if (error instanceof TrialApiError && error.featureDisabled) {
+          return "disabled" as const;
+        }
+        return "unknown" as const;
+      })
+      .then((status) => {
+        trialFeatureProbe = null;
+        if (status !== "unknown") {
+          rememberTrialFeature(status);
+        }
+        return trialFeatureStatus;
+      });
+  }
+  return trialFeatureProbe;
+}
+
+function noteFeatureFromError(error: unknown): void {
+  if (error instanceof TrialApiError && error.featureDisabled) {
+    rememberTrialFeature("disabled");
+  }
+}
+
+// --- Plain routes ------------------------------------------------------------------------------------
+
+async function trialJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  try {
+    const response = await trialRequest(path, init);
+    return (await response.json()) as T;
+  } catch (error) {
+    noteFeatureFromError(error);
+    throw error;
+  }
+}
+
+export async function getTrials(): Promise<TrialListResponse> {
+  const result = await trialJson<TrialListResponse>("");
+  rememberTrialFeature("enabled");
+  return result;
+}
+
+export async function getTrial(sessionId: string): Promise<TrialDetail> {
+  return trialJson<TrialDetail>(`/${encodeURIComponent(sessionId)}`);
+}
+
+// Returns the state object directly (contract 3.5: not wrapped).
+export async function abandonTrial(sessionId: string): Promise<TrialState> {
+  return trialJson<TrialState>(`/${encodeURIComponent(sessionId)}/abandon`, { method: "POST" });
+}
+
+// 204 No Content on success.
+export async function deleteTrial(sessionId: string): Promise<void> {
+  try {
+    await trialRequest(`/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+  } catch (error) {
+    noteFeatureFromError(error);
+    throw error;
+  }
+}
+
+export async function getTrialRecord(sessionId: string): Promise<TrialRecord> {
+  return trialJson<TrialRecord>(`/${encodeURIComponent(sessionId)}/record`);
+}
+
+// --- Streaming routes ----------------------------------------------------------------------------------
+
+export interface TrialStreamHandlers {
+  onStatus?: (message: string) => void;
+  onSession?: (event: { session_id: string; title: string }) => void;
+  onUtterance?: (utterance: TrialUtterance) => void;
+  onState?: (state: TrialState) => void;
+  onError?: (message: string) => void;
+  onDone?: () => void;
+}
+
+function dispatchTrialBlock(block: string, handlers: TrialStreamHandlers): void {
+  const parsed = parseSseBlock(block);
+  if (parsed === null) {
+    return;
+  }
+  const { eventName, data } = parsed;
+  if (eventName === "status") {
+    handlers.onStatus?.((data as ChatStreamStatusEvent).message);
+  } else if (eventName === "session") {
+    handlers.onSession?.(data as { session_id: string; title: string });
+  } else if (eventName === "utterance") {
+    handlers.onUtterance?.(data as TrialUtterance);
+  } else if (eventName === "state") {
+    handlers.onState?.(data as TrialState);
+  } else if (eventName === "error") {
+    handlers.onError?.((data as ChatStreamErrorEvent).message);
+  } else if (eventName === "done") {
+    handlers.onDone?.();
+  }
+}
+
+async function streamTrial(path: string, body: unknown, handlers: TrialStreamHandlers, signal?: AbortSignal): Promise<void> {
+  let response: Response;
+  try {
+    response = await trialRequest(path, { method: "POST", body: JSON.stringify(body), signal });
+  } catch (error) {
+    noteFeatureFromError(error);
+    throw error;
+  }
+  if (response.body === null) {
+    throw new TrialApiError({ status: response.status, code: null, featureDisabled: false, state: null });
+  }
+  await readSseBlocks(response.body, (block) => dispatchTrialBlock(block, handlers));
+}
+
+// POST /api/trials - SSE: status x2 -> session -> utterance x n -> state -> done, or status -> error.
+export async function createTrial(request: TrialCreateRequest, handlers: TrialStreamHandlers, signal?: AbortSignal): Promise<void> {
+  await streamTrial("", request, handlers, signal);
+}
+
+export type TrialTurnRequest =
+  | { expected_step: number; expected_version: number; action: "speak"; text: string; addressee?: string }
+  | { expected_step: number; expected_version: number; action: "end_slot" | "continue" }
+  | { expected_step: number; expected_version: number; action: "advance"; target_step: number };
+
+// POST /api/trials/{id}/turn - SSE. Only the fields of the chosen action are sent: the schema
+// forbids extras.
+export async function sendTrialTurn(
+  sessionId: string,
+  request: TrialTurnRequest,
+  handlers: TrialStreamHandlers,
+  signal?: AbortSignal
+): Promise<void> {
+  await streamTrial(`/${encodeURIComponent(sessionId)}/turn`, request, handlers, signal);
 }
