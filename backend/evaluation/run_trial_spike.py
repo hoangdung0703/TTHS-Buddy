@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import random
 import json
 import statistics
 import sys
@@ -32,6 +33,7 @@ from app.core.logging import configure_logging
 from app.models.trial import CaseOptions
 from app.services.trial_case_service import CaseGenerationFailed, create_case, load_pack_for_crime
 from app.services.trial_config import BLHS_DOCUMENT, get_crime
+from app.services.trial_knobs import choose_knobs
 from app.services.trial_metrics import TrialCallRecorder
 from app.services.trial_names import render
 from app.services.trial_rule9 import extract_citations
@@ -58,6 +60,27 @@ CASE_CONFIGS = [
     CaseOptions(crime_key="blhs_134", user_role="ksv", victim_present=True, witness_count=2),
     CaseOptions(crime_key="blhs_171", user_role="ksv", victim_present=True, witness_count=1, has_related_party=True),
     CaseOptions(crime_key="blhs_173", user_role="ksv", victim_present=False, witness_count=2),
+]
+
+
+# Gate A5-bis (2026-10-19): fresh seeds 2001-2008, every crime at least once, two forced partial
+# admissions, two forced aggravating circumstances, at least one related party. (seed, options,
+# forced knobs)
+BIS_CONFIGS = [
+    (2001, CaseOptions(crime_key="blhs_173", user_role="ksv", victim_present=True, witness_count=1),
+     {"plea": "nhan_mot_phan"}),
+    (2002, CaseOptions(crime_key="blhs_174", user_role="ksv", victim_present=False, witness_count=0),
+     {"has_aggravating": True}),
+    (2003, CaseOptions(crime_key="blhs_134", user_role="ksv", victim_present=True, witness_count=2),
+     {"plea": "nhan_mot_phan", "has_aggravating": True}),
+    (2004, CaseOptions(crime_key="blhs_171", user_role="ksv", victim_present=True, witness_count=1,
+                       has_related_party=True), {}),
+    (2005, CaseOptions(crime_key="blhs_173", user_role="ksv", victim_present=False, witness_count=2), {}),
+    (2006, CaseOptions(crime_key="blhs_174", user_role="ksv", victim_present=True, witness_count=1,
+                       has_related_party=True), {}),
+    (2007, CaseOptions(crime_key="blhs_134", user_role="ksv", victim_present=True, witness_count=0), {}),
+    (2008, CaseOptions(crime_key="blhs_171", user_role="ksv", victim_present=False, witness_count=1),
+     {"has_aggravating": True}),
 ]
 
 
@@ -254,7 +277,7 @@ def summarise(records: list[dict]) -> dict:
     return summary
 
 
-async def main(out_dir: Path, cases_only: bool = False) -> int:
+async def main(out_dir: Path, cases_only: bool = False, bis: bool = False) -> int:
     configure_logging("test")  # INFO + redaction; never DEBUG (requirements.md, secret-leak lessons)
     settings = get_settings()
     qdrant = create_qdrant_client(settings)
@@ -264,25 +287,31 @@ async def main(out_dir: Path, cases_only: bool = False) -> int:
     case_recorder = TrialCallRecorder()
     creations, case_results = [], []
     try:
-        for index, options in enumerate(CASE_CONFIGS, 1):
+        configs = ([(seed, o, forced) for seed, o, forced in BIS_CONFIGS] if bis else
+                   [(1000 + i, o, {}) for i, o in enumerate(CASE_CONFIGS, 1)])
+        for index, (seed, options, forced) in enumerate(configs, 1):
             started = time.monotonic()
             pack_started = time.monotonic()
             pack = await load_pack_for_crime(get_crime(options.crime_key), settings, qdrant)
             pack_seconds = time.monotonic() - pack_started
             try:
-                creation = await create_case(options, settings, qdrant, case_recorder, pack=pack, seed=1000 + index)
+                knobs = (choose_knobs(get_crime(options.crime_key), pack, random.Random(seed), **forced)
+                         if forced else None)
+                creation = await create_case(options, settings, qdrant, case_recorder, pack=pack, seed=seed,
+                                             knobs=knobs)
                 creations.append(creation)
                 rendered = json.loads(creation.case.model_dump_json())
                 (out_dir / "cases" / f"case_{index}_{options.crime_key}.json").write_text(
                     json.dumps(rendered, ensure_ascii=False, indent=2), encoding="utf-8")
-                case_results.append({"index": index, "crime": options.crime_key, "ok": True,
+                case_results.append({"index": index, "seed": seed, "crime": options.crime_key, "ok": True,
+                                     "forced": forced,
                                      "attempts": creation.attempts,
                                      "errors_per_attempt": [len(e) for e in creation.errors_per_attempt],
                                      "pack_fetch_s": round(pack_seconds, 2),
                                      "total_s": round(time.monotonic() - started, 2)})
             except CaseGenerationFailed as failure:
-                case_results.append({"index": index, "crime": options.crime_key, "ok": False,
-                                     "errors_per_attempt": failure.error_counts})
+                case_results.append({"index": index, "seed": seed, "crime": options.crime_key, "ok": False,
+                                     "forced": forced, "errors_per_attempt": failure.error_counts})
                 (out_dir / "cases" / f"case_{index}_{options.crime_key}_FAILED_errors.json").write_text(
                     json.dumps(failure.errors, ensure_ascii=False, indent=2), encoding="utf-8")
     except httpx.HTTPStatusError as error:
@@ -346,5 +375,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--cases-only", action="store_true")
+    parser.add_argument("--bis", action="store_true", help="gate A5-bis seeds; implies --cases-only")
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.out, args.cases_only)))
+    sys.exit(asyncio.run(main(args.out, args.cases_only or args.bis, args.bis)))

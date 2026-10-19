@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from app.models.trial import CaseFile, Verdict
 from app.services.trial_config import BLHS_DOCUMENT, FORBIDDEN_POINT_TEXT, get_crime
+from app.services.trial_case_validator import evidence_fact_map, remap_fact_ids
 from app.services.trial_legal_pack import Khoan, LegalPack
 
 _UNIT_MONTHS = {"năm": 12, "tháng": 1}
@@ -57,6 +58,16 @@ def parse_penalty_frame(khoan: Khoan) -> PenaltyFrame | None:
 class VerdictCheck:
     errors: list[str] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)
+
+
+def normalise_verdict(verdict: Verdict, case: CaseFile) -> Verdict:
+    """Same repair as at case generation: an evidence id cited as a fact becomes its linked fact."""
+    fact_ids = {f.id for f in case.draft.facts}
+    by_evidence = evidence_fact_map(case.draft.evidence, fact_ids)
+
+    def fix(items):
+        return [i.model_copy(update={"fact_ids": remap_fact_ids(i.fact_ids, fact_ids, by_evidence)}) for i in items]
+    return verdict.model_copy(update={"mitigating": fix(verdict.mitigating), "aggravating": fix(verdict.aggravating)})
 
 
 def check_verdict(verdict: Verdict, case: CaseFile, pack: LegalPack) -> VerdictCheck:

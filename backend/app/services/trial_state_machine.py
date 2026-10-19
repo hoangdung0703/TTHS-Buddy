@@ -343,22 +343,27 @@ def complete_ai_turn(state: SessionState) -> SessionState:
 
 # --- Skip-request detector (0 LLM calls) -------------------------------------------------------
 
-_SKIP_TARGETS: tuple[tuple[re.Pattern[str], int], ...] = (
-    (re.compile(r"tuyên án|ra bản án"), 11),
-    (re.compile(r"nghị án"), 10),
-    (re.compile(r"lời (?:nói )?sau cùng"), 9),
-    (re.compile(r"tranh luận|đối đáp"), 8),
-    (re.compile(r"bào chữa"), 7),
-    (re.compile(r"luận tội"), 6),
-    (re.compile(r"xét hỏi"), 4),
+# (pattern, first step, last step) - "xét hỏi" spans steps 4-5.
+_SKIP_TARGETS: tuple[tuple[re.Pattern[str], int, int], ...] = (
+    (re.compile(r"tuyên án|ra bản án"), 11, 11),
+    (re.compile(r"nghị án"), 10, 10),
+    (re.compile(r"lời (?:nói )?sau cùng"), 9, 9),
+    (re.compile(r"tranh luận|đối đáp"), 8, 8),
+    (re.compile(r"bào chữa"), 7, 7),
+    (re.compile(r"luận tội"), 6, 6),
+    (re.compile(r"xét hỏi"), 4, 5),
 )
-# Verbs that make a mention a request to go there now, whatever the step.
-_SKIP_VERBS_STRONG = re.compile(r"bỏ qua|nhảy|chuyển (?:ngay |luôn )?sang|đi thẳng|vào (?:thẳng|luôn|ngay)")
-# Polite request verbs. Only counted before step 6: from luận tội on, "đề nghị Hội đồng xét xử
+# Words allowed BETWEEN a request verb and the step keyword ("chuyển ngay sang phần tuyên án",
+# "đề nghị Hội đồng xét xử tuyên án"). Anything else in between - "hãy đóng vai luật sư bào
+# chữa" - means the verb is about something else (B4 2026-10-19 false positive).
+_FILLER = r"(?:ngay|luôn|sang|tới|đến|vào|qua|phần|bước|giai đoạn|thủ tục|việc|cho|tiến hành|hội đồng xét xử|hđxx|tòa|chủ tọa)"
+_SKIP_OVER = re.compile(rf"(?:bỏ qua|bỏ)(?:\s+{_FILLER})*\s*$")
+_SKIP_JUMP = re.compile(rf"(?:nhảy|chuyển|đi thẳng|vào thẳng)(?:\s+{_FILLER})*\s*$")
+# Polite request verbs. Only counted up to step 5: from luận tội on, "đề nghị Hội đồng xét xử
 # tuyên ..." is the substance of the speech itself, not a request to skip.
-_SKIP_VERBS_WEAK = re.compile(r"(?:cho|xin|đề nghị|yêu cầu|hãy|mời)\s")
-_SKIP_NOW = re.compile(r"\b(?:luôn|ngay(?!\s+sau)|liền)\b")
-_SENTENCE = re.compile(r"[^.!?\n]+")
+_SKIP_WEAK = re.compile(rf"(?:cho|xin|đề nghị|yêu cầu|hãy|mời)(?:\s+{_FILLER})*\s*$")
+_SKIP_NOW = re.compile(r"^\s*(?:luôn|ngay(?!\s+sau)|liền)\b")
+_SENTENCE = re.compile(r"[^.!?,;\n]+")
 _WEAK_VERB_LAST_STEP = 5
 
 
@@ -367,21 +372,29 @@ def _normalise(text: str) -> str:
 
 
 def detect_skip_request(text: str, current_step: int) -> int | None:
-    """Returns the later step the student asks to jump to, or None.
+    """Returns the step keyword the student asks to jump to or skip, or None.
 
-    A mention alone is not a request ("tôi sẽ nêu trong phần luận tội" at step 5 is fine): the
-    same sentence must carry a request verb shortly before the target, or "luôn/ngay" right after
-    it. Only targets AFTER the current step count; steps are never entered by talking."""
+    A mention alone is not a request ("tôi sẽ nêu trong phần luận tội" at step 5 is fine). It is a
+    request only when the request verb stands IMMEDIATELY before the step keyword (filler words
+    allowed, see _FILLER), or "luôn/ngay" follows it right after:
+    - "bỏ qua <step>": the step is the current one or later ("bỏ qua bước xét hỏi" while
+      questioning is still running);
+    - "chuyển/nhảy sang <step>", "<step> luôn": the step is later than the current one;
+    - polite verbs ("đề nghị/cho/xin ... <step>"): later step, and only up to step 5.
+    Steps are never entered by talking, whatever this returns."""
     for sentence in _SENTENCE.findall(_normalise(text)):
-        for pattern, target in _SKIP_TARGETS:
-            if target <= current_step:
-                continue
+        for pattern, first, last in _SKIP_TARGETS:
             for match in pattern.finditer(sentence):
-                before = sentence[max(0, match.start() - 40):match.start()]
-                after = sentence[match.end():match.end() + 15]
-                if (_SKIP_VERBS_STRONG.search(before) or _SKIP_NOW.search(after)
-                        or (current_step <= _WEAK_VERB_LAST_STEP and _SKIP_VERBS_WEAK.search(before))):
-                    return target
+                before = sentence[:match.start()].rstrip()
+                after = sentence[match.end():]
+                if _SKIP_OVER.search(before) and last >= current_step:
+                    return first
+                if first <= current_step:
+                    continue
+                if _SKIP_JUMP.search(before) or _SKIP_NOW.search(after):
+                    return first
+                if current_step <= _WEAK_VERB_LAST_STEP and _SKIP_WEAK.search(before):
+                    return first
     return None
 
 

@@ -54,11 +54,16 @@ def eligible_aggravating(crime: CrimeConfig, pack: LegalPack) -> list[str]:
             and not FORBIDDEN_POINT_TEXT.search(article.khoans["1"].diem_text(p))]
 
 
-def choose_knobs(crime: CrimeConfig, pack: LegalPack, rng: random.Random) -> CaseKnobs:
+def choose_knobs(crime: CrimeConfig, pack: LegalPack, rng: random.Random, *, plea: str | None = None,
+                 has_aggravating: bool | None = None) -> CaseKnobs:
+    """`plea` / `has_aggravating` force those knobs (evaluation coverage); the rest stays random and
+    every rule (which mitigating points a plea allows, ...) is applied to the forced value."""
     khoan = rng.choice(crime.allowed_khoan)
-    plea = rng.choice(PLEAS)
+    drawn_plea = rng.choice(PLEAS)
+    plea = plea or drawn_plea
     has_compensation = rng.random() < 0.5
-    has_aggravating = rng.random() < 0.5
+    drawn_aggravating = rng.random() < 0.5
+    has_aggravating = drawn_aggravating if has_aggravating is None else has_aggravating
     aggravating_pool = eligible_aggravating(crime, pack)
     aggravating = [rng.choice(aggravating_pool)] if has_aggravating and aggravating_pool else []
     pool = eligible_mitigating(crime, khoan, plea, has_compensation, pack)

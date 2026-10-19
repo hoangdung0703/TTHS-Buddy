@@ -83,6 +83,27 @@ class CaseValidatorTests(unittest.TestCase):
         draft["extra_amounts"][0]["evidence_id"] = "E9"
         self.assertTrue(any("E9" in e for e in errors_for(draft)))
 
+    def test_claimed_amount_in_inconsistency_is_declared_by_code(self):
+        draft = valid_draft_dict()
+        draft["pretrial_statements"][1]["inconsistencies"] = [
+            {"text": "Bị hại khai ban đầu chiếc xe trị giá 15.000.000 đồng", "claimed_amount_vnd": 15000000}]
+        self.assertEqual(errors_for(draft), [])
+        draft["pretrial_statements"][1]["inconsistencies"][0]["claimed_amount_vnd"] = None
+        self.assertTrue(any("15.000.000" in e for e in errors_for(draft)))
+
+    def test_evidence_id_cited_as_fact_is_repaired_only_when_linked(self):
+        draft = valid_draft_dict()
+        draft["mitigating"][0]["fact_ids"] = ["E4"]          # E4 is linked to F2
+        repaired = normalise_draft_dict(draft)
+        self.assertEqual(repaired["mitigating"][0]["fact_ids"], ["F2"])
+        self.assertEqual(errors_for(repaired), [])
+        draft = valid_draft_dict()
+        draft["mitigating"][0]["fact_ids"] = ["E1"]          # E1 has no fact link: still an error
+        self.assertTrue(any("E1" in e for e in errors_for(normalise_draft_dict(draft))))
+        draft = valid_draft_dict()
+        draft["evidence"][3]["fact_id"] = "F9"
+        self.assertTrue(any("F9" in e for e in errors_for(draft)))
+
     def test_minimum_requirements(self):
         draft = valid_draft_dict()
         draft["evidence"] = draft["evidence"][:3]
@@ -311,6 +332,14 @@ class VerdictGuardTests(unittest.TestCase):
             original.cross_refs)
         result = check_verdict(verdict(), self.case, pack)
         self.assertEqual((result.errors, result.flags), ([], ["penalty_unchecked"]))
+
+    def test_verdict_evidence_id_repaired_only_when_linked(self):
+        from app.services.trial_verdict_guard import normalise_verdict
+        linked = normalise_verdict(verdict(mitigating=[{"khoan": "1", "diem": "s", "fact_ids": ["E4"]}]), self.case)
+        self.assertEqual(linked.mitigating[0].fact_ids, ["F2"])
+        self.assertEqual(check_verdict(linked, self.case, self.pack).errors, [])
+        unlinked = normalise_verdict(verdict(mitigating=[{"khoan": "1", "diem": "s", "fact_ids": ["E1"]}]), self.case)
+        self.assertTrue(check_verdict(unlinked, self.case, self.pack).errors)
 
     def test_acquittal_and_bad_references(self):
         self.assertEqual(self.check(guilty=False, penalty_type="khong", penalty_months=None).errors, [])

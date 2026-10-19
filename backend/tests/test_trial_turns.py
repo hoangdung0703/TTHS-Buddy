@@ -93,11 +93,54 @@ class SegmentGuardTests(unittest.TestCase):
         self.assertEqual([r.accepted for r in ctx.recorder.records], [False, True])
         self.assertIn("lay_citation", ctx.recorder.records[0].guard_violations)
 
-    def test_unknown_number_is_soft(self):
-        text = seg(("CHU_TOA", "Bị cáo bán xe được 9.000.000 đồng phải không?"), ("BI_CAO", "Dạ đúng."))
-        ctx = self._at_khai_mac([text, text])
+    def test_unknown_amount_from_a_character_is_blocked_then_regenerated(self):
+        bad = seg(("CHU_TOA", "Bị cáo bán xe được 9.000.000 đồng phải không?"), ("BI_CAO", "Dạ đúng."))
+        good = seg(("CHU_TOA", "Bị cáo cho biết giá trị chiếc xe?"),
+                   ("BI_CAO", "Dạ, theo kết luận định giá là 12.500.000 đồng."))
+        ctx = self._at_khai_mac([bad, good])
         produced = run(run_ai_turn(ctx))
-        self.assertIn("unknown_number", produced[0].guard_flags)
+        self.assertEqual([r.accepted for r in ctx.recorder.records], [False, True])
+        self.assertIn("unknown_amount", ctx.recorder.records[0].guard_violations)
+        self.assertNotIn("9.000.000", " ".join(u.text for u in produced))
+        ctx = self._at_khai_mac([bad, bad])
+        with self.assertRaises(TrialGuardFailure):
+            run(run_ai_turn(ctx))
+
+    def test_new_fact_with_unknown_amount_is_not_added_to_the_ledger(self):
+        text = json.dumps({"utterances": [{"speaker_id": "CHU_TOA", "text": "Mời bị cáo."},
+                                          {"speaker_id": "BI_CAO", "text": "Dạ."}],
+                           "new_facts": [{"about": "BI_CAO", "fact": "Bị cáo đã bán xe được 900.000.000 đồng"},
+                                         {"about": "BI_CAO", "fact": "Bị cáo đi xe màu đỏ"}]}, ensure_ascii=False)
+        ctx = self._at_khai_mac([text])
+        run(run_ai_turn(ctx))
+        self.assertEqual([f["fact"] for f in ctx.fact_ledger], ["Bị cáo đi xe màu đỏ"])
+
+    def test_unknown_percent_stays_soft(self):
+        text = seg(("CHU_TOA", "Tỷ lệ thương tật 40% phải không?"), ("BI_CAO", "Dạ."))
+        ctx = self._at_khai_mac([text])
+        produced = run(run_ai_turn(ctx))
+        self.assertIn("unknown_percent", produced[0].guard_flags)
+
+    def test_student_may_state_a_false_amount_but_the_answer_may_not_repeat_it(self):
+        ctx = make_ctx([seg(("BI_CAO", "Thưa không đúng, tôi lấy 900.000.000 đồng là sai.")),
+                        seg(("BI_CAO", "Thưa không đúng, theo kết luận định giá tài sản trị giá 12.500.000 đồng."))])
+        run(run_until_user(ctx))
+        ctx.state = replace(ctx.state, current_step=5, slot_index=0, pending_ai=False)
+        apply_student_action(ctx, UserAction("speak", 5, ctx.state.version,
+                                             text="Bị cáo đã lấy tài sản trị giá 900.000.000 đồng đúng không?",
+                                             addressee="BI_CAO"))   # the student's own words: not guarded
+        produced = run(run_ai_turn(ctx))
+        self.assertNotIn("900.000.000", " ".join(u.text for u in produced))
+        self.assertIn("900.000.000", ctx.transcript[-2].text)       # stored verbatim
+
+    def test_legal_speaker_may_quote_a_threshold_from_the_law(self):
+        text = seg(("CHU_TOA", "Khoản 1 Điều 173 Bộ luật Hình sự áp dụng khi tài sản trị giá dưới 50.000.000 đồng."),)
+        ctx = make_ctx([text])
+        run(run_until_user(ctx))
+        ctx.state = replace(ctx.state, current_step=4, slot_index=0, pending_ai=True)
+        produced = run(run_ai_turn(ctx))
+        self.assertEqual([r.accepted for r in ctx.recorder.records], [True])
+        self.assertTrue(produced)
 
     def test_fabricated_pair_from_judge_is_hard(self):
         bad = seg(("CHU_TOA", "Theo Điều 326 Bộ luật Hình sự, phiên tòa bắt đầu."),)

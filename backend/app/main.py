@@ -10,6 +10,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.health import router as health_router
 from app.api.legal import router as legal_router
 from app.api.notes import router as notes_router
+from app.api.trials import router as trials_router
 from app.api.protected_test import router as protected_test_router
 from app.api.quiz import router as quiz_router
 from app.core.config import (
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(legal_router)
     app.include_router(notes_router)
+    app.include_router(trials_router)
     return app
 
 

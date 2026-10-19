@@ -17,7 +17,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 # 2: extra_amounts, compensation_vnd, defendant_plea and the code-chosen knobs (chặng 2).
-CASE_SCHEMA_VERSION = 2
+# 3: each inconsistency carries its own claimed_amount_vnd.
+# 4: evidence links to the fact it proves (fact_id).
+CASE_SCHEMA_VERSION = 4
 
 TRIAL_DISCLAIMER = (
     "Mô phỏng học tập · Không phải phiên tòa hay bản án thật · "
@@ -65,12 +67,24 @@ class EvidenceDraft(_Strict):
     description: str
     value_vnd: int | None = None
     injury_percent: int | None = None
+    # The fact this evidence proves. Lets code repair a circumstance that cites the evidence id
+    # where a fact id belongs (remap_fact_ids) - seen in case generation and in nghị án.
+    fact_id: str | None = None
+
+
+class Inconsistency(_Strict):
+    """One point where a pre-trial statement departs from the file. `claimed_amount_vnd` is the
+    amount this person claimed, when the inconsistency is about money: code adds it to the
+    declared amounts, so the money guard accepts it without the model having to remember to
+    declare it elsewhere (A5 runs 2026-10-19 failed 3 times on exactly that)."""
+    text: str
+    claimed_amount_vnd: int | None = None
 
 
 class PretrialStatement(_Strict):
     person_id: str
     summary: str
-    inconsistencies: list[str]
+    inconsistencies: list[Inconsistency]
 
 
 class ChargeDraft(_Strict):
@@ -201,10 +215,12 @@ CASE_DRAFT_RESPONSE_SCHEMA: dict = _obj({
     "evidence": {"type": "ARRAY", "items": _obj(
         {"id": _STR, "type": {"type": "STRING", "enum": ["vat_chung", "giam_dinh", "dinh_gia", "tai_lieu"]},
          "description": _STR, "value_vnd": {"type": "INTEGER", "nullable": True},
-         "injury_percent": {"type": "INTEGER", "nullable": True}},
+         "injury_percent": {"type": "INTEGER", "nullable": True},
+         "fact_id": {"type": "STRING", "nullable": True}},
         required=["id", "type", "description"])},
     "pretrial_statements": {"type": "ARRAY", "items": _obj(
-        {"person_id": _STR, "summary": _STR, "inconsistencies": _STR_LIST})},
+        {"person_id": _STR, "summary": _STR, "inconsistencies": {"type": "ARRAY", "items": _obj(
+            {"text": _STR, "claimed_amount_vnd": {"type": "INTEGER", "nullable": True}}, required=["text"])}})},
     "charge": _obj({"dieu": _STR, "khoan": _STR, "diem": _STR_LIST, "crime_name": _STR}),
     "measure_value": _INT,
     "defendant_plea": {"type": "STRING", "enum": ["nhan_toan_bo", "nhan_mot_phan", "choi_toi"]},

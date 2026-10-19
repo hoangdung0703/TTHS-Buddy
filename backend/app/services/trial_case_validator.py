@@ -54,6 +54,24 @@ def _code(value: object) -> object:
     return _CODE_PREFIX.sub("", value).strip().strip("{}").strip()
 
 
+def evidence_fact_map(evidence: list, fact_ids: set[str]) -> dict[str, str]:
+    """evidence id -> the fact it proves, for evidence whose fact_id names a real fact. Accepts
+    raw dicts (before validation) and EvidenceDraft models (nghị án)."""
+    mapping = {}
+    for item in evidence:
+        eid = item.get("id") if isinstance(item, dict) else item.id
+        fid = item.get("fact_id") if isinstance(item, dict) else item.fact_id
+        if eid and fid in fact_ids:
+            mapping[eid] = fid
+    return mapping
+
+
+def remap_fact_ids(fact_refs: list[str], fact_ids: set[str], by_evidence: dict[str, str]) -> list[str]:
+    """A circumstance citing an EVIDENCE id where a fact id belongs is repaired when that evidence
+    is linked to a fact; any other unknown id is kept as is, so the validator still rejects it."""
+    return [by_evidence[ref] if ref not in fact_ids and ref in by_evidence else ref for ref in fact_refs]
+
+
 def normalise_draft_dict(data: dict) -> dict:
     """Deterministic clean-up of CODE fields only (ids, Điều/khoản/điểm), applied before schema
     validation. Spike 2026-10-19: the model wrote ids as "{BI_CAO}" (the placeholder form used in
@@ -88,6 +106,15 @@ def normalise_draft_dict(data: dict) -> dict:
     claim = data.get("civil_claim")
     if isinstance(claim, dict):
         claim["claimant_id"] = _code(claim.get("claimant_id"))
+    for item in data.get("evidence") or []:
+        if isinstance(item, dict) and item.get("fact_id"):
+            item["fact_id"] = _code(item["fact_id"])
+    fact_ids = {f.get("id") for f in data.get("facts") or [] if isinstance(f, dict)}
+    by_evidence = evidence_fact_map(data.get("evidence") or [], fact_ids)
+    for key in ("mitigating", "aggravating"):
+        for item in data.get(key) or []:
+            if isinstance(item, dict):
+                item["fact_ids"] = remap_fact_ids(item.get("fact_ids") or [], fact_ids, by_evidence)
     return data
 
 
@@ -124,8 +151,8 @@ def iter_texts(draft: CaseDraft) -> Iterator[tuple[str, str]]:
         yield f"{item.id}.description", item.description
     for statement in draft.pretrial_statements:
         yield f"statement[{statement.person_id}].summary", statement.summary
-        for i, text in enumerate(statement.inconsistencies):
-            yield f"statement[{statement.person_id}].inconsistencies[{i}]", text
+        for i, item in enumerate(statement.inconsistencies):
+            yield f"statement[{statement.person_id}].inconsistencies[{i}]", item.text
     if draft.civil_claim is not None:
         yield "civil_claim.basis", draft.civil_claim.basis
     for i, extra in enumerate(draft.extra_amounts):
@@ -148,6 +175,8 @@ def declared_amounts(draft: CaseDraft, crime: CrimeConfig) -> set[int]:
     if draft.compensation_vnd:
         amounts.add(draft.compensation_vnd)
     amounts.update(extra.amount_vnd for extra in draft.extra_amounts)
+    amounts.update(item.claimed_amount_vnd for statement in draft.pretrial_statements
+                   for item in statement.inconsistencies if item.claimed_amount_vnd is not None)
     if amounts:
         amounts.add(sum(e.value_vnd for e in draft.evidence if e.value_vnd is not None))
     return amounts
@@ -242,6 +271,9 @@ def _check_ids(draft: CaseDraft, options: CaseOptions, errors: list[str]) -> Non
         for fid in circumstance.fact_ids:
             if fid not in fact_ids:
                 errors.append(f"Tình tiết tham chiếu fact_id không tồn tại: {fid}")
+    for item in draft.evidence:
+        if item.fact_id is not None and item.fact_id not in fact_ids:
+            errors.append(f"evidence {item.id}.fact_id không tồn tại: {item.fact_id}")
     for extra in draft.extra_amounts:
         if extra.evidence_id is not None and extra.evidence_id not in evidence_ids:
             errors.append(f"extra_amounts tham chiếu evidence_id không tồn tại: {extra.evidence_id}")

@@ -67,7 +67,7 @@ from app.services.trial_state_machine import (
     is_user_slot,
     skip_refusal_text,
 )
-from app.services.trial_verdict_guard import check_verdict
+from app.services.trial_verdict_guard import check_verdict, normalise_verdict
 
 logger = get_logger(__name__)
 
@@ -77,8 +77,12 @@ VERDICT_TEMPERATURE = 0.2
 MAX_ATTEMPTS = 2
 TRANSCRIPT_CHAR_BUDGET = 20_000
 STUDENT_TEXT_MAX_CHARS = {"default": 1500, "long": 6000}
+# unknown_amount is hard since 2026-10-19 (B4 rerun conditions): a money amount the case does not
+# hold must never come out of an AI character - a student asserting a false amount was echoed
+# back in B4. unknown_percent stays a soft flag.
 HARD_VIOLATIONS = frozenset({"speaker_not_allowed", "speaker_is_student", "lay_citation", "citation",
-                             "invented_name", "unknown_placeholder", "empty", "schema", "missing_charge_citation"})
+                             "invented_name", "unknown_placeholder", "empty", "schema", "missing_charge_citation",
+                             "unknown_amount"})
 # Only a card the legal team has approved is used: data/private/build_style_card.py writes
 # style_card.draft.md, and a reviewer renames it to style_card.approved.md after reading it.
 STYLE_CARD_PATH = Path(__file__).resolve().parents[3] / "data" / "private" / "style_card.approved.md"
@@ -234,11 +238,18 @@ def context_pack(ctx: TrialContext, slot_key: str) -> LegalPack:
     in the context."""
     charged = ctx.case.draft.charge.dieu
     articles = {a.key: a for a in ctx.pack.slice_for_slot(slot_key, ctx.state.current_step, charged)}
+    # The case file is in EVERY prompt, so what it cites is context for every slot: the charged
+    # Điều, Điều 51/52 when it lists circumstances, and every article its indictment cites.
+    # B4 2026-10-19: without this, Chủ tọa reading the charge at khai mạc ("điểm c khoản 2 Điều
+    # 173 Bộ luật Hình sự") failed the guard 124 times - the opening slice holds BLTTHS only.
+    for dieu in (charged, *(("51",) if ctx.case.draft.mitigating else ()), *(("52",) if ctx.case.draft.aggravating else ())):
+        article = ctx.pack.get(BLHS_DOCUMENT, dieu)
+        if article is not None:
+            articles[article.key] = article
     allowed_full = ctx.pack.allowed_pairs()
-    for u in ctx.transcript:
-        if not u.is_user:
-            continue
-        for citation in extract_citations(u.text):
+    cited_texts = [ctx.case.draft.indictment_text] + [u.text for u in ctx.transcript if u.is_user]
+    for text in cited_texts:
+        for citation in extract_citations(text):
             docs = [citation.law] if citation.law else [d for d, n in allowed_full if n == citation.dieu]
             for doc in docs:
                 article = ctx.pack.get(doc, citation.dieu) if doc else None
@@ -315,10 +326,14 @@ def _check_utterance(ctx: TrialContext, speaker_id: str, text: str, allowed: tup
     if NAME_LIKE_PATTERN.search(text):
         violations.append("invented_name")
     amounts, percents = _known_numbers(ctx)
+    if speaker_id in LEGAL_SPEAKER_IDS and pack is not None:
+        # Thresholds and fine ranges quoted from the articles in this call's context are not case facts.
+        amounts = amounts | {parse_money(m.group(1)) for a in pack.articles.values()
+                             for m in MONEY_PATTERN.finditer(a.text)}
     if any(parse_money(m.group(1)) not in amounts for m in MONEY_PATTERN.finditer(text)):
-        violations.append("unknown_number")
+        violations.append("unknown_amount")
     if any(int(m.group(1)) not in percents for m in PERCENT_PATTERN.finditer(text)):
-        violations.append("unknown_number")
+        violations.append("unknown_percent")
     pattern = _SPEAKS_FOR_STUDENT.get(ctx.student_id)
     if pattern and speaker_id != ctx.student_id and pattern.search(text):
         flags.append("speaks_for_student")
@@ -332,7 +347,8 @@ def _is_hard(violation: str) -> bool:
 def _feedback(violations: list[str]) -> str:
     return ("\n\nBẢN TRƯỚC BỊ TỪ CHỐI vì: " + "; ".join(sorted(set(violations))) +
             ". Viết lại, tuân thủ đúng quy tắc (chỉ viện dẫn Điều trong QUY ĐỊNH PHÁP LUẬT kèm tên luật; người "
-            "không chuyên không nêu số Điều; không tạo con số mới; chỉ dùng placeholder có trong hồ sơ).")
+            "không chuyên không nêu số Điều; không nêu số tiền nào không có trong hồ sơ - nếu người học nêu số "
+            "sai thì đính chính bằng con số trong hồ sơ, không nhắc lại số sai; chỉ dùng placeholder có trong hồ sơ).")
 
 
 # --- Generation primitives ------------------------------------------------------------------------
@@ -370,8 +386,12 @@ async def _generate_segment(ctx: TrialContext, slot_key: str, instruction: str,
         produced = []
         for utterance, vs, flags in checked:
             produced.append(ctx.add(utterance.speaker_id, utterance.text, flags=[*vs, *flags]))
+        amounts, _ = _known_numbers(ctx)
         for fact in out.new_facts:
-            if fact.about in ctx.case.participants:
+            # A new "fact" carrying a money amount the case does not hold would make that amount
+            # legitimate for every later turn (the ledger feeds _known_numbers): dropped.
+            if fact.about in ctx.case.participants and all(
+                    parse_money(m.group(1)) in amounts for m in MONEY_PATTERN.finditer(fact.fact)):
                 ctx.fact_ledger.append({"about": fact.about, "fact": fact.fact})
         return produced
     raise TrialGuardFailure(slot_key, last_violations)
@@ -456,7 +476,7 @@ async def _deliberate(ctx: TrialContext) -> None:
             temperature=VERDICT_TEMPERATURE,
         )
         try:
-            verdict = Verdict.model_validate(json.loads(result.text))
+            verdict = normalise_verdict(Verdict.model_validate(json.loads(result.text)), ctx.case)
         except (ValueError, ValidationError):
             record.guard_violations, record.accepted, last = ["schema"], False, ["schema"]
             feedback = _feedback(["schema"])

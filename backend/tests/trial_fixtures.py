@@ -76,10 +76,10 @@ def valid_draft_dict() -> dict:
             {"id": "E3", "type": "tai_lieu", "description": "Biên bản thu giữ xe", "value_vnd": None,
              "injury_percent": None},
             {"id": "E4", "type": "tai_lieu", "description": "Giấy nhận tiền bồi thường", "value_vnd": None,
-             "injury_percent": None},
+             "injury_percent": None, "fact_id": "F2"},
         ],
         "pretrial_statements": [
-            {"person_id": "BI_CAO", "summary": STATEMENT_BI_CAO, "inconsistencies": ["Giờ lấy xe khai khác nhau"]},
+            {"person_id": "BI_CAO", "summary": STATEMENT_BI_CAO, "inconsistencies": [{"text": "Giờ lấy xe khai khác nhau", "claimed_amount_vnd": None}]},
             {"person_id": "BI_HAI", "summary": STATEMENT_BI_HAI, "inconsistencies": []},
             {"person_id": "NLC_1", "summary": STATEMENT_NLC_1, "inconsistencies": []},
         ],

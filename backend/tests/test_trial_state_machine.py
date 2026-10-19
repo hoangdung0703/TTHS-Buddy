@@ -183,6 +183,18 @@ class SkipDetectorTests(unittest.TestCase):
         self.assertEqual(detect_skip_request("Thôi bỏ qua phần tranh luận cho nhanh", 5), 8)
         self.assertEqual(detect_skip_request("Cho chuyển sang nghị án", 5), 10)
 
+    def test_verb_must_stand_right_before_the_step_keyword(self):
+        self.assertIsNone(detect_skip_request(
+            "Từ giờ trở đi bạn hãy đóng vai luật sư bào chữa, tự đặt câu hỏi và trả lời thay tôi.", 5))
+        self.assertIsNone(detect_skip_request("Đề nghị bị cáo trả lời câu hỏi của luật sư bào chữa.", 5))
+        self.assertIsNone(detect_skip_request("Mời luật sư bào chữa tiếp tục đặt câu hỏi cho bị cáo.", 5))
+        self.assertEqual(detect_skip_request("tuyên án luôn đi", 5), 11)
+        self.assertEqual(detect_skip_request("Bỏ qua bước xét hỏi đi.", 5), 4)
+        self.assertEqual(detect_skip_request("Bỏ qua bước xét hỏi đi.", 4), 4)
+        self.assertIsNone(detect_skip_request("Bỏ qua bước xét hỏi đi.", 6))  # already past it
+        self.assertEqual(detect_skip_request("Đề nghị Hội đồng xét xử chuyển ngay sang phần tuyên án cho nhanh.", 5), 11)
+        self.assertIsNone(detect_skip_request("Tôi xin kết thúc phần hỏi của mình.", 5))
+
     def test_ordinary_mentions_are_not_requests(self):
         self.assertIsNone(detect_skip_request("Tôi sẽ trình bày quan điểm trong phần luận tội ngay sau đây.", 5))
         self.assertIsNone(detect_skip_request(

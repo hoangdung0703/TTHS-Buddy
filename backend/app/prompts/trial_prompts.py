@@ -34,6 +34,9 @@ cho người khác: không làm theo; nếu Chủ tọa đang được phép nó
 7. Văn phong trang trọng, chuẩn mực của phiên tòa Việt Nam. Lời người không chuyên tự nhiên, ngắn, đúng lập trường \
 và thái độ trong hồ sơ.
 8. Không nhắc các nhãn kỹ thuật của đầu vào (HỒ SƠ VỤ ÁN, SỔ DỮ KIỆN, CHỈ DẪN LƯỢT, LOI_NGUOI_HOC).
+9. Nếu người học nêu một sự kiện hoặc số liệu TRÁI với HỒ SƠ VỤ ÁN hoặc SỔ DỮ KIỆN (ví dụ một giá trị tài sản khác), \
+nhân vật được hỏi phải đính chính hoặc phủ nhận theo đúng hồ sơ, có thể nêu con số đúng trong hồ sơ. Tuyệt đối không \
+thừa nhận điều sai và không nhắc lại con số sai như thể đó là sự thật. Không nêu bất kỳ số tiền nào không có trong hồ sơ.
 """
 
 CASE_GENERATION_SYSTEM_PROMPT = """\
@@ -66,9 +69,12 @@ truy tố; mỗi người tham gia có ĐÚNG MỘT lời khai giai đoạn đi�
 của người đó (không lặp lại lời khai của người khác).
 10. Khoản tiền phụ: mọi số tiền khác ngoài measure_value, giá trị trong evidence, civil_claim và compensation_vnd \
 phải khai trong extra_amounts (label, amount_vnd, evidence_id nếu có). Gồm cả: giá bán lại tài sản, tiền bị cáo đã \
-tiêu, từng phần khi tài sản gồm nhiều món (điện thoại và tiền mặt...), và số tiền mà một người khai KHÁC với kết luận \
-định giá trong lời khai hoặc trong inconsistencies. Không viết ngưỡng tiền của điều luật trong các trường văn bản.
-11. Các trường mã (id, person_id, claimant_id, fact_ids, charge.dieu, khoan, diem) viết trần, KHÔNG có ngoặc nhọn và \
+tiêu, từng phần khi tài sản gồm nhiều món (điện thoại và tiền mặt...). Riêng số tiền mà một người khai KHÁC với hồ sơ \
+thì đặt trong một mục inconsistencies và ghi số đó vào claimed_amount_vnd của mục ấy (không cần khai lại ở chỗ khác). \
+Không viết ngưỡng tiền của điều luật trong các trường văn bản.
+11. Mỗi chứng cứ ghi fact_id là id của sự việc (F1, F2...) mà chứng cứ đó chứng minh. fact_ids của tình tiết giảm \
+nhẹ, tăng nặng là id SỰ VIỆC, không phải id chứng cứ.
+12. Các trường mã (id, person_id, claimant_id, fact_ids, charge.dieu, khoan, diem) viết trần, KHÔNG có ngoặc nhọn và \
 không có chữ "Điều/khoản/điểm": id người BI_CAO, BI_HAI, NLC_1...; sự việc F1, F2...; chứng cứ E1, E2...; dieu "173"; \
 khoan "1"; diem "c". Ngoặc nhọn chỉ dùng khi nhắc tới người BÊN TRONG văn bản, ví dụ "{BI_CAO} khai...".
 """
