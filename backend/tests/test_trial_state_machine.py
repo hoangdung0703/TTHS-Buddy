@@ -176,6 +176,23 @@ class SlotAssignmentTests(unittest.TestCase):
         self.assertEqual(allowed_actions(state), ["advance:4"])
 
 
+class TextLimitTests(unittest.TestCase):
+    def test_limits_follow_the_slot(self):
+        from app.services.trial_state_machine import text_limits
+        self.assertIsNone(text_limits(new_session("ksv", SHAPE)))                 # AI turn
+        expected = {2: (1, 1500), 3: (100, 6000), 5: (1, 1500), 6: (300, 6000), 8: (1, 6000)}
+        for step, limits in expected.items():
+            with self.subTest(step=step):
+                state = drive_to(new_session("ksv", SHAPE), step)
+                while awaiting(state) == "ai":
+                    state = complete_ai_turn(state)
+                self.assertEqual(text_limits(state), limits)
+        state = drive_to(new_session("luat_su", SHAPE), 7)
+        self.assertEqual(text_limits(state), (300, 6000))
+        state = act(drive_to(new_session("ksv", SHAPE), 3), "speak", text=LONG_TEXT)
+        self.assertIsNone(text_limits(state))                                     # only advance allowed
+
+
 class SkipDetectorTests(unittest.TestCase):
     def test_requests_to_jump_are_caught(self):
         self.assertEqual(detect_skip_request("Đề nghị Hội đồng xét xử tuyên án luôn.", 4), 11)

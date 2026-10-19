@@ -282,6 +282,15 @@ class TrialRouteTests(unittest.TestCase):
         response = self.turn(sid, state, "advance", target_step=11)
         self.assertEqual(response.status_code, 409)
 
+    def test_state_carries_text_limits(self):
+        sid, state = self.create()
+        self.assertIsNone(state["text_limits"])
+        state = self.play_to(sid, state, until_step=3)
+        state, _ = self.act(sid, state, "advance", target_step=3)
+        self.assertEqual(state["text_limits"], {"min": 100, "max": 6000})
+        response = self.turn(sid, state, "speak", text="x" * 6001)
+        self.assertEqual(response.status_code, 422)
+
     def test_h_conflicts_are_409(self):
         sid, state = self.create()
         stale = dict(state, version=state["version"] - 1)

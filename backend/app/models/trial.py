@@ -198,9 +198,11 @@ _STR = {"type": "STRING"}
 _INT = {"type": "INTEGER"}
 _STR_LIST = {"type": "ARRAY", "items": _STR}
 
+# residence_place is NOT asked of the model: code assigns it from ABSTRACT_PLACES
+# (trial_case_validator.normalise_draft_dict), the same way names are assigned.
 _PERSON_PROPS = {
     "id": _STR, "gender": {"type": "STRING", "enum": ["nam", "nu"]}, "age": _INT,
-    "occupation": _STR, "residence_place": _STR, "stance": _STR, "statement_summary": _STR,
+    "occupation": _STR, "stance": _STR, "statement_summary": _STR,
     "knowledge": _STR_LIST, "demeanor": _STR,
 }
 

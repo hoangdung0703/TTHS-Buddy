@@ -77,13 +77,13 @@ def normalise_draft_dict(data: dict) -> dict:
     validation. Spike 2026-10-19: the model wrote ids as "{BI_CAO}" (the placeholder form used in
     text) in 5/5 first attempts, and once wrote charge.dieu as "Điều 171"; each such slip cascaded
     into a dozen validation errors. Free-text fields are never touched."""
-    def person(p: object) -> None:
+    people = [data.get("defendant"), data.get("victim"), *(data.get("witnesses") or []), data.get("related_party")]
+    for index, p in enumerate(people):
         if isinstance(p, dict):
             p["id"] = _code(p.get("id"))
-    for key in ("defendant", "victim", "related_party"):
-        person(data.get(key))
-    for witness in data.get("witnesses") or []:
-        person(witness)
+            # Code-assigned (chặng 3C): the model is no longer asked for a residence, so a real or
+            # off-list place can never cost a regeneration. One abstract place per person, in order.
+            p["residence_place"] = ABSTRACT_PLACES[index % len(ABSTRACT_PLACES)]
     for statement in data.get("pretrial_statements") or []:
         if isinstance(statement, dict):
             statement["person_id"] = _code(statement.get("person_id"))

@@ -32,6 +32,11 @@ class TrialTurnRequest(_Strict):
     target_step: int | None = Field(default=None, ge=1, le=11)
 
 
+class TrialTextLimits(BaseModel):
+    min: int
+    max: int
+
+
 class TrialStateOut(BaseModel):
     session_id: uuid.UUID
     current_step: int
@@ -40,6 +45,8 @@ class TrialStateOut(BaseModel):
     awaiting: str
     allowed_actions: list[str]
     version: int
+    # Character limits for the next "speak" in the current slot; null when speaking is not allowed.
+    text_limits: TrialTextLimits | None = None
 
 
 class TrialUtteranceOut(BaseModel):

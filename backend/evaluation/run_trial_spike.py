@@ -277,7 +277,7 @@ def summarise(records: list[dict]) -> dict:
     return summary
 
 
-async def main(out_dir: Path, cases_only: bool = False, bis: bool = False) -> int:
+async def main(out_dir: Path, cases_only: bool = False, bis: bool = False, seed_offset: int = 0) -> int:
     configure_logging("test")  # INFO + redaction; never DEBUG (requirements.md, secret-leak lessons)
     settings = get_settings()
     qdrant = create_qdrant_client(settings)
@@ -287,7 +287,7 @@ async def main(out_dir: Path, cases_only: bool = False, bis: bool = False) -> in
     case_recorder = TrialCallRecorder()
     creations, case_results = [], []
     try:
-        configs = ([(seed, o, forced) for seed, o, forced in BIS_CONFIGS] if bis else
+        configs = ([(seed + seed_offset, o, forced) for seed, o, forced in BIS_CONFIGS] if bis else
                    [(1000 + i, o, {}) for i, o in enumerate(CASE_CONFIGS, 1)])
         for index, (seed, options, forced) in enumerate(configs, 1):
             started = time.monotonic()
@@ -376,5 +376,7 @@ if __name__ == "__main__":
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--cases-only", action="store_true")
     parser.add_argument("--bis", action="store_true", help="gate A5-bis seeds; implies --cases-only")
+    parser.add_argument("--seed-offset", type=int, default=0,
+                        help="shift the --bis seeds (1000 -> 3001-3008) to test on seeds never tuned against")
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.out, args.cases_only or args.bis, args.bis)))
+    sys.exit(asyncio.run(main(args.out, args.cases_only or args.bis, args.bis, args.seed_offset)))

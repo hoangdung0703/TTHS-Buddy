@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import copy
+import json
 import random
 import unittest
 
 from pydantic import ValidationError
 
-from app.models.trial import CaseDraft, CaseOptions, Verdict
+from app.models.trial import CASE_DRAFT_RESPONSE_SCHEMA, CaseDraft, CaseOptions, Verdict
 from app.services.trial_case_validator import normalise_draft_dict, validate_case_draft
-from app.services.trial_config import AGGRAVATING_POOL, BLHS_DOCUMENT, CRIMES, get_crime
+from app.services.trial_config import ABSTRACT_PLACES, AGGRAVATING_POOL, BLHS_DOCUMENT, CRIMES, get_crime
 from app.services.trial_knobs import choose_knobs
 from app.services.trial_legal_pack import Khoan
 from app.services.trial_names import assign_names, name_hash, render
@@ -35,6 +36,18 @@ class CaseValidatorTests(unittest.TestCase):
         self.assertEqual(errors_for(normalise_draft_dict(draft)), [])
         self.assertEqual(normalise_draft_dict({"charge": {"dieu": "x", "khoan": "1", "diem": ["đ"]}})["charge"]["diem"],
                          ["đ"])
+
+    def test_residence_is_assigned_by_code(self):
+        draft = valid_draft_dict()
+        for person in (draft["defendant"], draft["victim"], *draft["witnesses"]):
+            person.pop("residence_place")
+        draft["victim"]["residence_place"] = "Quận 1, TP Hồ Chí Minh"   # an off-list value is overwritten
+        normalised = normalise_draft_dict(draft)
+        places = [normalised["defendant"]["residence_place"], normalised["victim"]["residence_place"],
+                  normalised["witnesses"][0]["residence_place"]]
+        self.assertTrue(all(p in ABSTRACT_PLACES for p in places))
+        self.assertEqual(errors_for(normalised), [])
+        self.assertNotIn("residence_place", json.dumps(CASE_DRAFT_RESPONSE_SCHEMA))
 
     def test_extra_field_is_rejected_by_schema(self):
         draft = valid_draft_dict()
