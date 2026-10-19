@@ -11,8 +11,9 @@ import {
   endSlotLabel,
   GUARD_EXHAUSTED_MESSAGE,
   parseAllowedActions,
+  TRIAL_TEXT_DEFAULT_MAX,
   stepHint,
-  textLimitsForStep,
+  textLimitsForState,
   validateTrialText
 } from "@/lib/trialRules";
 import type { TrialParticipant, TrialState, TrialStepInfo } from "@/lib/types";
@@ -62,7 +63,7 @@ export function TrialComposer({
 }: TrialComposerProps) {
   const mode = composerMode(state);
   const actions = parseAllowedActions(state.allowed_actions);
-  const limits = textLimitsForStep(state.current_step);
+  const limits = textLimitsForState(state);
   const [addressee, setAddressee] = useState<string>("");
   const [touched, setTouched] = useState(false);
   const textareaId = useId();
@@ -181,7 +182,7 @@ export function TrialComposer({
   const validation = validateTrialText(draft, limits);
   const needsAddressee = actions.addressees !== null;
   const canSend = actions.canSpeak && validation === null && (!needsAddressee || chosenAddressee !== "");
-  const isLong = limits.max > 1500;
+  const isLong = limits.max > TRIAL_TEXT_DEFAULT_MAX;
   const length = draft.length;
   const overMax = length > limits.max;
   const trimmedLength = draft.trim().length;
@@ -244,7 +245,10 @@ export function TrialComposer({
             aria-describedby={`${counterId} ${hintId}`}
             aria-invalid={touched && validation !== null}
             placeholder={needsAddressee ? "Nhập câu hỏi..." : `${limits.label}...`}
-            className={cn("resize-y text-sm leading-relaxed", isLong ? "min-h-[180px]" : "min-h-[88px]")}
+            className={cn(
+              "resize-y text-sm leading-relaxed [@media(max-height:640px)]:min-h-[64px]",
+              isLong ? "min-h-[120px] sm:min-h-[180px]" : "min-h-[72px] sm:min-h-[88px]"
+            )}
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p
@@ -279,7 +283,7 @@ export function TrialComposer({
               {state.current_step === 6 || state.current_step === 7 ? "Trình bày" : "Gửi"}
             </Button>
           </div>
-          <p className="text-right text-[0.7rem] text-muted-foreground">Ctrl/⌘ + Enter để gửi</p>
+          <p className="hidden text-right text-[0.7rem] text-muted-foreground md:block">Ctrl/⌘ + Enter để gửi</p>
         </form>
       ) : actions.canEndSlot ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
@@ -297,7 +301,7 @@ function Frame({ hint, hintId, children }: { hint: string; hintId: string; child
   return (
     <div className="flex flex-col gap-2">
       {hint ? (
-        <p id={hintId} data-testid="trial-step-hint" className="text-xs leading-relaxed text-muted-foreground">
+        <p id={hintId} data-testid="trial-step-hint" className="text-xs leading-relaxed text-muted-foreground [@media(max-height:640px)]:sr-only">
           {hint}
         </p>
       ) : null}

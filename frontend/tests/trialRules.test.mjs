@@ -10,6 +10,7 @@ import {
   messageForTrialError,
   parseAllowedActions,
   parseTrialErrorBody,
+  textLimitsForState,
   textLimitsForStep,
   validateTrialText
 } from "../src/lib/trialRules.ts";
@@ -78,7 +79,24 @@ test("composerMode follows the server state only", () => {
   assert.equal(composerMode({ ...baseState, status: "abandoned", awaiting: "none" }), "finished");
 });
 
-test("length limits per step match the backend", () => {
+test("text_limits from the server state win over the step table", () => {
+  // Server says 50..900 at step 6: the client must follow it, not its own 300..6000.
+  const limits = textLimitsForState({ current_step: 6, text_limits: { min: 50, max: 900 } });
+  assert.deepEqual([limits.min, limits.max, limits.label], [50, 900, "Bản luận tội"]);
+  assert.match(validateTrialText("a".repeat(901), limits), /900/);
+  assert.match(validateTrialText("a".repeat(49), limits), /ít nhất 50/);
+  assert.equal(validateTrialText("a".repeat(50), limits), null);
+});
+
+test("missing or malformed text_limits falls back to the step table", () => {
+  for (const text_limits of [undefined, null, {}, { min: 0, max: 10 }, { min: 10, max: 5 }, { min: "1", max: 1500 }]) {
+    const limits = textLimitsForState({ current_step: 6, text_limits });
+    assert.deepEqual([limits.min, limits.max], [300, 6000], JSON.stringify(text_limits));
+  }
+  assert.deepEqual(Object.values(textLimitsForState({ current_step: 5 })).slice(0, 2), [1, 1500]);
+});
+
+test("fallback length limits per step match the backend table", () => {
   assert.deepEqual([textLimitsForStep(2).min, textLimitsForStep(2).max], [1, 1500]);
   assert.deepEqual([textLimitsForStep(3).min, textLimitsForStep(3).max], [100, 6000]);
   assert.deepEqual([textLimitsForStep(5).min, textLimitsForStep(5).max], [1, 1500]);

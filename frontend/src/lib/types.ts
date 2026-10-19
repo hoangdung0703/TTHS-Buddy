@@ -279,6 +279,9 @@ export interface TrialState {
   awaiting: TrialAwaiting;
   allowed_actions: string[];
   version: number;
+  // Characters allowed for the next "speak" in the current slot; null when speaking is not
+  // allowed. Optional so an older backend without the field still parses.
+  text_limits?: { min: number; max: number } | null;
 }
 
 export interface TrialUtterance {

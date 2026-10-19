@@ -69,27 +69,46 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  // Follow the newest utterance (initial load and every streamed one).
-  const lastSeq = utterances.length > 0 ? utterances[utterances.length - 1].seq : -1;
-  useEffect(() => {
-    if (lastSeq >= 0) {
-      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  // Follow the newest utterance (initial load and every streamed one). The composer dock is sticky
+  // but sits in normal flow right after the transcript, so scrolling the page's scroll container to
+  // its end puts the newest utterance directly above the dock, never under it.
+  const scrollToLatest = useCallback((smooth: boolean): void => {
+    let container = endRef.current?.parentElement ?? null;
+    while (container !== null && !/(auto|scroll)/.test(getComputedStyle(container).overflowY)) {
+      container = container.parentElement;
     }
-  }, [lastSeq]);
+    container?.scrollTo({ top: container.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  }, []);
 
-  // The composer is sticky at the bottom; keep the newest utterance above it, not under it.
+  const lastSeq = utterances.length > 0 ? utterances[utterances.length - 1].seq : -1;
+  const hasScrolledRef = useRef(false);
   useEffect(() => {
-    const composer = composerRef.current;
-    const end = endRef.current;
-    if (composer === null || end === null) {
+    if (lastSeq < 0) {
       return;
     }
-    const observer = new ResizeObserver(() => {
-      end.style.scrollMarginBottom = `${composer.offsetHeight + 16}px`;
-    });
-    observer.observe(composer);
-    return () => observer.disconnect();
-  }, [detail]);
+    // Instant on first paint (a long transcript should not animate), smooth for streamed lines.
+    const smooth = hasScrolledRef.current;
+    hasScrolledRef.current = true;
+    const frame = requestAnimationFrame(() => scrollToLatest(smooth));
+    return () => cancelAnimationFrame(frame);
+  }, [lastSeq, scrollToLatest]);
+
+  // An on-screen keyboard shrinks the (visual) viewport; keep the newest utterance in view while
+  // the student is typing.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    function onResize(): void {
+      if (composerRef.current?.contains(document.activeElement)) {
+        scrollToLatest(false);
+      }
+    }
+    viewport?.addEventListener("resize", onResize);
+    window.addEventListener("resize", onResize);
+    return () => {
+      viewport?.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [scrollToLatest]);
 
   useEffect(() => {
     if (!drawerOpen) {
@@ -337,7 +356,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
           <div ref={endRef} />
         </div>
 
-        <div ref={composerRef} className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t border-border bg-background/95 px-4 pb-4 pt-3 backdrop-blur sm:-mx-6 sm:px-6">
+        <div ref={composerRef} data-testid="trial-composer-dock" className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t border-border bg-background/95 px-4 pb-4 pt-3 backdrop-blur sm:-mx-6 sm:px-6">
           {softNotice !== null ? (
             <p role="status" data-testid="trial-soft-notice" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               {softNotice}

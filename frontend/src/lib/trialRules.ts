@@ -6,9 +6,9 @@
 import type { TrialState, TrialUtterance } from "./types";
 
 // --- Text limits --------------------------------------------------------------------------------
-// The state does not name the current slot, but every step's slot kind is fixed by the backend
-// script (trial_state_machine.STEPS) and the limits per kind come from trial_turn_service
-// (STUDENT_TEXT_MAX_CHARS) and the slot min_chars. Keep in sync with contract Mục 3.4.
+// The server sends the limits of the current slot in state.text_limits (contract Mục 3.4/5); that is
+// the only source. The per-step table below is kept solely as a fallback for a backend that does
+// not send the field yet - it mirrors trial_state_machine.text_limits at the time of writing.
 export const TRIAL_TEXT_SCHEMA_MAX = 6000;
 export const TRIAL_TEXT_DEFAULT_MAX = 1500;
 
@@ -19,21 +19,49 @@ export interface TrialTextLimits {
   label: string;
 }
 
+const STEP_TEXT_LABELS: Record<number, string> = {
+  3: "Cáo trạng",
+  5: "Câu hỏi",
+  6: "Bản luận tội",
+  7: "Bài bào chữa",
+  8: "Ý kiến đối đáp"
+};
+
+function textLabelForStep(step: number): string {
+  return STEP_TEXT_LABELS[step] ?? "Ý kiến";
+}
+
+// Fallback only - see textLimitsForState.
 export function textLimitsForStep(step: number): TrialTextLimits {
+  const label = textLabelForStep(step);
   switch (step) {
     case 3:
-      return { min: 100, max: TRIAL_TEXT_SCHEMA_MAX, label: "Cáo trạng" };
-    case 5:
-      return { min: 1, max: TRIAL_TEXT_DEFAULT_MAX, label: "Câu hỏi" };
+      return { min: 100, max: TRIAL_TEXT_SCHEMA_MAX, label };
     case 6:
-      return { min: 300, max: TRIAL_TEXT_SCHEMA_MAX, label: "Bản luận tội" };
     case 7:
-      return { min: 300, max: TRIAL_TEXT_SCHEMA_MAX, label: "Bài bào chữa" };
+      return { min: 300, max: TRIAL_TEXT_SCHEMA_MAX, label };
     case 8:
-      return { min: 1, max: TRIAL_TEXT_SCHEMA_MAX, label: "Ý kiến đối đáp" };
+      return { min: 1, max: TRIAL_TEXT_SCHEMA_MAX, label };
     default:
-      return { min: 1, max: TRIAL_TEXT_DEFAULT_MAX, label: "Ý kiến" };
+      return { min: 1, max: TRIAL_TEXT_DEFAULT_MAX, label };
   }
+}
+
+function isValidServerLimits(limits: unknown): limits is { min: number; max: number } {
+  if (limits === null || typeof limits !== "object") {
+    return false;
+  }
+  const { min, max } = limits as { min?: unknown; max?: unknown };
+  return Number.isInteger(min) && Number.isInteger(max) && (min as number) >= 1 && (max as number) >= (min as number);
+}
+
+// Limits for the composer: the server's text_limits when present and well-formed, otherwise the
+// per-step fallback. The label (wording only) always comes from the step.
+export function textLimitsForState(state: Pick<TrialState, "current_step" | "text_limits">): TrialTextLimits {
+  if (isValidServerLimits(state.text_limits)) {
+    return { min: state.text_limits.min, max: state.text_limits.max, label: textLabelForStep(state.current_step) };
+  }
+  return textLimitsForStep(state.current_step);
 }
 
 // Returns the Vietnamese reason the text cannot be sent yet, or null when it can. Length is counted
