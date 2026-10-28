@@ -26,6 +26,8 @@ export type ComposerAction =
   | { action: "advance"; target_step: number };
 
 interface TrialComposerProps {
+  // The session is completed but the record summary is still being written (final turn).
+  recordPending?: boolean;
   sessionId: string;
   state: TrialState;
   userRole: string;
@@ -46,6 +48,7 @@ interface TrialComposerProps {
 
 // Every control here comes from state.allowed_actions (contract Mục 9.3): nothing is inferred.
 export function TrialComposer({
+  recordPending = false,
   sessionId,
   state,
   userRole,
@@ -101,12 +104,22 @@ export function TrialComposer({
     );
   }
 
+  // Finished: a one-line bar, not a card - it sits in the sticky dock and must not take a quarter of
+  // the viewport away from the transcript.
   if (mode === "finished") {
     return state.status === "completed" ? (
-      <div data-testid="trial-finished" className="flex flex-col items-center gap-3 rounded-xl border border-primary/15 bg-card px-5 py-6 text-center shadow-sm">
-        <p className="font-serif text-xl font-light text-foreground">Phiên tòa kết thúc</p>
-        <p className="max-w-md text-sm text-muted-foreground">Bạn có thể xem lại toàn bộ diễn biến ở trên hoặc mở biên bản phiên tòa để in và lưu.</p>
-        <Button asChild className="rounded-full">
+      <div
+        data-testid="trial-finished"
+        role="status"
+        className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-primary/15 bg-card px-4 py-2 shadow-sm"
+      >
+        <p className="min-w-0 text-sm text-foreground">
+          <span className="font-medium">Phiên tòa đã kết thúc.</span>
+          {recordPending ? (
+            <span className="ml-1 text-xs text-muted-foreground">Biên bản đang được hoàn thiện; mở ngay thì mục tóm tắt có thể là nguyên văn.</span>
+          ) : null}
+        </p>
+        <Button asChild size="sm" className="h-9 rounded-full">
           <Link href={`/trial/${sessionId}/record`}>
             <FileText className="h-4 w-4" />
             Xem biên bản
@@ -114,8 +127,8 @@ export function TrialComposer({
         </Button>
       </div>
     ) : (
-      <div data-testid="trial-abandoned" className="rounded-xl border border-border bg-muted/40 px-5 py-4 text-center text-sm text-muted-foreground">
-        Phiên tòa này đã bị bỏ. Bạn chỉ có thể xem lại diễn biến.{" "}
+      <div data-testid="trial-abandoned" className="flex min-h-12 flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-4 py-2 text-sm text-muted-foreground">
+        <span>Phiên tòa này đã bị bỏ, chỉ xem lại được diễn biến.</span>
         <Link href="/trial" className="font-medium text-primary underline-offset-2 hover:underline">
           Về danh sách
         </Link>

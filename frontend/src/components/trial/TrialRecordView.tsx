@@ -8,21 +8,19 @@ import { Button } from "@/components/ui/button";
 import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
 import { getTrialRecord, TrialApiError } from "@/lib/api";
 import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
+import { RecordDocument } from "@/components/trial/RecordDocument";
+import { TrialText } from "@/components/trial/TrialText";
 import { messageForTrialError } from "@/lib/trialRules";
-import { cn } from "@/lib/utils";
+import type { TrialRecordDocument } from "@/lib/types";
 
 const COPY_FEEDBACK_MS = 2000;
 
-// A line in capitals ("BIÊN BẢN PHIÊN TÒA...", "I. NHỮNG NGƯỜI...", "3. CÔNG BỐ CÁO TRẠNG") is a
-// heading. Only the styling changes; the text itself is shown exactly as the server built it.
-function isHeading(line: string): boolean {
-  const letters = line.replace(/[^\p{L}]/gu, "");
-  return letters.length >= 4 && line.length <= 160 && line === line.toLocaleUpperCase("vi-VN");
-}
-
-// The record (contract 3.7): verbatim text, both simulation lines kept, printable via the browser.
+// The record (contract 3.7): rendered from `record` (Mẫu 22-HS), both simulation lines kept,
+// printable via the browser. "Sao chép văn bản" copies the server's plain `text`.
 export function TrialRecordView({ sessionId }: { sessionId: string }) {
   const [text, setText] = useState<string | null>(null);
+  // Structured Mẫu 22-HS record; null for an older backend, which only sends `text`.
+  const [record, setRecord] = useState<TrialRecordDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const { isSlow, start, stop } = useSlowRequestNotice();
@@ -31,8 +29,9 @@ export function TrialRecordView({ sessionId }: { sessionId: string }) {
     setError(null);
     start();
     try {
-      const record = await getTrialRecord(sessionId);
-      setText(record.text);
+      const result = await getTrialRecord(sessionId);
+      setText(result.text);
+      setRecord(result.record ?? null);
     } catch (loadError) {
       if (!(loadError instanceof TrialApiError && loadError.featureDisabled)) {
         setError(loadError instanceof TrialApiError ? messageForTrialError(loadError) : "Không tải được biên bản. Bạn thử lại nhé.");
@@ -105,26 +104,9 @@ export function TrialRecordView({ sessionId }: { sessionId: string }) {
       {text !== null ? (
         <article
           data-testid="trial-record"
-          className="rounded-xl border border-border bg-white px-5 py-8 text-[0.95rem] leading-relaxed text-foreground shadow-sm sm:px-10 print:rounded-none print:border-0 print:p-0 print:text-[12pt] print:shadow-none"
+          className="rounded-xl border border-border bg-white px-5 py-8 text-[0.95rem] leading-relaxed text-foreground shadow-sm sm:px-10 print:rounded-none print:border-0 print:p-0 print:text-[11.5pt] print:leading-normal print:text-black print:shadow-none"
         >
-          {text.split("\n").map((line, index) => {
-            if (line.trim().length === 0) {
-              return <div key={index} className="h-3" aria-hidden="true" />;
-            }
-            const disclaimer = line.startsWith("***");
-            return (
-              <p
-                key={index}
-                className={cn(
-                  "whitespace-pre-wrap break-words",
-                  disclaimer && "my-2 text-center text-xs font-medium tracking-wide text-muted-foreground print:text-[9pt]",
-                  !disclaimer && isHeading(line) && "mt-3 font-semibold"
-                )}
-              >
-                {line}
-              </p>
-            );
-          })}
+          {record !== null ? <RecordDocument record={record} /> : <TrialText text={text} />}
         </article>
       ) : null}
     </div>

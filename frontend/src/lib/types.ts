@@ -311,6 +311,8 @@ export interface TrialStepInfo {
 
 export interface TrialPerson {
   id: string;
+  // Panel display name, already anonymised by the server ("Trần Đức H").
+  name?: string | null;
   gender?: string | null;
   age?: number | null;
   occupation?: string | null;
@@ -369,6 +371,8 @@ export interface TrialCaseFile {
   aggravating?: TrialCircumstance[];
   civil_claim?: { claimant_id: string; amount_vnd: number; basis?: string | null } | null;
   indictment_text?: string;
+  // id -> panel display name, anonymised for lay participants (contract Mục 7).
+  display_names?: Record<string, string>;
 }
 
 export interface TrialDetail {
@@ -384,7 +388,51 @@ export interface TrialDetail {
   utterances: TrialUtterance[];
 }
 
+// GET /api/trials/{id}/record (contract 3.7): `record` follows Mẫu số 22-HS; `text` is its plain
+// rendering, for copy and as a fallback. `record` is optional so an older backend still renders.
+export interface TrialRecordField {
+  label: string;
+  // null = no data: shown as the form's dotted blank, never filled in.
+  value: string | null;
+  // Value assigned by the simulation (date, venue, ...), shown as such.
+  simulated?: boolean;
+}
+
+export interface TrialRecordEntry {
+  seq: number;
+  step: number;
+  speaker_role: string;
+  speaker_name: string;
+  text: string;
+}
+
+export interface TrialRecordSection {
+  heading: string;
+  content?: "verbatim" | "summary" | null;
+  summary?: string | null;
+  summary_fallback?: boolean;
+  fields?: TrialRecordField[];
+  entries?: TrialRecordEntry[];
+  notes?: string[];
+  subsections?: TrialRecordSection[];
+}
+
+export interface TrialRecordDocument {
+  disclaimer: string;
+  form_reference: string;
+  court_name: string;
+  national_header: string[];
+  title: string;
+  subtitle: string;
+  opening: TrialRecordField[];
+  sections: TrialRecordSection[];
+  closing: TrialRecordField[];
+  signatures: { title: string; note: string; name: string }[];
+  appendix?: TrialRecordSection[];
+}
+
 export interface TrialRecord {
   session_id: string;
   text: string;
+  record?: TrialRecordDocument;
 }

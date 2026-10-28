@@ -1,11 +1,11 @@
 "use client";
 
-import { AlertCircle, ArrowLeft, FileText, FolderOpen, MoreHorizontal, RefreshCw, Trash2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowLeft, FileText, FolderOpen, Maximize2, MoreHorizontal, RefreshCw, Trash2, X, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { CaseFilePanel } from "@/components/trial/CaseFilePanel";
+import { CaseFilePanel, type CaseFileTab } from "@/components/trial/CaseFilePanel";
 import { StepBar } from "@/components/trial/StepBar";
 import { TrialComposer, type ComposerAction } from "@/components/trial/TrialComposer";
 import { Transcript } from "@/components/trial/Transcript";
@@ -15,6 +15,13 @@ import { abandonTrial, deleteTrial, getTrial, sendTrialTurn, TrialApiError } fro
 import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
 import { isResyncConflict, mergeUtterances, messageForTrialError, TRIAL_ROLE_LABELS } from "@/lib/trialRules";
 import type { TrialDetail, TrialState, TrialUtterance } from "@/lib/types";
+
+// Auto-follow only when the reader is this close to the bottom; further up they are re-reading.
+const NEAR_BOTTOM_PX = 80;
+// The last turn ends with "Đang lập biên bản..." (record summary, up to ~60s). The session is already
+// stored as completed by then, so after this long the screen re-reads it and releases the student.
+const RECORD_WAIT_RELEASE_MS = 15000;
+const RECORD_STATUS_PREFIX = "Đang lập biên bản";
 
 // The hearing screen (THIET-KE Mục 7, màn 3). Server state is the only authority: every request
 // carries expected_step/expected_version from the latest state, a 409 replaces the state and
@@ -33,6 +40,16 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const [draft, setDraft] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [expandedOpen, setExpandedOpen] = useState(false);
+  const [caseTab, setCaseTab] = useState<CaseFileTab>("summary");
+  // New utterances arrived while the reader was scrolled up: show "Có lời mới".
+  const [newBelow, setNewBelow] = useState(false);
+  // The final turn released the screen while the record summary is still being written.
+  const [recordPending, setRecordPending] = useState(false);
+  const atBottomRef = useRef(true);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const expandButtonRef = useRef<HTMLButtonElement>(null);
+  const expandedCloseRef = useRef<HTMLButtonElement>(null);
   const busyRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -69,37 +86,77 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  // Follow the newest utterance (initial load and every streamed one). The composer dock is sticky
-  // but sits in normal flow right after the transcript, so scrolling the page's scroll container to
-  // its end puts the newest utterance directly above the dock, never under it.
-  const scrollToLatest = useCallback((smooth: boolean): void => {
+  // The page's scroll container (AuthenticatedLayout's overflow-y-auto column).
+  const getScrollContainer = useCallback((): HTMLElement | null => {
+    if (scrollContainerRef.current?.isConnected) {
+      return scrollContainerRef.current;
+    }
     let container = endRef.current?.parentElement ?? null;
     while (container !== null && !/(auto|scroll)/.test(getComputedStyle(container).overflowY)) {
       container = container.parentElement;
     }
-    container?.scrollTo({ top: container.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    scrollContainerRef.current = container;
+    return container;
   }, []);
 
-  const lastSeq = utterances.length > 0 ? utterances[utterances.length - 1].seq : -1;
+  // The composer dock is sticky but sits in normal flow right after the transcript, so scrolling
+  // the container to its end puts the newest utterance directly above the dock, never under it.
+  // Instant, not smooth: a smooth animation would read as "scrolled up" if a line lands mid-way.
+  const scrollToLatest = useCallback((): void => {
+    const container = getScrollContainer();
+    container?.scrollTo({ top: container.scrollHeight, behavior: "auto" });
+    atBottomRef.current = true;
+    setNewBelow(false);
+  }, [getScrollContainer]);
+
+  // Track whether the reader is at the bottom.
+  const hasDetail = detail !== null;
+  useEffect(() => {
+    const container = getScrollContainer();
+    if (container === null) {
+      return;
+    }
+    function onScroll(): void {
+      if (container === null) {
+        return;
+      }
+      const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+      atBottomRef.current = distance <= NEAR_BOTTOM_PX;
+      if (atBottomRef.current) {
+        setNewBelow(false);
+      }
+    }
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
+  }, [getScrollContainer, hasDetail]);
+
+  // Follow the newest utterance: always on first paint and after the student's own line; otherwise
+  // only when the reader was already near the bottom (decided before the new line rendered).
+  const lastUtteranceItem = utterances.length > 0 ? utterances[utterances.length - 1] : null;
+  const lastSeq = lastUtteranceItem?.seq ?? -1;
+  const lastIsUser = lastUtteranceItem?.is_user ?? false;
   const hasScrolledRef = useRef(false);
   useEffect(() => {
     if (lastSeq < 0) {
       return;
     }
-    // Instant on first paint (a long transcript should not animate), smooth for streamed lines.
-    const smooth = hasScrolledRef.current;
+    const follow = !hasScrolledRef.current || lastIsUser || atBottomRef.current;
     hasScrolledRef.current = true;
-    const frame = requestAnimationFrame(() => scrollToLatest(smooth));
+    if (!follow) {
+      setNewBelow(true);
+      return;
+    }
+    const frame = requestAnimationFrame(() => scrollToLatest());
     return () => cancelAnimationFrame(frame);
-  }, [lastSeq, scrollToLatest]);
+  }, [lastSeq, lastIsUser, scrollToLatest]);
 
   // An on-screen keyboard shrinks the (visual) viewport; keep the newest utterance in view while
   // the student is typing.
   useEffect(() => {
     const viewport = window.visualViewport;
     function onResize(): void {
-      if (composerRef.current?.contains(document.activeElement)) {
-        scrollToLatest(false);
+      if (composerRef.current?.contains(document.activeElement) && atBottomRef.current) {
+        scrollToLatest();
       }
     }
     viewport?.addEventListener("resize", onResize);
@@ -124,6 +181,24 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen]);
 
+  useEffect(() => {
+    if (!expandedOpen) {
+      return;
+    }
+    const opener = expandButtonRef.current;
+    expandedCloseRef.current?.focus();
+    function onKey(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setExpandedOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      opener?.focus();
+    };
+  }, [expandedOpen]);
+
   async function runAction(action: ComposerAction): Promise<void> {
     if (busyRef.current || state === null) {
       return;
@@ -137,8 +212,27 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
     setStatusMessage(null);
     startSlow();
 
-    // httpFailed: the request was refused before streaming (handled in catch).
-    const outcome = { gotState: false, streamError: null as string | null, httpFailed: false };
+    // httpFailed: the request was refused before streaming (handled in catch). released: the
+    // record-summary wait was cut short and the screen already shows the completed session.
+    const outcome = { gotState: false, streamError: null as string | null, httpFailed: false, released: false };
+    let recordTimer: ReturnType<typeof setTimeout> | null = null;
+    const releaseIfCompleted = async (): Promise<void> => {
+      try {
+        const fresh = await getTrial(sessionId);
+        if (fresh.state.status !== "completed" || controller.signal.aborted) {
+          return;
+        }
+        outcome.released = true;
+        setState(fresh.state);
+        setUtterances((current) => mergeUtterances(current, fresh.utterances));
+        setRecordPending(true);
+        busyRef.current = false;
+        setBusy(false);
+        setStatusMessage(null);
+      } catch {
+        // Keep waiting on the stream; it ends on its own.
+      }
+    };
     try {
       await sendTrialTurn(
         sessionId,
@@ -146,7 +240,13 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
         {
           onStatus: (message) => {
             stopSlow();
+            if (outcome.released) {
+              return;
+            }
             setStatusMessage(message);
+            if (message.startsWith(RECORD_STATUS_PREFIX) && recordTimer === null) {
+              recordTimer = setTimeout(() => void releaseIfCompleted(), RECORD_WAIT_RELEASE_MS);
+            }
           },
           onUtterance: (utterance) => {
             stopSlow();
@@ -158,6 +258,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
           onState: (next) => {
             outcome.gotState = true;
             setState(next);
+            setRecordPending(false);
           },
           onError: (message) => {
             outcome.streamError = message;
@@ -191,14 +292,26 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
         await reload();
       }
     } finally {
+      if (recordTimer !== null) {
+        clearTimeout(recordTimer);
+      }
       stopSlow();
       abortRef.current = null;
       busyRef.current = false;
       setBusy(false);
       setStatusMessage(null);
+      setRecordPending(false);
     }
 
     if (controller.signal.aborted || outcome.httpFailed) {
+      return;
+    }
+    if (outcome.released) {
+      // The completed state is on screen; a late failure of the summary stream changes nothing
+      // (the record falls back to verbatim on the server).
+      if (!outcome.gotState) {
+        await reload();
+      }
       return;
     }
     // Contract 3.4: an `error` event closes the stream without a state - re-read the real one.
@@ -274,12 +387,11 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
 
   const lastUtterance = utterances[utterances.length - 1];
   const lastWasPause = lastUtterance !== undefined && lastUtterance.kind === "notice";
-  const caseFilePanel = (
-    <CaseFilePanel caseFile={detail.case_file} participants={detail.participants} isInjuryCase={detail.case_file.charge?.dieu === "134"} />
-  );
+  const isInjuryCase = detail.case_file.charge?.dieu === "134";
+  const caseFilePanel = <CaseFilePanel caseFile={detail.case_file} isInjuryCase={isInjuryCase} tab={caseTab} onTabChange={setCaseTab} />;
 
   return (
-    <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,25rem)]">
+    <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
       <div className="flex min-w-0 flex-col gap-5">
         <header className="flex flex-col gap-3">
           <div className="flex items-start justify-between gap-3">
@@ -357,6 +469,17 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
         </div>
 
         <div ref={composerRef} data-testid="trial-composer-dock" className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t border-border bg-background/95 px-4 pb-4 pt-3 backdrop-blur sm:-mx-6 sm:px-6">
+          {newBelow ? (
+            <button
+              type="button"
+              data-testid="trial-new-below"
+              onClick={() => scrollToLatest()}
+              className="absolute -top-14 left-1/2 flex min-h-10 -translate-x-1/2 items-center gap-1.5 rounded-full border border-primary/20 bg-card px-4 text-sm font-medium text-foreground shadow-md transition-colors hover:bg-accent/20"
+            >
+              Có lời mới
+              <ArrowDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : null}
           {softNotice !== null ? (
             <p role="status" data-testid="trial-soft-notice" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               {softNotice}
@@ -381,6 +504,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
             </div>
           ) : null}
           <TrialComposer
+            recordPending={recordPending}
             sessionId={sessionId}
             state={state}
             userRole={detail.user_role}
@@ -401,10 +525,49 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
 
       <aside aria-label="Hồ sơ vụ án" className="hidden min-w-0 lg:sticky lg:top-12 lg:block lg:max-h-[calc(100vh-8rem)] lg:self-start lg:overflow-hidden">
         <div className="flex max-h-[calc(100vh-8rem)] flex-col rounded-xl border border-primary/[0.08] bg-card p-4 shadow-[0_2px_20px_rgba(30,36,96,0.05)]">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Hồ sơ vụ án</h2>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">Hồ sơ vụ án</h2>
+            <button
+              ref={expandButtonRef}
+              type="button"
+              aria-label="Mở rộng hồ sơ vụ án"
+              aria-haspopup="dialog"
+              onClick={() => setExpandedOpen(true)}
+              className="flex min-h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/15 hover:text-foreground"
+            >
+              <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+              Mở rộng
+            </button>
+          </div>
           {caseFilePanel}
         </div>
       </aside>
+
+      {expandedOpen ? (
+        <div className="fixed inset-0 z-50 hidden items-center justify-center px-6 py-8 lg:flex" role="dialog" aria-modal="true" aria-label="Hồ sơ vụ án (mở rộng)">
+          <button type="button" aria-label="Đóng hồ sơ mở rộng (nhấn ra ngoài)" tabIndex={-1} onClick={() => setExpandedOpen(false)} className="absolute inset-0 bg-black/40" />
+          <div data-testid="trial-casefile-expanded" className="relative flex h-full max-h-[88vh] w-full max-w-[720px] flex-col rounded-xl bg-card p-6 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="font-serif text-xl font-light tracking-tight text-foreground">Hồ sơ vụ án</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">{detail.title}</p>
+              </div>
+              <button
+                ref={expandedCloseRef}
+                type="button"
+                aria-label="Đóng hồ sơ mở rộng"
+                onClick={() => setExpandedOpen(false)}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent/20 hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <CaseFilePanel caseFile={detail.case_file} isInjuryCase={isInjuryCase} tab={caseTab} onTabChange={setCaseTab} wide />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {drawerOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Hồ sơ vụ án">

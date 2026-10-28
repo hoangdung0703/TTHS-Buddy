@@ -3,8 +3,9 @@
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { ArticlePill } from "@/components/trial/ArticlePill";
-import { formatVnd, LAW_VERSION_BLHS } from "@/lib/trialRules";
-import type { TrialCaseFile, TrialParticipant, TrialPerson } from "@/lib/types";
+import { TrialText } from "@/components/trial/TrialText";
+import { formatVnd, LAW_VERSION_BLHS, roleLabelForId } from "@/lib/trialRules";
+import type { TrialCaseFile, TrialPerson } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -14,7 +15,8 @@ const TABS = [
   { key: "statements", label: "Lời khai" },
   { key: "people", label: "Nhân thân" }
 ] as const;
-type TabKey = (typeof TABS)[number]["key"];
+export type CaseFileTab = (typeof TABS)[number]["key"];
+type TabKey = CaseFileTab;
 
 const EVIDENCE_TYPE_LABELS: Record<string, string> = {
   vat_chung: "Vật chứng",
@@ -44,24 +46,45 @@ function Empty() {
 
 // The case file panel (contract Mục 7). Shows only what the server sends; it has no place for, and
 // never asks for, a verdict, character cards or a plea.
+//
+// Names come ONLY from the case file (display_names / <person>.name), which the server has already
+// anonymised ("Trần Đức H"); never from `participants`, which carries full names for the transcript
+// (contract Mục 7, Mục 9.12). Nothing here rebuilds or replaces a name.
 export function CaseFilePanel({
   caseFile,
-  participants,
-  isInjuryCase
+  isInjuryCase,
+  tab: controlledTab,
+  onTabChange,
+  wide = false
 }: {
   caseFile: TrialCaseFile;
-  participants: Record<string, TrialParticipant>;
   // Điều 134: measure_value is % tổn thương cơ thể, not đồng.
   isInjuryCase: boolean;
+  // Optional controlled tab, so the side panel and the expanded view stay on the same tab.
+  tab?: CaseFileTab;
+  onTabChange?: (tab: CaseFileTab) => void;
+  // Expanded reading view: larger type for the indictment and statements.
+  wide?: boolean;
 }) {
-  const [tab, setTab] = useState<TabKey>("summary");
+  const [ownTab, setOwnTab] = useState<TabKey>("summary");
+  const tab = controlledTab ?? ownTab;
+  const setTab = (next: TabKey) => {
+    setOwnTab(next);
+    onTabChange?.(next);
+  };
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const baseId = useId();
 
-  const nameOf = (id: string) => {
-    const person = participants[id];
-    return person ? `${person.role} ${person.name}` : id;
+  const displayName = (id: string): string => {
+    const fromMap = caseFile.display_names?.[id];
+    if (fromMap) {
+      return fromMap;
+    }
+    const people = [caseFile.defendant, caseFile.victim, caseFile.related_party, ...(caseFile.witnesses ?? [])];
+    return people.find((person) => person?.id === id)?.name ?? "";
   };
+  const nameOf = (id: string) => [roleLabelForId(id), displayName(id)].filter(Boolean).join(" ") || id;
+  const textSize = wide ? "text-base" : "text-[0.9375rem]";
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
     const index = TABS.findIndex((item) => item.key === tab);
@@ -86,7 +109,8 @@ export function CaseFilePanel({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-col">
-      <div role="tablist" aria-label="Hồ sơ vụ án" onKeyDown={handleKeyDown} className="flex gap-1 overflow-x-auto border-b border-border pb-px">
+      {/* Wraps onto a second row instead of scrolling, so all five tabs are visible from 320px up. */}
+      <div role="tablist" aria-label="Hồ sơ vụ án" onKeyDown={handleKeyDown} className="flex flex-wrap gap-1.5 border-b border-border pb-3">
         {TABS.map((item, index) => (
           <button
             key={item.key}
@@ -101,8 +125,10 @@ export function CaseFilePanel({
             tabIndex={tab === item.key ? 0 : -1}
             onClick={() => setTab(item.key)}
             className={cn(
-              "min-h-11 shrink-0 border-b-2 px-2 text-[0.8125rem] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              tab === item.key ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+              "min-h-9 rounded-full border px-3 text-[0.8125rem] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              tab === item.key
+                ? "border-primary bg-primary font-medium text-primary-foreground"
+                : "border-border bg-background text-muted-foreground hover:bg-accent/15 hover:text-foreground"
             )}
           >
             {item.label}
@@ -184,7 +210,13 @@ export function CaseFilePanel({
           </>
         ) : null}
 
-        {tab === "indictment" ? (caseFile.indictment_text ? <Paragraph>{caseFile.indictment_text}</Paragraph> : <Empty />) : null}
+        {tab === "indictment" ? (
+          caseFile.indictment_text ? (
+            <TrialText text={caseFile.indictment_text} className={cn("text-foreground", textSize, wide && "max-w-[68ch]")} />
+          ) : (
+            <Empty />
+          )
+        ) : null}
 
         {tab === "evidence" ? (
           <>
@@ -227,7 +259,7 @@ export function CaseFilePanel({
               {caseFile.pretrial_statements.map((statement) => (
                 <li key={statement.person_id} className="flex flex-col gap-1">
                   <p className="text-xs font-semibold text-foreground">{nameOf(statement.person_id)}</p>
-                  <Paragraph>{statement.summary}</Paragraph>
+                  <TrialText text={statement.summary} density={wide ? "reading" : "compact"} className={cn("text-foreground", wide ? textSize : "text-sm")} />
                   {statement.inconsistencies && statement.inconsistencies.length > 0 ? (
                     <ul className="mt-1 flex flex-col gap-1 border-l-2 border-accent/60 pl-3">
                       {statement.inconsistencies.map((item, index) => (

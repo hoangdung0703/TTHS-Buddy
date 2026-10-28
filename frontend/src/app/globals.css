@@ -67,3 +67,28 @@ a {
     scroll-behavior: auto !important;
   }
 }
+
+/* Printing (the trial record is the one printable page): A4 margins, no app background, and
+   headings kept with the text that follows them. Menus and banners carry print:hidden. */
+@media print {
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+
+  p,
+  li {
+    orphans: 3;
+    widows: 3;
+  }
+}

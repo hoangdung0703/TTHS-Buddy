@@ -331,6 +331,25 @@ export const TRIAL_STATUS_LABELS: Record<string, string> = {
 
 export const TRIAL_TOTAL_STEPS = 11;
 
+// Role label for a participant id, for the case-file panel (which must not read `participants`).
+export function roleLabelForId(id: string): string {
+  if (id.startsWith("NLC_")) {
+    return "Người làm chứng";
+  }
+  const labels: Record<string, string> = {
+    BI_CAO: "Bị cáo",
+    BI_HAI: "Bị hại",
+    NLQ: "Người có quyền lợi, nghĩa vụ liên quan",
+    CHU_TOA: "Chủ tọa",
+    HOI_THAM_1: "Hội thẩm",
+    HOI_THAM_2: "Hội thẩm",
+    THU_KY: "Thư ký",
+    KSV: "Kiểm sát viên",
+    LUAT_SU: "Luật sư bào chữa"
+  };
+  return labels[id] ?? "";
+}
+
 // law_version values of the corpus (ingestion/document_registry.py), used by the "Điều N" pills to
 // open the existing ArticleModal. Step legal_basis numbers are BLTTHS; charge, Điều 51/52 are BLHS.
 export const LAW_VERSION_BLTTHS = "BLTTHS 2015 (số 101/2015/QH13, sửa đổi bổ sung 2021)";

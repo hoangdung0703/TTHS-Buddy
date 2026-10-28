@@ -3,7 +3,10 @@
 import { Info } from "lucide-react";
 import { Fragment } from "react";
 
+import { TrialText } from "@/components/trial/TrialText";
+import { isLongTrialText } from "@/lib/trialText";
 import type { TrialParticipant, TrialStepInfo, TrialUtterance } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 // The hearing transcript (contract Mục 4): one block per utterance exactly as the server sent it -
 // never edited, truncated or animated as if being generated. `speech` is a bubble (the student's
@@ -72,6 +75,9 @@ function UtteranceItem({ utterance, participants }: { utterance: TrialUtterance;
   }
 
   const addressee = utterance.addressee ? participants[utterance.addressee] : undefined;
+  // Long speeches get a reading layout: wider measure (~70 characters), calmer line height and
+  // paragraph spacing. Short one-paragraph lines keep the compact bubble.
+  const long = isLongTrialText(utterance.text);
 
   if (utterance.is_user) {
     return (
@@ -80,7 +86,14 @@ function UtteranceItem({ utterance, participants }: { utterance: TrialUtterance;
           Bạn · {speaker}
           {addressee ? ` → hỏi ${addressee.role} ${addressee.name}` : ""}
         </p>
-        <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-sm leading-relaxed text-primary-foreground sm:max-w-[75%]">
+        {/* The student's own words stay exactly as sent (pre-wrap), only the layout widens. */}
+        <div
+          data-long={long || undefined}
+          className={cn(
+            "whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm bg-primary text-primary-foreground",
+            long ? "w-full max-w-[44rem] px-5 py-4 text-[0.9375rem] leading-7 sm:w-auto sm:max-w-[min(85%,44rem)]" : "max-w-[85%] px-4 py-3 text-sm leading-relaxed sm:max-w-[75%]"
+          )}
+        >
           {utterance.text}
         </div>
       </li>
@@ -93,8 +106,14 @@ function UtteranceItem({ utterance, participants }: { utterance: TrialUtterance;
         <span className="rounded-full bg-secondary px-2 py-0.5 font-medium text-secondary-foreground">{utterance.speaker_role}</span>
         {utterance.speaker_name ? <span className="font-medium text-foreground/80">{utterance.speaker_name}</span> : null}
       </p>
-      <div className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm border border-border bg-card px-4 py-3 text-sm leading-relaxed text-foreground sm:max-w-[80%]">
-        {utterance.text}
+      <div
+        data-long={long || undefined}
+        className={cn(
+          "rounded-2xl rounded-tl-sm border border-border bg-card text-foreground",
+          long ? "w-full max-w-[44rem] px-5 py-4 text-[0.9375rem]" : "max-w-[90%] px-4 py-3 text-sm sm:max-w-[80%]"
+        )}
+      >
+        <TrialText text={utterance.text} density={long ? "reading" : "compact"} />
       </div>
     </li>
   );
