@@ -78,6 +78,17 @@ Migration: `backend/migrations/0012_mock_trials.sql`. Chạy tay, **chưa chạy
 - Prompt sinh vụ yêu cầu tiếng Việt có dấu đầy đủ. Lỗi "không dấu" thì sinh mới từ đầu, không sửa trên bản trước. Seed 5006 và 6001–6006: 5/7 vụ qua schema, 3/7 qua ngay lần đầu, 0 vụ còn không dấu, trung vị 18,3s. Hai vụ hỏng do các lỗi khác.
 - Vụ sinh thất bại không ghi gì vào DB và không tính vào hạn mức (đã có test). Thêm `HEAD /api/trials` để dò cờ.
 
+## Chặng 3G — độ tin cậy khi tạo vụ, 28/10/2026
+
+- Mỗi luật kiểm tra của validator có một nhãn cố định (`error_label`). Số đo và log chỉ ghi nhãn.
+- Trước khi sửa (seed 7001–7012): 9/12 vụ qua, 5/12 qua ngay lần đầu, trung vị 20,6s, p90 28,4s. Lỗi nhiều nhất: `money_mismatch` 4 lần, `statement_count` 3, `invented_name` 2.
+- Sửa:
+  - Lời khai trùng người được code gộp lại.
+  - Sửa theo trường: khi mọi lỗi đều nằm ở trường văn bản, chỉ nhờ model viết lại đúng các trường đó.
+  - Lần gọi thứ 3 chỉ chạy khi tổng thời gian còn dưới 30s.
+- Đo sau, bản đầu (seed 8001–8011, trần ngân sách chặn seed 8012): 7/11 vụ qua. Sửa theo trường không lần nào đạt: mỗi lần chỉ 1–4s và lỗi giữ nguyên, nghi do path trả về không khớp hoặc danh sách rỗng.
+- Đã chỉnh sau lần đo đó: chỉ sửa trường một lần; nếu không đạt thì sinh lại cả vụ như trước; path được chuẩn hóa; lần sửa không áp được gắn nhãn `repair_unapplied`. **Chưa đo lại** vì đã hết trần 40 lời gọi.
+
 Chỉnh thiết kế sau khi có số đo: xem báo cáo chặng 1. Tóm tắt các điểm chính:
 - Thêm trường khai báo các khoản tiền phụ cho guard số tiền (vụ 171 có người có quyền lợi liên quan fail vì điểm này).
 - Prompt của bài phát biểu dài ~17K token, lớn hơn ước tính; nên tỉa Phần chung BLHS theo từng bài.

@@ -8,13 +8,16 @@ import random
 import unicodedata
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 from pydantic import ValidationError
 
 from app.models.trial import CASE_DRAFT_RESPONSE_SCHEMA, CaseDraft, CaseOptions, Verdict
 from app.prompts.trial_prompts import CASE_GENERATION_SYSTEM_PROMPT
-from app.services.trial_case_service import create_case
-from app.services.trial_case_validator import DIACRITIC_ERROR, normalise_draft_dict, validate_case_draft
+from app.services import trial_case_service
+from app.services.trial_case_repair import apply_repair, repair_plan
+from app.services.trial_case_service import CaseGenerationFailed, create_case
+from app.services.trial_case_validator import DIACRITIC_ERROR, error_label, normalise_draft_dict, validate_case_draft
 from app.services.trial_config import ABSTRACT_PLACES, AGGRAVATING_POOL, BLHS_DOCUMENT, CRIMES, get_crime
 from app.services.trial_knobs import choose_knobs
 from app.services.trial_legal_pack import Khoan
@@ -23,6 +26,7 @@ from app.services.trial_verdict_guard import check_verdict, parse_penalty_frame
 from tests.test_trial_turns import ScriptedRecorder
 from tests.trial_fixtures import (
     STATEMENT_BI_HAI,
+    STATEMENT_NLC_1,
     pack_for,
     valid_case_file,
     valid_draft_dict,
@@ -409,6 +413,123 @@ class CaseRetryTests(unittest.TestCase):
 
     def test_prompt_asks_for_diacritics(self):
         self.assertIn("CÓ DẤU", CASE_GENERATION_SYSTEM_PROMPT)
+
+
+
+def _scripted_create(answers: list) -> tuple[ScriptedRecorder, object]:
+    recorder = ScriptedRecorder(answers=[a if isinstance(a, str) else json.dumps(a, ensure_ascii=False)
+                                         for a in answers])
+    creation = asyncio.run(create_case(valid_options(), SimpleNamespace(trial_court_name=None), None, recorder,
+                                       pack=pack_for("blhs_173"), seed=1, knobs=valid_knobs()))
+    return recorder, creation
+
+
+def _fields(*pairs: tuple[str, str]) -> dict:
+    return {"fields": [{"path": path, "text": text} for path, text in pairs]}
+
+
+class FieldRepairTests(unittest.TestCase):
+    """Chặng 3G: field-local errors are repaired field by field, not by regenerating the case."""
+
+    def test_error_labels(self):
+        cases = {
+            "incident_summary: số tiền 99.000.000 đồng không khớp giá trị nào đã khai (x)": "money_mismatch",
+            "Mỗi người phải có đúng một lời khai giai đoạn điều tra; NLC_1 có 0": "statement_count",
+            "BI_CAO.statement_summary: có tên người tự đặt; chỉ dùng placeholder như {BI_CAO}": "invented_name",
+            "Lời khai của BI_HAI phải có ít nhất 25 từ": "statement_words",
+            "Phải có ít nhất 4 chứng cứ (evidence), hiện có 3": "evidence_min",
+            "JSON không hợp lệ theo schema: ValidationError": "schema",
+        }
+        for message, label in cases.items():
+            self.assertEqual(error_label(message), label, message)
+
+    def test_plan_only_when_every_error_is_field_local(self):
+        draft = valid_draft_dict()
+        money = "incident_summary: số tiền 99.000.000 đồng không khớp giá trị nào đã khai"
+        self.assertEqual(repair_plan([money], draft), {"incident_summary": [money]})
+        self.assertEqual(repair_plan(["Lời khai của BI_HAI phải có ít nhất 25 từ"], draft),
+                         {"statement[BI_HAI].summary": ["Lời khai của BI_HAI phải có ít nhất 25 từ"]})
+        self.assertIsNone(repair_plan([money, "Phải có ít nhất 4 chứng cứ (evidence), hiện có 3"], draft))
+        self.assertIsNone(repair_plan(["F9.description: số tiền 1.000.000 đồng không khớp"], draft))  # no F9
+
+    def test_apply_ignores_paths_not_asked(self):
+        draft = valid_draft_dict()
+        out = apply_repair(draft, {"incident_summary": ["x"]},
+                           json.dumps(_fields(("incident_summary", "Mới."), ("title", "Đổi tiêu đề"))))
+        self.assertEqual((out["incident_summary"], out["title"]), ("Mới.", draft["title"]))
+        self.assertNotEqual(draft["incident_summary"], "Mới.")             # original untouched
+
+    def test_money_mismatch_repaired_with_one_small_call(self):
+        bad = valid_draft_dict()
+        good_summary = bad["incident_summary"]
+        bad["incident_summary"] += " Bị cáo khai đã bán xe được 99.000.000 đồng."
+        recorder, creation = _scripted_create([bad, _fields(("incident_summary", good_summary))])
+        self.assertEqual(creation.attempts, 2)
+        self.assertEqual([r.call_type for r in recorder.records], ["case_generation", "case_repair"])
+        self.assertEqual(recorder.records[0].guard_violations, ["money_mismatch"])
+        self.assertIn("- incident_summary:", recorder.prompts[1])
+        self.assertEqual(creation.case.draft.incident_summary, good_summary)
+
+    def test_missing_statement_is_added_by_repair(self):
+        bad = valid_draft_dict()
+        bad["pretrial_statements"] = [st for st in bad["pretrial_statements"] if st["person_id"] != "NLC_1"]
+        recorder, creation = _scripted_create([bad, _fields(("statement[NLC_1].summary", STATEMENT_NLC_1))])
+        self.assertEqual(creation.attempts, 2)
+        self.assertIn("NLC_1", [st.person_id for st in creation.case.draft.pretrial_statements])
+
+    def test_split_statement_is_merged_by_code(self):
+        draft = valid_draft_dict()
+        first = draft["pretrial_statements"][0]
+        words = first["summary"].split()
+        half = len(words) // 2
+        first["summary"] = " ".join(words[:half])
+        draft["pretrial_statements"].insert(1, {"person_id": "BI_CAO", "summary": " ".join(words[half:]),
+                                                "inconsistencies": []})
+        merged = normalise_draft_dict(draft)["pretrial_statements"]
+        self.assertEqual([st["person_id"] for st in merged], ["BI_CAO", "BI_HAI", "NLC_1"])
+        self.assertEqual(merged[0]["summary"], " ".join(words))
+        self.assertEqual(errors_for(draft), [])
+
+    def test_repair_that_did_not_fix_is_followed_by_full_regeneration(self):
+        bad = valid_draft_dict()
+        bad["incident_summary"] += " Giá 99.000.000 đồng."
+        not_fixed = _fields(("incident_summary", bad["incident_summary"] + " Thêm câu."))
+        recorder, creation = _scripted_create([bad, not_fixed, valid_draft_dict()])
+        self.assertEqual([r.call_type for r in recorder.records],
+                         ["case_generation", "case_repair", "case_generation"])
+        self.assertEqual(creation.attempts, 3)
+        self.assertIn("=== BẢN TRƯỚC (JSON) ===", recorder.prompts[2])
+
+    def test_unapplied_repair_is_labelled_and_regenerates_from_the_original_draft(self):
+        bad = valid_draft_dict()
+        bad["incident_summary"] += " Giá 99.000.000 đồng."
+        recorder, creation = _scripted_create([bad, {"fields": []}, valid_draft_dict()])
+        self.assertEqual(recorder.records[1].guard_violations, ["repair_unapplied"])
+        self.assertEqual(recorder.records[2].call_type, "case_generation")
+        self.assertIn("99.000.000", recorder.prompts[2])                 # the original draft and its error
+        self.assertEqual(creation.attempts, 3)
+
+    def test_placeholder_style_paths_are_accepted(self):
+        bad = valid_draft_dict()
+        bad["pretrial_statements"] = [st for st in bad["pretrial_statements"] if st["person_id"] != "NLC_1"]
+        recorder, creation = _scripted_create([bad, _fields(("statement[{NLC_1}].summary", STATEMENT_NLC_1))])
+        self.assertEqual(creation.attempts, 2)
+
+    def test_unfixable_errors_regenerate_the_whole_case(self):
+        bad = valid_draft_dict()
+        bad["evidence"] = bad["evidence"][:3]
+        recorder, creation = _scripted_create([bad, valid_draft_dict()])
+        self.assertEqual([r.call_type for r in recorder.records], ["case_generation", "case_generation"])
+
+    def test_third_call_only_within_time_budget(self):
+        bad = valid_draft_dict()
+        bad["incident_summary"] += " Giá 99.000.000 đồng."
+        still_bad = _fields(("incident_summary", bad["incident_summary"] + " Thêm câu."))
+        with mock.patch.object(trial_case_service, "THIRD_ATTEMPT_MAX_ELAPSED", -1.0):
+            with self.assertRaises(CaseGenerationFailed) as failure:
+                _scripted_create([bad, still_bad, valid_draft_dict()])
+        self.assertEqual(len(failure.exception.errors), 2)
+        self.assertEqual(failure.exception.error_counts, [1, 1])
 
 
 if __name__ == "__main__":

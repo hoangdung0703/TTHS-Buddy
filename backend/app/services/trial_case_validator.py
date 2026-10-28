@@ -73,6 +73,28 @@ def remap_fact_ids(fact_refs: list[str], fact_ids: set[str], by_evidence: dict[s
     return [by_evidence[ref] if ref not in fact_ids and ref in by_evidence else ref for ref in fact_refs]
 
 
+def merge_statements(statements):
+    """One statement per person (chặng 3G): several statements of the same person are joined in
+    order - summaries concatenated, inconsistencies kept - so a split statement is not a failure.
+    Nothing is dropped or invented; the length and similarity checks then run on the merged text."""
+    if not isinstance(statements, list):
+        return statements
+    merged: dict[str, dict] = {}
+    out: list = []
+    for statement in statements:
+        pid = statement.get("person_id") if isinstance(statement, dict) else None
+        if pid is None or pid not in merged:
+            if pid is not None:
+                merged[pid] = statement
+            out.append(statement)
+            continue
+        first = merged[pid]
+        first["summary"] = " ".join(t for t in (str(first.get("summary") or "").strip(),
+                                                str(statement.get("summary") or "").strip()) if t)
+        first["inconsistencies"] = [*(first.get("inconsistencies") or []), *(statement.get("inconsistencies") or [])]
+    return out
+
+
 def normalise_draft_dict(data: dict) -> dict:
     """Deterministic clean-up of CODE fields only (ids, Điều/khoản/điểm), applied before schema
     validation. Spike 2026-10-19: the model wrote ids as "{BI_CAO}" (the placeholder form used in
@@ -91,6 +113,7 @@ def normalise_draft_dict(data: dict) -> dict:
     for statement in data.get("pretrial_statements") or []:
         if isinstance(statement, dict):
             statement["person_id"] = _code(statement.get("person_id"))
+    data["pretrial_statements"] = merge_statements(data.get("pretrial_statements"))
     charge = data.get("charge")
     if isinstance(charge, dict):
         charge["dieu"], charge["khoan"] = _code(charge.get("dieu")), _code(charge.get("khoan"))
@@ -393,6 +416,64 @@ def _check_knobs(draft: CaseDraft, knobs: CaseKnobs, errors: list[str]) -> None:
     if paid != knobs.has_compensation:
         errors.append("compensation_vnd phải " + ("là số tiền bị cáo đã bồi thường (> 0)" if knobs.has_compensation
                                                   else "là null (bị cáo chưa bồi thường)"))
+
+
+# Stable rule labels for validator messages (chặng 3G): measurements and logs keep the label only,
+# never the message, which can quote values of the generated case. First match wins.
+_ERROR_LABELS: tuple[tuple[str, str], ...] = (
+    (r"^JSON không hợp lệ", "schema"),
+    (r"^Sửa trường không áp dụng được", "repair_unapplied"),
+    (r"^charge\.dieu phải là", "charge_dieu"),
+    (r"^charge\.khoan .* không được phép", "charge_khoan_not_allowed"),
+    (r"^charge\.khoan phải là .* theo yêu cầu", "knob_khoan"),
+    (r"^Khoản .* không có trong văn bản luật", "charge_khoan_missing"),
+    (r"tử hình", "death_penalty"),
+    (r"^Điểm .* không có trong khoản", "charge_diem_missing"),
+    (r"^Điểm .* người dưới 18", "charge_diem_minor"),
+    (r"^measure_value .* ngoài phạm vi", "measure_range"),
+    (r"^Với measure_value .* khoản phải là", "measure_khoan_band"),
+    (r"^Với measure_value .* charge\.diem", "measure_diem_band"),
+    (r"^Phải có một evidence type=", "measure_evidence_missing"),
+    (r"số tiền .* không khớp", "money_mismatch"),
+    (r"tỷ lệ .*% không khớp", "percent_mismatch"),
+    (r"^Danh sách người tham gia", "person_order"),
+    (r"^related_party phải", "related_party"),
+    (r"người làm chứng$", "witness_count"),
+    (r"^id trùng lặp", "duplicate_id"),
+    (r"^Phải có ít nhất một fact", "no_fact_evidence"),
+    (r"^pretrial_statements tham chiếu", "statement_person_unknown"),
+    (r"^Tình tiết tham chiếu fact_id", "fact_id_unknown"),
+    (r"^evidence .*fact_id không tồn tại", "evidence_fact_unknown"),
+    (r"^extra_amounts tham chiếu", "extra_evidence_unknown"),
+    (r"^civil_claim\.claimant_id", "claimant_unknown"),
+    (r"placeholder không tồn tại", "placeholder_unknown"),
+    (r"\.age phải từ", "age_range"),
+    (r"residence_place phải", "residence"),
+    (r"không được nhắc tới người dưới 18", "minor_mention"),
+    (r"có tên người tự đặt", "invented_name"),
+    (r"^Thiếu Điều .* trong gói pháp lý", "pack_missing"),
+    (r": điểm .* người dưới 18", "circumstance_minor"),
+    (r": khoản .* có điểm, phải nêu điểm", "circumstance_needs_diem"),
+    (r": điểm .* không tồn tại", "circumstance_diem_missing"),
+    (r": khoản .* không tồn tại", "circumstance_khoan_missing"),
+    (DIACRITIC_ERROR, "no_diacritics"),
+    (r"chứng cứ \(evidence\)", "evidence_min"),
+    (r"^indictment_text phải dài", "indictment_words"),
+    (r"đúng một lời khai", "statement_count"),
+    (r"^Lời khai của .* phải có ít nhất", "statement_words"),
+    (r"gần như trùng nhau", "statement_duplicate"),
+    (r"^defendant_plea phải", "knob_plea"),
+    (r"^Tình tiết giảm nhẹ khoản 1 Điều 51 phải", "knob_mitigating"),
+    (r"^Tình tiết tăng nặng phải", "knob_aggravating"),
+    (r"^compensation_vnd phải", "knob_compensation"),
+    (r"^indictment_text: viện dẫn", "indictment_citation"),
+    (r"viện dẫn điều luật không hợp lệ", "text_citation"),
+)
+_ERROR_LABEL_PATTERNS = tuple((re.compile(pattern), label) for pattern, label in _ERROR_LABELS)
+
+
+def error_label(message: str) -> str:
+    return next((label for pattern, label in _ERROR_LABEL_PATTERNS if pattern.search(message)), "other")
 
 
 def validate_case_draft(draft: CaseDraft, options: CaseOptions, crime: CrimeConfig, pack: LegalPack,

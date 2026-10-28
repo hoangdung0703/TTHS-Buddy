@@ -14,6 +14,7 @@ import asyncio
 import hashlib
 import json
 import random
+import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -33,9 +34,17 @@ from app.models.trial import (
     CaseOptions,
     CourtInfo,
 )
-from app.prompts.trial_prompts import CASE_GENERATION_SYSTEM_PROMPT, build_case_generation_prompt
+from app.prompts.trial_prompts import (
+    CASE_GENERATION_SYSTEM_PROMPT,
+    build_case_generation_prompt,
+    build_case_repair_prompt,
+)
+from app.services.trial_case_repair import REPAIR_SCHEMA, RepairNotApplied, apply_repair, repair_plan
 from app.services.trial_case_validator import (
     DIACRITIC_ERROR,
+    declared_amounts,
+    declared_percents,
+    error_label,
     expected_person_ids,
     normalise_draft_dict,
     validate_case_draft,
@@ -57,8 +66,14 @@ from app.services.trial_names import COURT_ROLES, assign_names
 
 logger = get_logger(__name__)
 
-MAX_GENERATION_ATTEMPTS = 2  # first try + one retry with the validator's errors
+# First try, then at most ONE field repair, then a full regeneration; a third call only while the
+# whole creation is still under THIRD_ATTEMPT_MAX_ELAPSED seconds (chặng 3G: target median <= 25 s).
+# A repair that does not fix the draft therefore costs one short call, never the regeneration the
+# previous policy (generate + regenerate) always had.
+MAX_GENERATION_ATTEMPTS = 3
+THIRD_ATTEMPT_MAX_ELAPSED = 30.0
 CASE_TEMPERATURE = 0.8
+CASE_REPAIR_TEMPERATURE = 0.4
 INCIDENT_DAYS_BEFORE_HEARING = (150, 300)
 
 STATUS_PREPARING = "Đang chuẩn bị hồ sơ pháp lý của vụ án..."
@@ -174,35 +189,71 @@ async def create_case(options: CaseOptions, settings: Settings, qdrant_client: Q
     errors_per_attempt: list[list[str]] = []
     retry_errors: list[str] | None = None
     previous_draft: str | None = None
+    repair: tuple[dict, dict[str, list[str]]] | None = None   # (draft to repair, {field path: errors})
+    repaired = False
+    started = time.monotonic()
     for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
-        prompt = build_case_generation_prompt(
-            crime_name=crime.crime_name, dieu=crime.dieu, allowed_khoan=list(crime.allowed_khoan),
-            band_text=_band_text(crime), person_ids=expected_person_ids(options),
-            victim_present=options.victim_present, witness_count=options.witness_count,
-            has_related_party=options.has_related_party, places=list(ABSTRACT_PLACES),
-            incident_date=incident.strftime("%d/%m/%Y"), hearing_date=hearing.strftime("%d/%m/%Y"),
-            legal_text=legal_text, retry_errors=retry_errors, constraints=knobs_text(knobs),
-            previous_draft=previous_draft,
-        )
-        result, record = await recorder.call(
-            settings, call_type="case_generation", slot="case", attempt=attempt,
-            system_prompt=CASE_GENERATION_SYSTEM_PROMPT, user_prompt=prompt,
-            response_schema=CASE_DRAFT_RESPONSE_SCHEMA, thinking_level=THINKING_LEVEL_DECISION,
-            temperature=CASE_TEMPERATURE,
-        )
+        if attempt == MAX_GENERATION_ATTEMPTS and time.monotonic() - started > THIRD_ATTEMPT_MAX_ELAPSED:
+            break
+        if repair is not None:
+            base, plan = repair
+            base_draft = CaseDraft.model_validate(base)
+            result, record = await recorder.call(
+                settings, call_type="case_repair", slot="case", attempt=attempt,
+                system_prompt=CASE_GENERATION_SYSTEM_PROMPT,
+                user_prompt=build_case_repair_prompt(
+                    draft_json=json.dumps(base, ensure_ascii=False), plan=plan,
+                    amounts=declared_amounts(base_draft, crime), percents=declared_percents(base_draft, crime),
+                    legal_text=legal_text),
+                response_schema=REPAIR_SCHEMA, thinking_level=None, temperature=CASE_REPAIR_TEMPERATURE,
+            )
+        else:
+            prompt = build_case_generation_prompt(
+                crime_name=crime.crime_name, dieu=crime.dieu, allowed_khoan=list(crime.allowed_khoan),
+                band_text=_band_text(crime), person_ids=expected_person_ids(options),
+                victim_present=options.victim_present, witness_count=options.witness_count,
+                has_related_party=options.has_related_party, places=list(ABSTRACT_PLACES),
+                incident_date=incident.strftime("%d/%m/%Y"), hearing_date=hearing.strftime("%d/%m/%Y"),
+                legal_text=legal_text, retry_errors=retry_errors, constraints=knobs_text(knobs),
+                previous_draft=previous_draft,
+            )
+            result, record = await recorder.call(
+                settings, call_type="case_generation", slot="case", attempt=attempt,
+                system_prompt=CASE_GENERATION_SYSTEM_PROMPT, user_prompt=prompt,
+                response_schema=CASE_DRAFT_RESPONSE_SCHEMA, thinking_level=THINKING_LEVEL_DECISION,
+                temperature=CASE_TEMPERATURE,
+            )
+        data: dict | None = None
         try:
-            draft = CaseDraft.model_validate(normalise_draft_dict(json.loads(result.text)))
+            data = normalise_draft_dict(apply_repair(repair[0], repair[1], result.text) if repair is not None
+                                        else json.loads(result.text))
+            draft = CaseDraft.model_validate(data)
             errors = validate_case_draft(draft, options, crime, pack, knobs)
+        except RepairNotApplied:
+            draft, errors = None, ["Sửa trường không áp dụng được (không trường nào được viết lại)"]
         except (ValueError, ValidationError) as error:
             draft, errors = None, [f"JSON không hợp lệ theo schema: {type(error).__name__}"]
         errors_per_attempt.append(errors)
-        record.guard_violations = [e.split(":")[0] for e in errors]
+        record.guard_violations = [error_label(e) for e in errors]
         record.accepted = not errors
         if not errors and draft is not None:
             case = _assemble_case(draft, options, knobs, settings, seed, hearing, incident)
             return CaseCreation(case=case, pack=pack, case_hash=case_hash(case), attempts=attempt,
                                 errors_per_attempt=errors_per_attempt)
         logger.info("Trial case attempt %d rejected with %d validation errors", attempt, len(errors))
+        usable = draft is not None
+        if repair is not None:
+            # This call was the single field repair. If its answer was unusable, regenerate on top
+            # of the draft it started from, with that draft's errors.
+            repaired = True
+            if not usable:
+                data, errors, usable = repair[0], errors_per_attempt[-2], True
+            repair = None
+        elif usable and not repaired:
+            plan = repair_plan(errors, draft.model_dump())
+            if plan is not None:
+                repair = (draft.model_dump(), plan)
+                continue
         if any(DIACRITIC_ERROR in e for e in errors):
             # Chặng 3F: a draft written without diacritics is not repaired but regenerated from
             # scratch - asked to edit it, the model kept the unaccented style (seed 5006, chặng 3E).
@@ -211,7 +262,7 @@ async def create_case(options: CaseOptions, settings: Settings, qdrant_client: Q
         retry_errors = errors
         # A6 (chặng 2): the retry fixes the previous draft instead of writing a new one - in A5 run 1
         # a from-scratch retry fixed the listed errors but broke requirements it had met before.
-        previous_draft = result.text if draft is not None else None
+        previous_draft = json.dumps(data, ensure_ascii=False) if usable and data is not None else None
     raise CaseGenerationFailed(errors_per_attempt)
 
 
