@@ -2,7 +2,7 @@
 
 Trạng thái: thiết kế đã duyệt kèm các quyết định ngày 19/10/2026 (mục ngay dưới). Chặng 1 (nền backend + spike) xong trên nhánh `muc5-mock-trial`, chờ duyệt trước chặng 2.
 Migration: `backend/migrations/0012_mock_trials.sql`. Chạy tay, **chưa chạy**. Nháp cũ trong thư mục này đã xóa.
-Thiết kế 4 vai còn lại (Người xem, Bị cáo, Thư ký, Chủ tọa): Mục 11 ở cuối tài liệu, ngày 29/10/2026, **chỉ là thiết kế, chưa code, chờ duyệt**.
+Thiết kế 4 vai còn lại (Người xem, Bị cáo, Thư ký, Chủ tọa): Mục 11 ở cuối tài liệu. Đã duyệt kèm quyết định 29/10/2026 (11.8), chưa code. Migration `0013_mock_trial_roles.sql` đã viết, **chưa chạy**.
 
 ## Quyết định 19/10/2026 (ghi đè phần thân khi mâu thuẫn)
 
@@ -567,6 +567,8 @@ Thêm mục điều hướng thứ 5 vào `NAV_ITEMS`: "Phiên tòa giả địn
 
 ## 11. Các vai còn lại (thiết kế 29/10/2026, chưa code)
 
+**Đã có quyết định 29/10/2026 cho mọi câu hỏi ở 11.7: xem 11.8, ghi đè 11.0–11.7 khi mâu thuẫn.**
+
 Phạm vi: Người xem, Bị cáo, Thư ký phiên tòa, Chủ tọa. Chỉ là thiết kế: không code, không gọi Gemini, không đọc bản án mẫu. Mọi số lời gọi và token dưới đây là **ước tính** dựa trên số đo của phiên KSV (~20 lời gọi, ~214K token vào, ~30K token ra, gồm tạo vụ án và tóm tắt biên bản), chưa đo.
 
 Nguyên tắc giữ nguyên cho cả 4 vai:
@@ -973,3 +975,30 @@ Mỗi chặng dừng chờ duyệt. Mỗi chặng ước tính lời gọi trư�
 20. **Điều 323 cho Chủ tọa:** làm ở R4a, tối đa 1 lần mỗi phiên, sau khi xét hỏi lại thì về thẳng bước 8 (không lặp luận tội, bào chữa)? Đề xuất đồng ý. KSV và Luật sư vẫn để giai đoạn 1.5 như cũ.
 21. **Phụ lục "Biên bản nghị án" cho Chủ tọa:** có không? Đề xuất có, dựng bằng code.
 22. **Hạn mức:** Bị cáo và Chủ tọa tốn ~1,5–1,6 lần phiên KSV. Giữ 5 vụ/ngày cho mọi vai hay tính trọng số? Đề xuất giữ nguyên; trần số câu hỏi đã giới hạn chi phí mỗi phiên.
+
+### 11.8 Quyết định 29/10/2026 (ghi đè 11.0–11.7 khi mâu thuẫn)
+
+Theo số câu hỏi ở 11.7:
+
+1. Thứ tự: Người xem → Thư ký → Bị cáo → Chủ tọa (chặng R1–R4b như 11.6).
+2. Migration 0013: đồng ý. File `backend/migrations/0013_mock_trial_roles.sql`, viết kiểu nới ràng buộc an toàn: bỏ mọi check cũ có `user_role` (0012 khai báo check inline nên tên do Postgres đặt), thêm lại một check có tên với danh sách rộng hơn (`NOT VALID` rồi `VALIDATE`), thêm 2 cột null không default; không đọc, sửa hay xóa dòng nào; chạy lại lần hai vẫn an toàn. Chạy tay trong SQL editor của Supabase. **Trước khi chạy** phải xác nhận 0012 đã chạy ở đúng project Supabase mà Render dùng: Table Editor của project đó phải có đủ 3 bảng `mock_trial_cases`, `mock_trial_sessions`, `mock_trial_utterances`. Việc xác nhận này cũng là điều kiện của bước deploy.
+3. Đối đáp AI–AI: 1 vòng; Chủ tọa được mở thêm vòng 2.
+4. Chú giải thủ tục cho Người xem: có; mình soạn nháp, nhóm luật duyệt.
+5. Thư ký chỉ ghi IV.2 và IV.3.
+6. Kiểm biên bản của Thư ký: chỉ lưu ý, không chặn chốt.
+7. Không cho Thư ký xem tóm tắt AI để đối chiếu (sẽ thành gợi ý đáp án). Phiên Thư ký không chạy lời gọi tóm tắt biên bản.
+8. Ghi chép của Thư ký lưu ở server (`user_work`), không đưa vào prompt.
+9. Thẻ nhân vật Bị cáo: có, ghi là gợi ý nhập vai. **Điều kiện thêm:** API chỉ trả thẻ (trường riêng, ví dụ `role_brief`) khi `user_role = bi_cao`, và chỉ thẻ của chính `BI_CAO`. Mọi vai khác không có trường này, để không lặp lại lỗi lộ lời khai trước đây. Cần test: phiên KSV, Luật sư, Người xem, Thư ký, Chủ tọa không có `role_brief` trong `GET /{id}`; phiên Bị cáo không có thẻ của người khác.
+10. Bị cáo khai trái hồ sơ: theo 11.2.3.
+11. Nút "Từ chối trả lời": có; nhóm luật xác nhận điểm, khoản của Điều 61 và câu ghi biên bản.
+12. Lượt tùy chọn của Bị cáo: bước 7 và 8; bước 5 (bị cáo tự hỏi) để sau.
+13. Trần câu hỏi: như 11.7 (Bị cáo 6/4/4; Chủ tọa 10 câu ở bước 4, 5 lần phát biểu khác mỗi bước).
+14. Nói thay vai người dùng: chặn bằng cấu trúc ngay (đoạn xen dừng ở câu hỏi, enum). Chặn theo mẫu nội dung (Bị cáo, `usurps_presiding` của Chủ tọa) chỉ bật cứng khi số đo cho thấy chặn oan ≤ 2%; chưa đạt thì giữ ở mức đo.
+15. Hội thẩm khi người dùng là Chủ tọa: chỉ nêu ý kiến tham khảo, không biểu quyết đè; khác ý thì ghi là ý kiến thiểu số trong phụ lục biên bản nghị án.
+16. Nghị án của Chủ tọa: phương án A, sau đó C; không làm B.
+17. Quyết định trái luật của Chủ tọa: lỗi cứng chặn chốt, kèm giải thích căn cứ; `penalty_unchecked` cho qua kèm dòng thông báo. Đây là phản hồi, không phải chấm điểm.
+18. Kiểm bồi thường không vượt yêu cầu dân sự: có; nhóm luật xác nhận.
+19. Mục thủ tục bắt buộc và lời mẫu của Chủ tọa: mình soạn nháp, nhóm luật duyệt.
+20. Điều 323 cho Chủ tọa: có, tối đa 1 lần mỗi phiên, theo 11.4.6.
+21. Phụ lục "Biên bản nghị án" cho Chủ tọa: có, dựng bằng code.
+22. Hạn mức: giữ 5 vụ/ngày/người dùng. **Thêm trần toàn hệ thống mỗi ngày**, đặt bằng biến môi trường (tên đề xuất `TRIAL_GLOBAL_DAILY_CASE_LIMIT`; chưa có trong code, làm ở R1). Chi phí theo bảng giá anh/chị đã tra: vai tốn nhất (Bị cáo, ~1,6 lần phiên KSV) khoảng **$0,08 mỗi phiên**.
