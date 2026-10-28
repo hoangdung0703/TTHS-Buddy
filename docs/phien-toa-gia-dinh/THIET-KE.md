@@ -2,7 +2,7 @@
 
 Trạng thái: thiết kế đã duyệt kèm các quyết định ngày 19/10/2026 (mục ngay dưới). Chặng 1 (nền backend + spike) xong trên nhánh `muc5-mock-trial`, chờ duyệt trước chặng 2.
 Migration: `backend/migrations/0012_mock_trials.sql`. Chạy tay; **đã chạy** ở database thật. Nháp cũ trong thư mục này đã xóa.
-Thiết kế 4 vai còn lại (Người xem, Bị cáo, Thư ký, Chủ tọa): Mục 11 ở cuối tài liệu. Đã duyệt kèm quyết định 29/10/2026 (11.8). Chặng R1 (Người xem) đã code: xem 11.9. Migration `0013_mock_trial_roles.sql` **đã chạy** ở database thật ngày 29/10/2026 (nới check `user_role` thêm `nguoi_xem`; thêm `mock_trial_utterances.procedure_item` và `mock_trial_sessions.user_work`, cả hai cho phép null).
+Thiết kế 4 vai còn lại (Người xem, Bị cáo, Thư ký, Chủ tọa): Mục 11 ở cuối tài liệu. Đã duyệt kèm quyết định 29/10/2026 (11.8). Chặng R1 (Người xem) đã code: xem 11.9. Migration `0014_mock_trial_usage_log.sql` (chặng R1b, 11.10) đã viết, **chưa chạy**; **PHẢI chạy 0014 trước khi bật `TRIAL_ENABLED`** (chưa có bảng thì không tạo được vụ nào: 503). Migration `0013_mock_trial_roles.sql` **đã chạy** ở database thật ngày 29/10/2026 (nới check `user_role` thêm `nguoi_xem`; thêm `mock_trial_utterances.procedure_item` và `mock_trial_sessions.user_work`, cả hai cho phép null).
 
 ## Quyết định 19/10/2026 (ghi đè phần thân khi mâu thuẫn)
 
@@ -1032,3 +1032,16 @@ Theo số câu hỏi ở 11.7:
 - Biên bản: 3/3 đủ I–IV, IV.1–IV.4 có nội dung, chữ ký, phụ lục tuyên án, dòng Người xem; tóm tắt IV.2 chạy 3/3, IV.3 2/3 (1 lần về nguyên văn vì viện dẫn "Điều 65" không nêu luật: cơ chế dự phòng đúng thiết kế); 0 tên cơ quan sai, 0 chỗ giữ chỗ.
 
 **Còn chờ:** nhóm luật duyệt 11 đoạn chú giải (`PROCEDURE_NOTES_REVIEWED`), đọc 3 biên bản; xác nhận tên "khu vực 1, tỉnh X"; giao diện Người xem (chặng sau, theo 11.1.7 và API-CONTRACT 5.1).
+
+### 11.10 Chặng R1b — sổ hạn mức và tên luật trong tóm tắt biên bản, 29/10/2026
+
+**Quyết định: hạn mức theo ngày đếm trên sổ riêng.** Trước đây cả hạn mức 5 vụ/ngày/người và trần toàn hệ thống đếm trên `mock_trial_cases`; xóa phiên là xóa vụ nên trả lại lượt. Nay:
+- Bảng `mock_trial_usage_log` (migration `0014_mock_trial_usage_log.sql`, **chưa chạy; PHẢI chạy trước khi bật `TRIAL_ENABLED`**): `id`, `user_id` (tham chiếu `auth.users`, xóa tài khoản thì xóa theo), `created_at`; chỉ mục `(created_at)` và `(user_id, created_at)`; RLS bật, không policy. Không chứa nội dung vụ án hay lời thoại.
+- Một dòng cho mỗi lần tạo vụ **thành công**, ghi sau cùng trong cùng bước lưu (ghi sổ lỗi thì xóa vụ vừa lưu và báo lỗi tạo vụ). Tạo thất bại không ghi. Xóa phiên hay vụ không xóa dòng sổ.
+- Cả hai hạn mức theo ngày đếm trên sổ, biên ngày 0 giờ Asia/Ho_Chi_Minh. "Tối đa 3 phiên dở dang" vẫn đếm phiên thật.
+- Dòng cũ hơn 35 ngày bị xóa cơ hội mỗi khi ghi dòng mới (không cron; xóa lỗi thì bỏ qua, lần sau xóa tiếp).
+- Fail-closed: không đọc được sổ (chưa chạy 0014, Supabase lỗi) thì `POST /api/trials` trả 503 `trial_usage_log_unavailable` và ghi log lỗi, không gọi Gemini; `GET /api/trials` báo `remaining.cases_today = 0`. Phiên đang dở không bị ảnh hưởng.
+- Cùng lúc nhiều request vẫn có thể vượt trần một chút (đếm rồi mới tạo, không khóa), như trước.
+
+**Tên luật trong tóm tắt IV.2/IV.3.** R1: 1/3 phiên IV.3 về nguyên văn vì tóm tắt viết "Điều 65" không nêu luật (guard cặp chặn đúng; lần sinh lại kèm phản hồi vẫn sai y như vậy, nên sửa prompt không đủ chắc). Chọn cách code: `attach_law_names` ghi tên luật sau "Điều N" thiếu luật **chỉ khi** diễn biến phiên tòa và hồ sơ viện dẫn Điều đó với đúng một bộ luật; Điều không có trong nguồn, hoặc nguồn viện dẫn với cả hai bộ luật, thì để nguyên và guard vẫn chặn. Guard không đổi, chạy sau bước này.
+- Đo (16 lời gọi): một phiên Người xem trên vụ đã lưu (seed 9110, Điều 174 khoản 1) tới hết bước 9, rồi 6 lần tóm tắt một lượt, mỗi kết quả kiểm hai lần (nguyên như model viết / sau khi gắn tên luật): 0/6 về nguyên văn ở cả hai cách, nghĩa là phiên mới không tái hiện lỗi. Kiểm ngoại tuyến trên biên bản phiên 9203 của R1: nguồn IV.3 chỉ viện dẫn Điều 65 với Bộ luật Hình sự, nên lỗi `ambiguous_law: Điều 65` của phiên đó được sửa. Còn cần đo thêm khi có nhiều phiên hơn.

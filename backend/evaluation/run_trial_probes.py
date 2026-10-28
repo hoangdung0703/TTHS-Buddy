@@ -609,6 +609,78 @@ async def observer_main(out: Path, cap: int) -> int:
     return 0
 
 
+LAW_NAME_SUMMARIES = 6
+
+
+def _summary_labels(violations: list[str]) -> list[str]:
+    """"citation:ambiguous_law: Điều 65 (...)" -> "citation:ambiguous_law"; labels only, no text."""
+    return sorted({":".join(v.split(":")[:2]).strip() if v.startswith("citation:") else v.split(":")[0]
+                   for v in violations})
+
+
+async def law_names_main(out: Path, cap: int, case_path: Path) -> int:
+    """Chặng R1b: a Người xem hearing on a stored case (no case generation) up to the end of step 9,
+    then LAW_NAME_SUMMARIES single-attempt biên bản summaries. Each raw output is checked twice by
+    the real guard: as written (before R1b) and after attach_law_names (after R1b), so before/after
+    compare the same model outputs. The transcript is saved to --out for reuse."""
+    from app.models.trial import CaseFile
+    from app.prompts.trial_prompts import RECORD_SUMMARY_SYSTEM_PROMPT
+    from app.services import trial_record_summary as rs
+
+    configure_logging("test")  # INFO + redaction; never DEBUG
+    settings = get_settings()
+    qdrant = create_qdrant_client(settings)
+    out.mkdir(parents=True, exist_ok=True)
+    case = CaseFile.model_validate_json(case_path.read_text(encoding="utf-8"))
+    pack = await load_pack_for_crime(get_crime(case.crime_key), settings, qdrant)
+    recorder = TrialCallRecorder()
+    recorders = [recorder]
+    ctx = TrialContext(case=case, pack=pack, state=new_session("nguoi_xem", shape_of(case)), settings=settings,
+                       recorder=recorder)
+    events: list = []
+    rows, stopped = [], None
+    try:
+        while True:   # Người xem: the AI plays a whole step, then waits for "advance"
+            await ai_until_user(ctx, recorders, cap - LAW_NAME_SUMMARIES, events)
+            if ctx.state.current_step == 9:
+                break
+            student(ctx, "advance", target_step=ctx.state.current_step + 1)
+        (out / "law_names_transcript.json").write_text(json.dumps(
+            [u.__dict__ for u in ctx.transcript], ensure_ascii=False, indent=1), encoding="utf-8")
+        sources = rs.section_sources(ctx)
+        all_sources = "\n".join(sources.values())
+        reference = rs._reference(ctx, all_sources)
+        for run in range(1, LAW_NAME_SUMMARIES + 1):
+            if calls(recorders) + 1 > cap:
+                raise Cap(f"cap reached before summary {run}")
+            response, _ = await recorder.call(
+                settings, call_type="record_summary", slot="bien_ban", attempt=1,
+                system_prompt=RECORD_SUMMARY_SYSTEM_PROMPT, user_prompt=rs._user_prompt(ctx, sources, ["iv2", "iv3"], ""),
+                response_schema=rs._SCHEMA, thinking_level=None, temperature=rs.SUMMARY_TEMPERATURE)
+            raw = json.loads(response.text)
+            row = {"run": run}
+            for key in ("iv2", "iv3"):
+                before = rs.check_summary(ctx, raw[key], sources[key], all_sources)
+                after = rs.check_summary(ctx, rs.attach_law_names(raw[key], reference), sources[key], all_sources)
+                row[key] = {"before": _summary_labels(before), "after": _summary_labels(after)}
+            rows.append(row)
+    except Cap as cap_hit:
+        stopped = str(cap_hit)
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code in (402, 429):
+            stopped = f"Gemini {error.response.status_code} - stopped"
+        else:
+            raise
+    fallback = {when: {key: sum(1 for r in rows if r[key][when]) for key in ("iv2", "iv3")}
+                for when in ("before", "after")}
+    report = {"gemini_calls": calls(recorders), "cap": cap, "stopped": stopped, "hearing_steps": ctx.state.current_step,
+              "guard_pauses": [e.get("guard_pause") for e in events], "summaries": len(rows),
+              "verbatim_fallback_first_attempt": fallback, "runs": rows}
+    (out / "law_names.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=1))
+    return 0
+
+
 async def main(out: Path, cap: int) -> int:
     configure_logging("test")  # INFO + redaction; never DEBUG
     settings = get_settings()
@@ -637,9 +709,13 @@ if __name__ == "__main__":
     parser.add_argument("--summary", action="store_true", help="chặng 3E cases + full hearing + biên bản summary")
     parser.add_argument("--diacritics", action="store_true", help="chặng 3F: seed 5006 + 6001-6006")
     parser.add_argument("--observer", action="store_true", help="chặng R1: 3 full Người xem hearings + biên bản")
+    parser.add_argument("--law-names", type=Path, metavar="CASE_JSON",
+                        help="chặng R1b: Người xem hearing on a stored case + 6 summaries, before/after law names")
     parser.add_argument("--reliability", type=int, metavar="SEED_BASE",
                         help="chặng 3G: 12 cases on SEED_BASE+1..+12, rule labels per attempt")
     args = parser.parse_args()
+    if args.law_names is not None:
+        sys.exit(asyncio.run(law_names_main(args.out, args.hard_cap, args.law_names)))
     if args.reliability is not None:
         sys.exit(asyncio.run(reliability_main(args.out, args.hard_cap, args.reliability)))
     entry = (observer_main if args.observer else format_main if args.format else summary_main if args.summary else

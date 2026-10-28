@@ -9,7 +9,7 @@ from unittest import mock
 
 from app.services import trial_record_summary
 from app.services.trial_record import build_record
-from app.services.trial_record_summary import check_summary, section_sources, summarise_record
+from app.services.trial_record_summary import attach_law_names, check_summary, section_sources, summarise_record
 from app.services.trial_turn_service import Utterance
 from tests.test_trial_turns import ScriptedRecorder, make_ctx
 
@@ -76,6 +76,29 @@ class GuardTests(unittest.TestCase):
         self.assertIn("markdown", self.check("**Kiểm sát viên** {KSV} luận tội."))
         self.assertIn("too_long", self.check(GOOD_IV3 + " " + "Kiểm sát viên phân tích thêm. " * 200))
         self.assertIn("empty", self.check("  "))
+
+
+class LawNameTests(unittest.TestCase):
+    REFERENCE = ("đề nghị áp dụng Điều 65 Bộ luật Hình sự; điểm s khoản 1 Điều 51 Bộ luật Hình sự; Điều 326 Bộ luật "
+                 "Tố tụng hình sự; Điều 13 Bộ luật Hình sự và Điều 13 Bộ luật Tố tụng hình sự.")
+
+    def test_law_attached_only_when_the_source_names_exactly_one(self):
+        self.assertEqual(attach_law_names("Đề nghị án treo theo Điều 65; luật sư nêu Điều 51, 65.", self.REFERENCE),
+                         "Đề nghị án treo theo Điều 65 Bộ luật Hình sự; luật sư nêu Điều 51, 65 Bộ luật Hình sự.")
+        self.assertEqual(attach_law_names("Theo khoản 1 Điều 51 và Điều 326.", self.REFERENCE),
+                         "Theo khoản 1 Điều 51 Bộ luật Hình sự và Điều 326 Bộ luật Tố tụng hình sự.")
+        for untouched in ("Theo Điều 13.", "Theo Điều 99.", "Theo Điều 65 Bộ luật Hình sự.", "Theo Điều 51, 326."):
+            self.assertEqual(attach_law_names(untouched, self.REFERENCE), untouched)
+
+    def test_summary_without_law_name_now_passes_and_unknown_article_still_fails(self):
+        ctx = ctx_with_hearing([summary(iv3=GOOD_IV3.replace(" Bộ luật Hình sự", "")),
+                                summary(iv3="{KSV} viện dẫn Điều 52.")])
+        result = asyncio.run(summarise_record(ctx))
+        self.assertEqual((result["iv3"], result["flags"]), (GOOD_IV3, []))
+        ctx = ctx_with_hearing([summary(iv3="{KSV} viện dẫn Điều 52."), summary(iv3="{KSV} viện dẫn Điều 52.")])
+        result = asyncio.run(summarise_record(ctx))
+        self.assertIsNone(result["iv3"])
+        self.assertTrue(result["flags"][0].startswith("iv3:verbatim_fallback"))
 
 
 class GenerationTests(unittest.TestCase):

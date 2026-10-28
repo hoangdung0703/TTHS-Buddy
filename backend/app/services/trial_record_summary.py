@@ -2,7 +2,9 @@
 Mẫu 22-HS, whose guidance (27)-(28) asks the clerk to record a summary. IV.1 (cáo trạng) and IV.4
 (lời nói sau cùng) stay verbatim.
 
-One flash-lite call per session, right after tuyên án. Every section is checked by CODE; a section
+One flash-lite call per session, right after tuyên án. Before the checks, code completes "Điều N"
+written without its law when the hearing or case file cites that Điều under exactly one law
+(attach_law_names, chặng R1b); the checks themselves are unchanged. Every section is checked by CODE; a section
 that fails is regenerated once, then falls back to verbatim and is flagged. Any error or timeout
 also means verbatim: the summary is never needed for the session to be completed. The result,
 including a fallback, is stored with the session (verdict_json["record_summary"]) so it is computed
@@ -20,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from app.core.logging import get_logger
 from app.prompts.trial_prompts import RECORD_SUMMARY_SYSTEM_PROMPT
 from app.services.trial_case_validator import MONEY_PATTERN, parse_money
+from app.services.trial_config import BLHS_DOCUMENT, BLTTHS_DOCUMENT, LAW_SHORT_NAMES
 from app.services.trial_names import NAME_LIKE_PATTERN, placeholders_in
 from app.services.trial_rule9 import check_citations, extract_citations
 from app.services.trial_state_machine import ROLE_LABELS
@@ -76,12 +79,38 @@ def _numbers(text: str) -> set[str]:
     return {re.sub(r"[.,]", "", m) for m in _NUMBER.findall(_PLACEHOLDER.sub(" ", text))}
 
 
+def _reference(ctx: TrialContext, all_sources: str) -> str:
+    """Everything a summary may draw on: the hearing and the case file."""
+    return all_sources + "\n" + ctx.case.draft.model_dump_json()
+
+
+def attach_law_names(text: str, reference: str) -> str:
+    """Writes the law name after a "Điều N" the summary left without one, when `reference` cites
+    that Điều under exactly one of the two codes (B4 R1: "Điều 65" alone failed the pair guard and
+    sent IV.3 back to verbatim). A Điều the reference never ties to a law, or ties to both, is left
+    as it is, so the guard still rejects it; nothing is added for a Điều outside the source."""
+    laws: dict[str, set[str]] = {}
+    for cited in extract_citations(reference):
+        if cited.law in (BLHS_DOCUMENT, BLTTHS_DOCUMENT):
+            laws.setdefault(cited.dieu, set()).add(cited.law)
+    groups: dict[int, list[str]] = {}
+    for cited in extract_citations(text):
+        if cited.law is None:
+            groups.setdefault(cited.end, []).append(cited.dieu)
+    for end in sorted(groups, reverse=True):     # right to left: earlier offsets stay valid
+        per_dieu = [laws.get(dieu, set()) for dieu in groups[end]]
+        found = set().union(*per_dieu)
+        if len(found) == 1 and all(len(group) == 1 for group in per_dieu):
+            text = text[:end] + " " + LAW_SHORT_NAMES[found.pop()] + text[end:]
+    return text
+
+
 def check_summary(ctx: TrialContext, text: str, source: str, all_sources: str) -> list[str]:
     """Violation labels for one summarised section (labels only, never text)."""
     if not text.strip():
         return ["empty"]
     violations: list[str] = []
-    reference = all_sources + "\n" + ctx.case.draft.model_dump_json()
+    reference = _reference(ctx, all_sources)
     if _numbers(text) - _numbers(reference):
         violations.append("unknown_number")
     amounts, _ = _known_numbers(ctx)
@@ -145,6 +174,7 @@ async def _generate(ctx: TrialContext) -> dict[str, Any]:
             continue
         failed: dict[str, list[str]] = {}
         for key in todo:
+            out[key] = attach_law_names(out[key], _reference(ctx, all_sources))
             violations = check_summary(ctx, out[key], sources[key], all_sources)
             if violations:
                 failed[key] = violations

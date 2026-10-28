@@ -62,11 +62,12 @@ Lỗi 409 của phiên tòa có thêm trường `state` (xem Mục 6).
 | 409 | `trial_<mã>` | Hành động không hợp lệ ở trạng thái hiện tại, xem Mục 6 |
 | 422 | `validation_error` | Body sai schema: thiếu trường, sai kiểu, **có trường thừa**, `user_role` không có trong `config.user_roles` (ví dụ `bi_cao`, `thu_ky`, `chu_toa` khi chặng của vai đó chưa bật), `witness_count` ngoài 0–2, `text` dài hơn 6000 ký tự, `session_id` không phải UUID |
 | 429 | `rate_limit_exceeded` | Quá giới hạn tần suất: 10 request/phút/user với `POST /api/trials` và `POST /turn`; 60/phút với các route khác |
-| 429 | `trial_daily_case_limit` | Đã tạo đủ 5 vụ trong ngày (ngày tính theo giờ Việt Nam) |
+| 429 | `trial_daily_case_limit` | Đã tạo đủ 5 vụ trong ngày (ngày tính theo giờ Việt Nam). Đếm mọi lần tạo vụ **thành công** trong ngày; **xóa phiên không trả lại lượt** |
 | 429 | `trial_active_session_limit` | Đã có 3 phiên đang dở dang |
 | 429 | `trial_global_daily_limit` | Toàn hệ thống đã tạo đủ số vụ cho phép trong ngày (giờ Việt Nam). `message` là câu thân thiện, hiển thị nguyên văn. **Chỉ chặn tạo vụ mới**; phiên đang dở vẫn chơi tiếp bình thường. Kiểm sau hai hạn mức của người dùng |
 | 500 | `internal_server_error` / `data_read_failed` | Lỗi server, hoặc lỗi đọc dữ liệu không tự hết |
 | 503 | `data_unavailable` | Supabase tạm lỗi; thử lại được |
+| 503 | `trial_usage_log_unavailable` | Chỉ ở `POST /api/trials`: server không đọc được sổ hạn mức nên **từ chối tạo vụ** (không bỏ qua hạn mức). `message` là câu thân thiện, hiển thị nguyên văn kèm nút thử lại sau. Phiên đang dở không bị ảnh hưởng |
 
 Lỗi xảy ra **sau khi** SSE đã bắt đầu thì không có mã HTTP: server gửi sự kiện `error` rồi đóng stream (Mục 4).
 
@@ -111,7 +112,7 @@ Gọi route này cũng tự chuyển sang `abandoned` mọi phiên `active` khô
 
 - `sessions` sắp xếp theo `updated_at` mới nhất trước. `status`: `active` | `completed` | `abandoned`.
 - `config.crimes` lấy từ cấu hình server. **Không hardcode** danh sách tội trong frontend.
-- `remaining.cases_today` = số vụ còn được tạo hôm nay. `remaining.active_sessions` = số phiên dở dang còn được mở thêm. Bằng 0 thì khóa nút "Phiên tòa mới" và hiện lý do.
+- `remaining.cases_today` = số vụ còn được tạo hôm nay: 5 trừ số lần tạo vụ thành công từ 0 giờ (giờ Việt Nam). Tạo thất bại không tính; xóa phiên không trả lại lượt. Khi server không đọc được sổ hạn mức thì trả 0. `remaining.active_sessions` = số phiên dở dang còn được mở thêm. Bằng 0 thì khóa nút "Phiên tòa mới" và hiện lý do.
 - Bộ chọn vai chỉ hiện các vai trong `config.user_roles` (nguồn duy nhất; server từ chối 422 mọi vai khác). Các vai chưa bật (Chủ tọa, Thư ký, Bị cáo) nếu muốn hiện thì để mờ, nhãn "Sắp có". Thẻ "Người xem": mô tả "Theo dõi trọn một phiên tòa do hệ thống đóng mọi vai"; không có pill Điều.
 
 ### 3.2 `POST /api/trials` — tạo vụ án và phiên (SSE)
@@ -130,7 +131,7 @@ Body (mọi trường thừa đều bị 422; **không có ô mô tả tự do**
 | `witness_count` | `1` | 0–2 |
 | `has_related_party` | `false` | Có người có quyền lợi, nghĩa vụ liên quan |
 
-Kiểm trước khi stream (có mã HTTP thật): 400, 401, 422, 429 (`trial_daily_case_limit`, `trial_active_session_limit`, `trial_global_daily_limit`, `rate_limit_exceeded`).
+Kiểm trước khi stream (có mã HTTP thật): 400, 401, 422, 429 (`trial_daily_case_limit`, `trial_active_session_limit`, `trial_global_daily_limit`, `rate_limit_exceeded`), 503 (`trial_usage_log_unavailable`).
 
 Stream thành công, theo thứ tự:
 1. `status` ("Đang chuẩn bị hồ sơ pháp lý của vụ án...")

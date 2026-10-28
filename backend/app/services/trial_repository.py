@@ -1,4 +1,4 @@
-"""Persistence for "Phiên tòa giả định" (migration 0012). Every query filters by user_id, so a
+"""Persistence for "Phiên tòa giả định" (migrations 0012, 0014). Every query filters by user_id, so a
 session id that exists but belongs to another user behaves exactly like one that does not exist
 (the routes answer 404 in both cases, same ownership pattern as notes and conversations).
 
@@ -7,6 +7,9 @@ asyncio.to_thread) and InMemoryTrialRepository (unit tests). Concurrency is opti
 write carries the version it expects, and claiming a session for an AI turn also requires the
 generation lock to be free; a write that matches 0 rows returns False and the route answers 409.
 Inserts are single attempts (data_access policy: a retried insert could store twice).
+
+The daily limits count USAGE_LOG (migration 0014), one row per successful case creation that outlives
+the case: deleting a session or a case never frees quota.
 """
 from __future__ import annotations
 
@@ -17,11 +20,14 @@ from typing import Any, Protocol
 
 from supabase import Client
 
-from app.core.data_access import execute_with_retry
+from app.core.data_access import DataUnavailable, execute_with_retry
 
 CASES = "mock_trial_cases"
 SESSIONS = "mock_trial_sessions"
 UTTERANCES = "mock_trial_utterances"
+USAGE_LOG = "mock_trial_usage_log"
+# Rows older than this are deleted when a new one is written; the limits only look at one day.
+USAGE_RETENTION_DAYS = 35
 
 SESSION_STATE_COLUMNS = ("current_step", "slot_index", "slot_user_turns", "pending_ai", "status", "version")
 
@@ -37,8 +43,9 @@ def _iso(moment: datetime) -> str:
 
 
 class TrialRepository(Protocol):
-    def count_cases_since(self, user_id: str, since: datetime) -> int: ...
-    def count_all_cases_since(self, since: datetime) -> int: ...
+    def count_usage_since(self, user_id: str, since: datetime) -> int: ...
+    def count_all_usage_since(self, since: datetime) -> int: ...
+    def log_case_created(self, user_id: str) -> None: ...
     def count_active_sessions(self, user_id: str) -> int: ...
     def abandon_stale(self, user_id: str, cutoff: datetime) -> int: ...
     def insert_case(self, row: dict[str, Any]) -> str: ...
@@ -61,18 +68,31 @@ class SupabaseTrialRepository:
     def __init__(self, client: Client):
         self.client = client
 
-    def count_cases_since(self, user_id: str, since: datetime) -> int:
+    def count_usage_since(self, user_id: str, since: datetime) -> int:
         response = execute_with_retry(
-            lambda: self.client.table(CASES).select("id", count="exact").eq("user_id", user_id)
-            .gte("created_at", _iso(since)), "trial: count cases")
+            lambda: self.client.table(USAGE_LOG).select("id", count="exact").eq("user_id", user_id)
+            .gte("created_at", _iso(since)), "trial: count usage")
         return response.count or 0
 
-    def count_all_cases_since(self, since: datetime) -> int:
-        """Every user's cases (service role, no user filter): the system-wide daily cap."""
+    def count_all_usage_since(self, since: datetime) -> int:
+        """Every user's creations (service role, no user filter): the system-wide daily cap."""
         response = execute_with_retry(
-            lambda: self.client.table(CASES).select("id", count="exact").gte("created_at", _iso(since)),
-            "trial: count all cases")
+            lambda: self.client.table(USAGE_LOG).select("id", count="exact").gte("created_at", _iso(since)),
+            "trial: count all usage")
         return response.count or 0
+
+    def log_case_created(self, user_id: str) -> None:
+        """One row per successful creation, then an opportunistic cleanup that may fail silently
+        (the limits only read today's rows)."""
+        try:
+            self.client.table(USAGE_LOG).insert({"user_id": user_id}).execute()
+        except Exception as error:
+            raise DataUnavailable("trial: log usage", transient=False) from error
+        cutoff = utc_now() - timedelta(days=USAGE_RETENTION_DAYS)
+        try:
+            self.client.table(USAGE_LOG).delete().lt("created_at", _iso(cutoff)).execute()
+        except Exception:  # noqa: BLE001 - retried on the next creation
+            pass
 
     def count_active_sessions(self, user_id: str) -> int:
         response = execute_with_retry(
@@ -168,15 +188,29 @@ class InMemoryTrialRepository:
     """Test double with the same filtering, version and lock semantics as the Supabase one."""
 
     def __init__(self) -> None:
+        self.usage: list[dict[str, Any]] = []
+        # False simulates migration 0014 not run: every usage-log access fails like Supabase would.
+        self.usage_available = True
         self.cases: dict[str, dict[str, Any]] = {}
         self.sessions: dict[str, dict[str, Any]] = {}
         self.utterances: list[dict[str, Any]] = []
 
-    def count_cases_since(self, user_id: str, since: datetime) -> int:
-        return sum(1 for c in self.cases.values() if c["user_id"] == user_id and c["created_at"] >= since)
+    def _usage_rows(self) -> list[dict[str, Any]]:
+        if not self.usage_available:
+            raise DataUnavailable("trial: usage log", transient=False)
+        return self.usage
 
-    def count_all_cases_since(self, since: datetime) -> int:
-        return sum(1 for c in self.cases.values() if c["created_at"] >= since)
+    def count_usage_since(self, user_id: str, since: datetime) -> int:
+        return sum(1 for r in self._usage_rows() if r["user_id"] == user_id and r["created_at"] >= since)
+
+    def count_all_usage_since(self, since: datetime) -> int:
+        return sum(1 for r in self._usage_rows() if r["created_at"] >= since)
+
+    def log_case_created(self, user_id: str) -> None:
+        rows = self._usage_rows()
+        rows.append({"id": str(uuid.uuid4()), "user_id": user_id, "created_at": utc_now()})
+        cutoff = utc_now() - timedelta(days=USAGE_RETENTION_DAYS)
+        self.usage = [r for r in rows if r["created_at"] >= cutoff]
 
     def count_active_sessions(self, user_id: str) -> int:
         return sum(1 for s in self.sessions.values() if s["user_id"] == user_id and s["status"] == "active")

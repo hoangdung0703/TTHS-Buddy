@@ -26,6 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.chat import _sse_format
 from app.core import request_telemetry as telemetry
 from app.core.config import Settings, get_settings
+from app.core.data_access import DataUnavailable
 from app.core.logging import get_logger
 from app.core.rate_limit import DEFAULT_RATE_LIMIT, LLM_ROUTE_RATE_LIMIT, limiter
 from app.core.security import require_supabase_user
@@ -112,6 +113,8 @@ GUARD_PAUSE_TEXT = ("Hội đồng xét xử tạm nghỉ ít phút để kiểm
 CREATE_FAILED_TEXT = "Chưa dựng được hồ sơ vụ án hợp lệ. Bạn vui lòng thử lại."
 RECORD_STATUS_TEXT = "Đang lập biên bản..."
 TURN_FAILED_TEXT = "Xin lỗi, đã có lỗi xảy ra trong phiên tòa. Bạn vui lòng bấm \"Tiếp tục\" để thử lại."
+USAGE_LOG_UNAVAILABLE_TEXT = ("Tạm thời chưa tạo được vụ án mới vì hệ thống không kiểm tra được hạn mức. Bạn vui "
+                              "lòng thử lại sau; các phiên tòa đang dở vẫn tiếp tục được.")
 GLOBAL_LIMIT_TEXT = ("Hôm nay hệ thống đã tạo đủ số vụ án mô phỏng cho phép. Bạn vui lòng quay lại vào ngày mai; "
                      "các phiên tòa đang dở vẫn tiếp tục được bình thường.")
 
@@ -271,7 +274,12 @@ async def list_trials(request: Request, current_user: AuthUser = Depends(require
     user_id = current_user.user_id
     await asyncio.to_thread(repo.abandon_stale, user_id, _stale_cutoff())
     rows = await asyncio.to_thread(repo.list_sessions, user_id)
-    cases_today = await asyncio.to_thread(repo.count_cases_since, user_id, _today_start_utc())
+    try:
+        cases_today = await asyncio.to_thread(repo.count_usage_since, user_id, _today_start_utc())
+    except DataUnavailable:
+        # Fail closed (migration 0014 missing or Supabase down): show no quota left; POST answers 503.
+        logger.warning("Trial usage log unreadable; reporting no remaining cases")
+        cases_today = MAX_CASES_PER_DAY
     active = sum(1 for r in rows if r["status"] == "active")
     config = TrialConfigOut(
         crimes=[TrialCrimeOut(crime_key=c.key, crime_name=c.crime_name, dieu=c.dieu, allowed_khoan=list(c.allowed_khoan))
@@ -303,7 +311,15 @@ async def create_trial(body: TrialCreateRequest, request: Request,
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown crime_key")
     user_id = current_user.user_id
     await asyncio.to_thread(repo.abandon_stale, user_id, _stale_cutoff())
-    if await asyncio.to_thread(repo.count_cases_since, user_id, _today_start_utc()) >= MAX_CASES_PER_DAY:
+    # Both daily limits count the usage log (migration 0014), never the case rows a user can delete.
+    # Unreadable log = no case: fail closed instead of creating without a limit.
+    try:
+        used_today = await asyncio.to_thread(repo.count_usage_since, user_id, _today_start_utc())
+        used_today_all = await asyncio.to_thread(repo.count_all_usage_since, _today_start_utc())
+    except DataUnavailable:
+        logger.error("Trial usage log unreadable (is migration 0014 run?); case creation refused")
+        return _error(status.HTTP_503_SERVICE_UNAVAILABLE, "trial_usage_log_unavailable", USAGE_LOG_UNAVAILABLE_TEXT)
+    if used_today >= MAX_CASES_PER_DAY:
         return _error(status.HTTP_429_TOO_MANY_REQUESTS, "trial_daily_case_limit",
                       f"Mỗi ngày chỉ tạo được tối đa {MAX_CASES_PER_DAY} vụ án.")
     if await asyncio.to_thread(repo.count_active_sessions, user_id) >= MAX_ACTIVE_SESSIONS:
@@ -311,7 +327,7 @@ async def create_trial(body: TrialCreateRequest, request: Request,
                       f"Chỉ được có tối đa {MAX_ACTIVE_SESSIONS} phiên tòa đang dở dang.")
     # System-wide cost cap, checked last so a user's own limits are reported first. Only creation
     # is refused: sessions already running keep playing (their turns never come through here).
-    if await asyncio.to_thread(repo.count_all_cases_since, _today_start_utc()) >= global_daily_case_limit(settings):
+    if used_today_all >= global_daily_case_limit(settings):
         logger.warning("Trial global daily case limit reached")
         return _error(status.HTTP_429_TOO_MANY_REQUESTS, "trial_global_daily_limit", GLOBAL_LIMIT_TEXT)
 
@@ -347,8 +363,10 @@ async def create_trial(body: TrialCreateRequest, request: Request,
                     session_id = repo.insert_session({"user_id": user_id, "case_id": case_id,
                                                       "user_role": body.user_role, **state_fields(ctx)})
                     repo.insert_utterances(utterance_rows(ctx.transcript, session_id, user_id))
+                    # Last: only a creation that is fully stored counts against the limits.
+                    repo.log_case_created(user_id)
                 except Exception:
-                    repo.delete_case(user_id, case_id)  # no orphan case counting against the daily limit
+                    repo.delete_case(user_id, case_id)  # no orphan case without its usage row
                     raise
                 return session_id
 

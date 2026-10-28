@@ -223,7 +223,7 @@ class TrialRouteTests(unittest.TestCase):
             response = self.client.post("/api/trials", json={"crime_key": "blhs_173", "user_role": "ksv"})
             self.assertEqual(response.status_code, 200)
             self.assertEqual([e for e, _ in sse(response)][-1], "error")
-        self.assertEqual((self.repo.cases, self.repo.sessions), ({}, {}))
+        self.assertEqual((self.repo.cases, self.repo.sessions, self.repo.usage), ({}, {}, []))
         listing = self.client.get("/api/trials").json()
         self.assertEqual(listing["config"]["remaining"]["cases_today"], trials_api.MAX_CASES_PER_DAY)
         self.assertEqual(listing["sessions"], [])
@@ -234,7 +234,7 @@ class TrialRouteTests(unittest.TestCase):
     def test_head_probe_runs_no_cleanup_or_counting(self):
         calls = []
         self.repo.abandon_stale = lambda *a: calls.append("abandon") or 0
-        self.repo.count_cases_since = lambda *a: calls.append("count") or 0
+        self.repo.count_usage_since = lambda *a: calls.append("count") or 0
         response = self.client.head("/api/trials")
         self.assertEqual((response.status_code, response.content), (204, b""))
         self.assertEqual(calls, [])
@@ -542,17 +542,68 @@ class TrialRouteTests(unittest.TestCase):
         app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
             gemini_chat_model="fake", trial_court_name=None, trial_enabled=True, trial_global_daily_case_limit=2)
         sid, state = self.create()
-        self.repo.insert_case({"user_id": "22222222-2222-2222-2222-222222222222", "crime_key": "blhs_173"})
+        self.repo.usage.append({"id": "x", "user_id": "22222222-2222-2222-2222-222222222222", "created_at": utc_now()})
         response = self.client.post("/api/trials", json={"crime_key": "blhs_173", "user_role": "ksv"})
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.json()["error"]["code"], "trial_global_daily_limit")
         self.assertIn("ngày mai", response.json()["error"]["message"])
         state, _ = self.act(sid, state, "advance", target_step=2)   # the running hearing goes on
         self.assertEqual(state["current_step"], 2)
-        # Yesterday's cases (Vietnam time) do not count.
-        for case in self.repo.cases.values():
-            case["created_at"] = trials_api._today_start_utc() - timedelta(minutes=1)
+        for row in self.repo.usage:                                  # yesterday, Vietnam time
+            row["created_at"] = trials_api._today_start_utc() - timedelta(minutes=1)
         self.create()
+
+    # --- chặng R1b: usage log ---------------------------------------------------------------------
+    def test_deleting_sessions_does_not_free_quota(self):
+        for _ in range(trials_api.MAX_CASES_PER_DAY):
+            sid, _ = self.create()
+            self.assertEqual(self.client.delete(f"/api/trials/{sid}").status_code, 204)
+        self.assertEqual(self.repo.cases, {})
+        self.assertEqual(len(self.repo.usage), trials_api.MAX_CASES_PER_DAY)
+        response = self.client.post("/api/trials", json={"crime_key": "blhs_173", "user_role": "ksv"})
+        self.assertEqual(response.json()["error"]["code"], "trial_daily_case_limit")
+        self.assertEqual(self.client.get("/api/trials").json()["config"]["remaining"]["cases_today"], 0)
+
+    def test_usage_day_boundary_is_vietnam_midnight(self):
+        start = trials_api._today_start_utc()
+        self.assertEqual(start.astimezone(trials_api.VIETNAM_TZ).hour, 0)
+        self.repo.usage += [{"id": "a", "user_id": self.user, "created_at": start - timedelta(seconds=1)},
+                            {"id": "b", "user_id": self.user, "created_at": start}]
+        remaining = self.client.get("/api/trials").json()["config"]["remaining"]["cases_today"]
+        self.assertEqual(remaining, trials_api.MAX_CASES_PER_DAY - 1)
+
+    def test_old_usage_rows_are_cleaned_on_write(self):
+        from app.services.trial_repository import USAGE_RETENTION_DAYS
+        self.repo.usage += [{"id": "old", "user_id": self.user, "created_at": utc_now() - timedelta(days=USAGE_RETENTION_DAYS + 1)},
+                            {"id": "keep", "user_id": self.user, "created_at": utc_now() - timedelta(days=USAGE_RETENTION_DAYS - 1)}]
+        self.create()
+        ids = [r["id"] for r in self.repo.usage]
+        self.assertNotIn("old", ids)
+        self.assertIn("keep", ids)
+        self.assertEqual(len(ids), 2)
+        self.assertEqual(set(self.repo.usage[-1]), {"id", "user_id", "created_at"})   # who and when only
+
+    def test_unreadable_usage_log_fails_closed(self):
+        self.repo.usage_available = False
+        with self.assertLogs("app.api.trials", level="ERROR"):
+            response = self.client.post("/api/trials", json={"crime_key": "blhs_173", "user_role": "ksv"})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["error"]["code"], "trial_usage_log_unavailable")
+        self.assertEqual(self.fake.calls, [])
+        self.assertEqual(self.repo.cases, {})
+        listing = self.client.get("/api/trials")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.json()["config"]["remaining"]["cases_today"], 0)
+
+    def test_usage_log_write_failure_leaves_no_case(self):
+        def broken(user_id):
+            raise trials_api.DataUnavailable("trial: log usage", transient=False)
+        self.repo.log_case_created = broken
+        response = self.client.post("/api/trials", json={"crime_key": "blhs_173", "user_role": "ksv"})
+        events = sse(response)
+        self.assertEqual([e for e, _ in events][-1], "error")
+        self.assertNotIn("session", [e for e, _ in events])
+        self.assertEqual((self.repo.cases, self.repo.sessions, self.repo.utterances), ({}, {}, []))
 
     def test_global_daily_limit_defaults_to_100(self):
         self.assertEqual(trials_api.global_daily_case_limit(SimpleNamespace()), 100)
