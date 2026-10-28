@@ -36,6 +36,7 @@ from app.services.trial_config import (
 from app.services.trial_legal_pack import LegalPack
 from app.services.trial_names import COURT_ROLES, NAME_LIKE_PATTERN, placeholders_in
 from app.services.trial_rule9 import check_citations
+from app.services.trial_text_format import format_speech
 
 # "12.500.000 đồng", "12.500.000đ", "12.500.000 VNĐ"
 MONEY_PATTERN = re.compile(r"(\d{1,3}(?:\.\d{3})+|\d{4,})\s*(?:đồng|đ\b|vnđ|vnd)", re.IGNORECASE)
@@ -76,7 +77,10 @@ def normalise_draft_dict(data: dict) -> dict:
     """Deterministic clean-up of CODE fields only (ids, Điều/khoản/điểm), applied before schema
     validation. Spike 2026-10-19: the model wrote ids as "{BI_CAO}" (the placeholder form used in
     text) in 5/5 first attempts, and once wrote charge.dieu as "Điều 171"; each such slip cascaded
-    into a dozen validation errors. Free-text fields are never touched."""
+    into a dozen validation errors. Free-text fields keep their words; only the indictment's layout
+    (markup, blank lines) is normalised by trial_text_format (chặng 3D)."""
+    if isinstance(data.get("indictment_text"), str):
+        data["indictment_text"] = format_speech(data["indictment_text"], multi_paragraph=True)
     people = [data.get("defendant"), data.get("victim"), *(data.get("witnesses") or []), data.get("related_party")]
     for index, p in enumerate(people):
         if isinstance(p, dict):
@@ -329,8 +333,25 @@ def _similarity(a: str, b: str) -> float:
     return len(left & right) / max(1, len(left | right))
 
 
+# Vietnamese prose has roughly one letter in five carrying a diacritic. Chặng 3D seed 4002 came back
+# entirely without diacritics (summary, statements, indictment) and still passed every other check.
+MIN_DIACRITIC_SHARE = 0.05
+MIN_LETTERS_FOR_DIACRITIC_CHECK = 100
+
+
+def lacks_diacritics(text: str) -> bool:
+    letters = [c for c in text if c.isalpha()]
+    if len(letters) < MIN_LETTERS_FOR_DIACRITIC_CHECK:
+        return False
+    return sum(1 for c in letters if not c.isascii()) / len(letters) < MIN_DIACRITIC_SHARE
+
+
 def _check_minimums(draft: CaseDraft, errors: list[str]) -> None:
     """Chặng 2 A3: a case thin enough to be useless for questioning is regenerated."""
+    for field_name, text in (("incident_summary", draft.incident_summary), ("indictment_text", draft.indictment_text),
+                             *((f"lời khai của {s.person_id}", s.summary) for s in draft.pretrial_statements)):
+        if lacks_diacritics(text):
+            errors.append(f"{field_name} phải viết tiếng Việt có dấu đầy đủ")
     if len(draft.evidence) < MIN_EVIDENCE:
         errors.append(f"Phải có ít nhất {MIN_EVIDENCE} chứng cứ (evidence), hiện có {len(draft.evidence)}")
     words = len(_words(draft.indictment_text))

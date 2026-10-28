@@ -11,28 +11,43 @@ HARD cap on Gemini calls (--hard-cap, default 30), counted from the recorders, c
 AI turn with room for its worst case. Console output: labels and counts only. Raw transcripts go
 to --out for a human reader.
 
-Usage (from backend/):  ../.venv/bin/python -m evaluation.run_trial_probes --out <dir>
+--format (chặng 3D) measures layout instead:
+  - cases on seeds 4001-4006 (the A5-bis option mix): schema pass, first-pass rate, indictments with
+    all four section headings on their own lines (counted by code), median generation time;
+  - the 4 long slots (luận tội, bào chữa, đối đáp, tuyên án) on the first 2 cases, each run once on
+    an empty transcript: share of outputs with at least 3 paragraphs.
+
+Usage (from backend/):  ../.venv/bin/python -m evaluation.run_trial_probes --out <dir> [--format]
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
+import random
 import re
+import statistics
 import sys
+import time
+from dataclasses import replace
 from pathlib import Path
+
+import httpx
 
 from app.core.config import create_qdrant_client, get_settings
 from app.core.logging import configure_logging
 from app.models.trial import CaseOptions
-from app.services.trial_case_service import CaseGenerationFailed, create_case
-from app.services.trial_config import BLTTHS_DOCUMENT
+from app.services.trial_case_service import CaseGenerationFailed, create_case, load_pack_for_crime
+from app.services.trial_config import BLTTHS_DOCUMENT, get_crime
+from app.services.trial_knobs import choose_knobs
 from app.services.trial_metrics import TrialCallRecorder
 from app.services.trial_names import render
 from app.services.trial_rule9 import extract_citations
 from app.services.trial_session_service import shape_of
-from app.services.trial_state_machine import UserAction, awaiting, current_slot, new_session
+from app.services.trial_state_machine import STEPS, UserAction, awaiting, current_slot, new_session
+from app.services.trial_text_format import INDICTMENT_SECTIONS, indictment_sections, paragraphs
 from app.services.trial_turn_service import TrialContext, TrialGuardFailure, apply_student_action, run_ai_turn
+from evaluation.run_trial_spike import BIS_CONFIGS
 
 FALSE_AMOUNT = "900.000.000"
 QUESTION_FALSE = f"Bị cáo đã chiếm đoạt tài sản trị giá {FALSE_AMOUNT} đồng đúng không?"
@@ -166,6 +181,99 @@ async def play(role: str, seed: int, settings, qdrant, cap: int, recorders: list
     return result
 
 
+FORMAT_SEED_OFFSET = 2000   # BIS_CONFIGS seeds 2001-2006 -> 4001-4006, never tuned against
+FORMAT_CASES = 6
+FORMAT_SLOT_CASES = 2
+# (slot key, student role): the role is chosen so that the AI is the speaker of the slot.
+LONG_SLOTS = (("luan_toi", "luat_su"), ("bao_chua", "ksv"), ("doi_dap", "luat_su"), ("tuyen_an", "luat_su"))
+SLOT_WORST_CASE = {"tuyen_an": 4}   # nghị án + tuyên án, each with one regeneration
+
+
+def _slot_position(key: str) -> tuple[int, int]:
+    return next((step.number, i) for step in STEPS for i, slot in enumerate(step.slots) if slot.key == key)
+
+
+async def format_main(out: Path, cap: int) -> int:
+    configure_logging("test")
+    settings = get_settings()
+    qdrant = create_qdrant_client(settings)
+    (out / "cases").mkdir(parents=True, exist_ok=True)
+    (out / "speeches").mkdir(exist_ok=True)
+    recorders: list[TrialCallRecorder] = []
+    cases, case_rows, slot_rows, stopped = [], [], [], None
+    try:
+        for seed, options, forced in BIS_CONFIGS[:FORMAT_CASES]:
+            seed += FORMAT_SEED_OFFSET
+            if calls(recorders) + 2 > cap:
+                raise Cap("cap reached before case generation")
+            recorder = TrialCallRecorder()
+            recorders.append(recorder)
+            started = time.monotonic()
+            pack = await load_pack_for_crime(get_crime(options.crime_key), settings, qdrant)
+            knobs = choose_knobs(get_crime(options.crime_key), pack, random.Random(seed), **forced) if forced else None
+            try:
+                creation = await create_case(options, settings, qdrant, recorder, pack=pack, seed=seed, knobs=knobs)
+            except CaseGenerationFailed as failure:
+                case_rows.append({"seed": seed, "crime": options.crime_key, "ok": False,
+                                  "errors_per_attempt": failure.error_counts, "calls": len(recorder.records)})
+                continue
+            sections = indictment_sections(creation.case.draft.indictment_text)
+            case_rows.append({"seed": seed, "crime": options.crime_key, "ok": True, "attempts": creation.attempts,
+                              "sections": len(sections), "all_sections": len(sections) == len(INDICTMENT_SECTIONS),
+                              "indictment_paragraphs": len(paragraphs(creation.case.draft.indictment_text)),
+                              "seconds": round(time.monotonic() - started, 1), "calls": len(recorder.records)})
+            cases.append(creation)
+            (out / "cases" / f"case_{seed}.json").write_text(creation.case.model_dump_json(indent=1), encoding="utf-8")
+
+        for creation in cases[:FORMAT_SLOT_CASES]:
+            case = creation.case
+            for key, role in LONG_SLOTS:
+                if calls(recorders) + SLOT_WORST_CASE.get(key, 2) > cap:
+                    raise Cap(f"cap reached before {key}")
+                recorder = TrialCallRecorder()
+                recorders.append(recorder)
+                step, index = _slot_position(key)
+                state = replace(new_session(role, shape_of(case)), current_step=step, slot_index=index,
+                                pending_ai=True)
+                ctx = TrialContext(case=case, pack=creation.pack, state=state, settings=settings, recorder=recorder)
+                row = {"crime": case.crime_key, "slot": key}
+                try:
+                    produced = await run_ai_turn(ctx)
+                    text = produced[-1].text
+                    row.update({"paragraphs": len(paragraphs(text)), "bullets": text.count("\n- "),
+                                "markdown_left": any(m in text for m in ("**", "#", "* ")),
+                                "chars": len(text), "calls": len(recorder.records),
+                                "rejected": sum(not r.accepted for r in recorder.records)})
+                    (out / "speeches" / f"{case.crime_key}_{key}.txt").write_text(
+                        render(text, case.participants), encoding="utf-8")
+                except TrialGuardFailure as failure:
+                    row.update({"guard_pause": [v.split(":")[0] for v in failure.violations],
+                                "calls": len(recorder.records)})
+                slot_rows.append(row)
+    except Cap as cap_hit:
+        stopped = str(cap_hit)
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code in (402, 429):
+            stopped = f"Gemini {error.response.status_code} - stopped"
+        else:
+            raise
+
+    ok = [r for r in case_rows if r["ok"]]
+    measured = [r for r in slot_rows if "paragraphs" in r]
+    summary = {
+        "gemini_calls": calls(recorders), "cap": cap, "stopped": stopped,
+        "cases": {"total": len(case_rows), "schema_ok": len(ok),
+                  "first_pass": sum(1 for r in ok if r["attempts"] == 1),
+                  "all_four_sections": sum(1 for r in ok if r["all_sections"]),
+                  "median_seconds": statistics.median(r["seconds"] for r in ok) if ok else None, "rows": case_rows},
+        "long_slots": {"measured": len(measured), "with_3_plus_paragraphs": sum(r["paragraphs"] >= 3 for r in measured),
+                       "rows": slot_rows},
+    }
+    (out / "format.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(json.dumps(summary, ensure_ascii=False, indent=1))
+    return 0
+
+
 async def main(out: Path, cap: int) -> int:
     configure_logging("test")  # INFO + redaction; never DEBUG
     settings = get_settings()
@@ -190,5 +298,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--hard-cap", type=int, default=30)
+    parser.add_argument("--format", action="store_true", help="chặng 3D layout measurement")
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.out, args.hard_cap)))
+    sys.exit(asyncio.run((format_main if args.format else main)(args.out, args.hard_cap)))

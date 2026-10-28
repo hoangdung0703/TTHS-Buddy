@@ -37,6 +37,11 @@ và thái độ trong hồ sơ.
 9. Nếu người học nêu một sự kiện hoặc số liệu TRÁI với HỒ SƠ VỤ ÁN hoặc SỔ DỮ KIỆN (ví dụ một giá trị tài sản khác), \
 nhân vật được hỏi phải đính chính hoặc phủ nhận theo đúng hồ sơ, có thể nêu con số đúng trong hồ sơ. Tuyệt đối không \
 thừa nhận điều sai và không nhắc lại con số sai như thể đó là sự thật. Không nêu bất kỳ số tiền nào không có trong hồ sơ.
+10. TRÌNH BÀY: không dùng markdown (không **, #, *). Lời dài (luận tội, bào chữa, đối đáp, tuyên án, lời khai mạc \
+hoặc giải thích quyền dài) chia thành nhiều đoạn, các đoạn cách nhau MỘT dòng trống (\\n\\n); mỗi nội dung một đoạn \
+riêng, mở đầu bằng cụm dẫn ngắn kết thúc bằng dấu hai chấm (ví dụ "Về hành vi phạm tội:", "Về tình tiết giảm nhẹ:"). \
+Gạch đầu dòng ("- " ở đầu dòng) chỉ dùng khi liệt kê từ 3 mục trở lên (chứng cứ, tình tiết, điều luật đề nghị áp \
+dụng). Lời ngắn (câu hỏi, câu trả lời, lời khai, lời người làm chứng) viết thành một đoạn.
 """
 
 CASE_GENERATION_SYSTEM_PROMPT = """\
@@ -59,13 +64,16 @@ trong evidence, measure_value hoặc civil_claim; viết số tiền dạng 12.5
 tới fact_ids có thật. Có thể không có tình tiết tăng nặng.
 7. Lời khai giai đoạn điều tra (pretrial_statements) cho mỗi người tham gia; nên có 1-2 điểm mâu thuẫn nhỏ, hợp lý \
 để xét hỏi làm rõ. Thẻ nhân vật: stance (lập trường), knowledge (những gì người đó biết), demeanor (thái độ).
-8. indictment_text là bản cáo trạng do Viện kiểm sát ban hành, viết đầy đủ, văn phong cáo trạng, có số hiệu giả \
-định, kết luận truy tố bị cáo theo đúng điểm, khoản, điều đã giao. Mọi viện dẫn ghi đủ tên luật ("Bộ luật Hình sự", \
+8. indictment_text là bản cáo trạng do Viện kiểm sát ban hành, viết đầy đủ, văn phong cáo trạng, kết luận truy tố bị \
+cáo theo đúng điểm, khoản, điều đã giao. BỐ CỤC BẮT BUỘC (một chuỗi văn bản, không markdown, các đoạn cách nhau một \
+dòng trống): phần đầu gồm tên Viện kiểm sát giả định, số cáo trạng giả định, ngày ban hành, mỗi thông tin một dòng \
+riêng; sau đó bốn mục, mỗi tiêu đề đứng một dòng riêng, viết đúng: "I. Nội dung vụ án", "II. Hành vi phạm tội và \
+chứng cứ", "III. Nhân thân và tình tiết", "IV. Kết luận và truy tố"; trong mục II liệt kê chứng cứ bằng gạch đầu dòng \
+("- " ở đầu dòng), mỗi chứng cứ một dòng. Mọi viện dẫn ghi đủ tên luật ("Bộ luật Hình sự", \
 "Bộ luật Tố tụng hình sự") và CHỈ viện dẫn những Điều có trong mục VĂN BẢN LUẬT ĐƯỢC CUNG CẤP; không viện dẫn Điều \
 nào khác, kể cả khi cáo trạng thật thường viện dẫn.
 9. Yêu cầu tối thiểu: ít nhất 4 chứng cứ (vật chứng, kết luận định giá hoặc giám định, tài liệu, biên bản...); \
-cáo trạng (indictment_text) dài ít nhất 350 từ, có đủ phần nội dung vụ án, chứng cứ, nhân thân, tình tiết và kết luận \
-truy tố; mỗi người tham gia có ĐÚNG MỘT lời khai giai đoạn điều tra, ít nhất 40 từ, nội dung riêng theo góc nhìn \
+cáo trạng (indictment_text) dài ít nhất 350 từ, có đủ bốn mục theo bố cục ở quy tắc 8; mỗi người tham gia có ĐÚNG MỘT lời khai giai đoạn điều tra, ít nhất 40 từ, nội dung riêng theo góc nhìn \
 của người đó (không lặp lại lời khai của người khác).
 10. Khoản tiền phụ: mọi số tiền khác ngoài measure_value, giá trị trong evidence, civil_claim và compensation_vnd \
 phải khai trong extra_amounts (label, amount_vnd, evidence_id nếu có). Gồm cả: giá bán lại tài sản, tiền bị cáo đã \
@@ -127,6 +135,7 @@ SLOT_INSTRUCTIONS: dict[str, str] = {
         "có mặt của những người tham gia tố tụng; giới thiệu thành phần Hội đồng xét xử, Kiểm sát viên, Thư ký, luật "
         "sư; giải thích quyền và nghĩa vụ của bị cáo và những người tham gia tố tụng; cuối cùng hỏi Kiểm sát viên, "
         "luật sư, bị cáo có đề nghị thay đổi người tiến hành tố tụng hay không. {{BI_CAO}} trả lời phần của mình. "
+        "Lời Chủ tọa giải thích quyền và nghĩa vụ nếu dài thì chia đoạn theo từng nhóm người. "
         "Dừng ngay sau câu hỏi đó. Khoảng 6-12 lời."
     ),
     "cam_doan_nlc": (
@@ -162,13 +171,16 @@ SLOT_INSTRUCTIONS: dict[str, str] = {
         "{{KSV}} trình bày bản luận tội (Điều 321 Bộ luật Tố tụng hình sự): phân tích chứng cứ và lời khai tại phiên "
         "tòa, kết luận tội danh theo đúng điểm, khoản, điều đã truy tố, nêu tình tiết tăng nặng, giảm nhẹ có căn cứ "
         "trong hồ sơ (Điều 51, 52 Bộ luật Hình sự), đề nghị mức hình phạt cụ thể nằm trong khung, giải quyết trách "
-        "nhiệm dân sự và vật chứng. Khoảng 350-600 từ. Một người nói duy nhất: {{KSV}}."
+        "nhiệm dân sự và vật chứng. Mỗi nội dung một đoạn mở đầu bằng cụm dẫn (\"Về hành vi phạm tội:\", \"Về chứng "
+        "cứ:\", \"Về tình tiết tăng nặng, giảm nhẹ:\", \"Về trách nhiệm dân sự và vật chứng:\"); câu đề nghị mức "
+        "hình phạt đứng một đoạn riêng. Khoảng 350-600 từ. Một người nói duy nhất: {{KSV}}."
     ),
     "bao_chua": (
         "{{LUAT_SU}} trình bày lời bào chữa: phản bác có lý lẽ những điểm buộc tội trong lời luận tội đã nêu (nếu "
         "có), nêu các tình tiết giảm nhẹ có thật trong hồ sơ, đề nghị Hội đồng xét xử xem xét mức hình phạt nhẹ hơn "
         "hoặc hình phạt không phải tù nếu có căn cứ. Không bịa chứng cứ, không phủ nhận dữ kiện đã được chứng minh "
-        "rõ ràng. Khoảng 350-600 từ. Một người nói duy nhất: {{LUAT_SU}}."
+        "rõ ràng. Mỗi luận điểm một đoạn mở đầu bằng cụm dẫn (ví dụ \"Về chứng cứ buộc tội:\", \"Về tình tiết giảm "
+        "nhẹ:\"); lời đề nghị với Hội đồng xét xử đứng một đoạn riêng. Khoảng 350-600 từ. Một người nói duy nhất: {{LUAT_SU}}."
     ),
     "bi_hai_trinh_bay": (
         "Chủ tọa mời {{BI_HAI}} trình bày ý kiến về vụ án và yêu cầu bồi thường (nếu có); {{BI_HAI}} trình bày ngắn, "
@@ -176,7 +188,8 @@ SLOT_INSTRUCTIONS: dict[str, str] = {
     ),
     "doi_dap": (
         "Phần đối đáp (Điều 322 Bộ luật Tố tụng hình sự). {speaker_id} đối đáp trực tiếp với ý kiến vừa nêu của "
-        "{opponent_label}: trả lời từng luận điểm chính bằng lập luận và chứng cứ trong hồ sơ. Khoảng 120-300 từ. "
+        "{opponent_label}: trả lời từng luận điểm chính bằng lập luận và chứng cứ trong hồ sơ, mỗi luận điểm một đoạn mở đầu "
+        "bằng cụm dẫn (ví dụ \"Về ý kiến cho rằng ...:\"). Khoảng 120-300 từ. "
         "Một người nói duy nhất: {speaker_id}."
     ),
     "loi_sau_cung": (
@@ -206,6 +219,8 @@ TUYEN_AN_INSTRUCTION = (
     "NAM\"; tóm tắt nhận định của Hội đồng xét xử về hành vi, chứng cứ, tình tiết; phần QUYẾT ĐỊNH: tuyên bố bị cáo "
     "{{BI_CAO}} phạm tội (hoặc không phạm tội), căn cứ điểm, khoản, Điều Bộ luật Hình sự áp dụng (kể cả Điều 51, 52, "
     "54, 65 nếu có), mức hình phạt, trách nhiệm dân sự, xử lý vật chứng, án phí theo quy định của pháp luật (không "
-    "viện dẫn văn bản về án phí), quyền kháng cáo trong thời hạn theo Bộ luật Tố tụng hình sự. Mọi viện dẫn PHẢI ghi "
+    "viện dẫn văn bản về án phí), quyền kháng cáo trong thời hạn theo Bộ luật Tố tụng hình sự. Phần QUYẾT ĐỊNH viết "
+    "theo đúng thứ tự: tội danh; hình phạt; trách nhiệm dân sự (nếu có); xử lý vật chứng; án phí; quyền kháng cáo - "
+    "mỗi mục một đoạn riêng. Phần nhận định chia đoạn theo từng nội dung. Mọi viện dẫn PHẢI ghi "
     "đủ tên luật. Khoảng 350-600 từ. Một người nói duy nhất: {{CHU_TOA}}."
 )

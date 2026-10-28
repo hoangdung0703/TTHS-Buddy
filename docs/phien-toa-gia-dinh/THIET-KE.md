@@ -60,6 +60,13 @@ Migration: `backend/migrations/0012_mock_trials.sql`. Chạy tay, **chưa chạy
   - Script B4 tự dừng phiên sau 2 lần tạm nghỉ liên tiếp.
   - Chưa chạy lại B4 sau khi sửa.
 
+## Chặng 3D — hiển thị, 28/10/2026
+
+- Panel hồ sơ vụ án ẩn danh bị cáo, bị hại, người làm chứng và người có quyền lợi, nghĩa vụ liên quan dạng "Trần Đức H" (`trial_anonymise.py`, một hàm duy nhất ở tầng serialize). Lời thoại, biên bản, DB và prompt giữ tên đầy đủ. Khi gán tên, code đảm bảo các tên rút gọn không trùng nhau.
+- Quy ước văn bản: đoạn cách nhau một dòng trống, `"- "` là gạch đầu dòng, không markdown. Code chuẩn hóa sau khi sinh (`trial_text_format.py`), trước guard. Đo trên 2 vụ × 4 slot dài: 7/8 lời có từ 3 đoạn trở lên, nên chưa cần bước tách đoạn dự phòng.
+- Cáo trạng có phần đầu và 4 mục có tiêu đề. Đo trên seed 4001–4006: 4/6 vụ qua schema; trong 4 vụ qua, 3 vụ có đủ 4 tiêu đề. Vụ còn lại cũng có đủ 4 tiêu đề, nhưng toàn bộ hồ sơ viết không dấu và vẫn lọt qua mọi kiểm tra cũ. Đã thêm lỗi cứng "văn bản không dấu" vào validator.
+- Biên bản theo Mẫu 22-HS (NQ 05/2017/NQ-HĐTP), không thêm lời gọi LLM. Phần tranh luận ghi nguyên văn chứ không tóm tắt; phần tuyên án ghi câu cố định theo hướng dẫn (29) của mẫu.
+
 Chỉnh thiết kế sau khi có số đo: xem báo cáo chặng 1. Tóm tắt các điểm chính:
 - Thêm trường khai báo các khoản tiền phụ cho guard số tiền (vụ 171 có người có quyền lợi liên quan fail vì điểm này).
 - Prompt của bài phát biểu dài ~17K token, lớn hơn ước tính; nên tỉa Phần chung BLHS theo từng bài.

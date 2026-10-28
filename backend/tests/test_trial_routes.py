@@ -182,9 +182,16 @@ class TrialRouteTests(unittest.TestCase):
         self.assertEqual(record.status_code, 200)
         text = record.json()["text"]
         self.assertEqual(text.count("MÔ PHỎNG HỌC TẬP"), 2)
-        self.assertIn("BIÊN BẢN PHIÊN TÒA", text)
-        self.assertIn("11. TUYÊN ÁN", text)
+        self.assertIn("PHIÊN TÒA HÌNH SỰ SƠ THẨM", text)
+        self.assertIn("IV. PHẦN TRANH TỤNG TẠI PHIÊN TÒA", text)
         self.assertNotIn("{BI_CAO}", text)
+        structured = record.json()["record"]
+        self.assertEqual([s["heading"][:4] for s in structured["sections"]], ["I. N", "II. ", "III.", "IV. "])
+        self.assertEqual(len(structured["sections"][3]["subsections"]), 4)
+        self.assertEqual(len(structured["signatures"]), 2)
+        # Full names in the record; abbreviated only in the panel's case_file.
+        defendant = self.client.get(f"/api/trials/{sid}").json()["participants"]["BI_CAO"]["name"]
+        self.assertIn(defendant, text)
         detail = self.client.get(f"/api/trials/{sid}").json()
         self.assertEqual(detail["state"]["status"], "completed")
         dumped = json.dumps(detail)

@@ -6,6 +6,8 @@ Tài liệu cho agent làm frontend ở session mới. Đọc file này là đ�
 - `backend/app/services/trial_session_service.py`
 - `backend/app/services/trial_state_machine.py`
 - `backend/app/services/trial_record.py`
+- `backend/app/services/trial_anonymise.py` (ẩn danh panel)
+- `backend/app/services/trial_text_format.py` (quy ước văn bản)
 
 Code thay đổi thì sửa file này cùng commit. Thiết kế tổng thể: `THIET-KE.md` (cùng thư mục). File này là chuẩn khi hai file mâu thuẫn.
 
@@ -155,7 +157,7 @@ Dùng khi mở trang phiên, sau khi tải lại trang, và sau mỗi 409. Cũng
 }
 ```
 
-- `participants` gồm các id: `CHU_TOA`, `HOI_THAM_1`, `HOI_THAM_2`, `THU_KY`, `KSV`, `LUAT_SU`, `BI_CAO`, `BI_HAI`, `NLC_1`, `NLC_2` (nếu có), `NLQ` (nếu có). Tên người do code gán, là tên giả định.
+- `participants` gồm các id: `CHU_TOA`, `HOI_THAM_1`, `HOI_THAM_2`, `THU_KY`, `KSV`, `LUAT_SU`, `BI_CAO`, `BI_HAI`, `NLC_1`, `NLC_2` (nếu có), `NLQ` (nếu có). Tên người do code gán, là tên giả định. `participants[].name` là **tên đầy đủ**, chỉ dùng cho diễn biến phiên tòa (nhãn người nói). **Panel hồ sơ vụ án không dùng `participants`**: tên ở panel lấy từ `case_file.display_names` hoặc `case_file.<người>.name`, đã ẩn danh (Mục 7).
 - `steps[].legal_basis` là số Điều của **Bộ luật Tố tụng hình sự**, dùng cho tooltip trên thanh tiến trình.
 - `utterances` là toàn bộ diễn biến từ đầu, đã sắp theo `seq`.
 
@@ -218,21 +220,48 @@ Xóa cứng phiên, hồ sơ vụ án và toàn bộ lời thoại. Thành công
 
 Chỉ khi `status = completed`; nếu chưa xong thì 409 `trial_not_completed`.
 
+Biên bản dựng bằng code theo bố cục **Mẫu số 22-HS** (Nghị quyết 05/2017/NQ-HĐTP), nội dung theo Điều 258 BLTTHS. Không có lời gọi LLM: chỉ dùng hồ sơ vụ án, thành phần, lời thoại và thời điểm của phiên. Dùng **tên đầy đủ** (không ẩn danh). Notice không vào biên bản.
+
 ```json
-{ "session_id": "...", "text": "<biên bản dạng văn bản thuần, nhiều dòng>" }
+{
+  "session_id": "...",
+  "text": "<bản văn bản thuần của record, để sao chép và in>",
+  "record": {
+    "disclaimer": "Mô phỏng học tập · ...",
+    "form_reference": "Mẫu số 22-HS (Ban hành kèm theo Nghị quyết số 05/2017/NQ-HĐTP ...)",
+    "court_name": "<tên Tòa án>",
+    "national_header": ["CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", "Độc lập - Tự do - Hạnh phúc"],
+    "title": "BIÊN BẢN",
+    "subtitle": "PHIÊN TÒA HÌNH SỰ SƠ THẨM",
+    "opening": [ { "label": "Vào hồi", "value": "08 giờ 05 phút ngày 19 tháng 10 năm 2026", "simulated": true } ],
+    "sections": [
+      { "heading": "I. Những người tiến hành tố tụng", "fields": [ { "label": "...", "value": "...", "simulated": false } ],
+        "entries": [], "notes": [], "subsections": [] },
+      { "heading": "II. Những người tham gia tố tụng", "fields": [ "..." ] },
+      { "heading": "III. Phần thủ tục bắt đầu phiên tòa", "entries": [ { "seq": 1, "step": 1, "speaker_role": "Thư ký", "speaker_name": "<tên>", "text": "<lời>" } ] },
+      { "heading": "IV. Phần tranh tụng tại phiên tòa",
+        "subsections": [ { "heading": "1. Kiểm sát viên công bố bản cáo trạng ...", "entries": [ "..." ] } ],
+        "notes": ["Hội đồng xét xử vào phòng nghị án để nghị án.", "..."] }
+    ],
+    "closing": [ { "label": "Những sửa đổi, bổ sung ...", "value": null }, { "label": "Phiên tòa kết thúc vào hồi", "value": "...", "simulated": true } ],
+    "signatures": [ { "title": "THƯ KÝ GHI BIÊN BẢN PHIÊN TÒA", "note": "(Ký tên, ghi rõ họ tên)", "name": "<tên>" },
+                    { "title": "THẨM PHÁN - CHỦ TỌA PHIÊN TÒA", "note": "(Ký tên, ghi rõ họ tên, đóng dấu)", "name": "<tên>" } ]
+  }
+}
 ```
 
-Cấu trúc `text`, dựng bằng code theo Điều 258 BLTTHS, xuống dòng bằng `\n`:
-1. Dòng mô phỏng: `*** MÔ PHỎNG HỌC TẬP · KHÔNG PHẢI PHIÊN TÒA HAY BẢN ÁN THẬT · NHÂN VẬT VÀ TÌNH TIẾT ĐỀU LÀ GIẢ ĐỊNH. ***`
-2. Tên Tòa án (in hoa), "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", "Độc lập - Tự do - Hạnh phúc".
-3. "BIÊN BẢN PHIÊN TÒA HÌNH SỰ SƠ THẨM", rồi đoạn mở đầu (giờ, ngày, nơi mở phiên tòa, bị cáo, tội danh, điều khoản truy tố).
-4. "I. NHỮNG NGƯỜI TIẾN HÀNH TỐ TỤNG", mỗi người một dòng bắt đầu bằng `- `.
-5. "II. NHỮNG NGƯỜI THAM GIA TỐ TỤNG", gồm lý lịch bị cáo và tình trạng có mặt hay vắng mặt.
-6. "III. DIỄN BIẾN PHIÊN TÒA": mỗi bước có tiêu đề `"<số>. <TÊN BƯỚC IN HOA>"`, dưới đó mỗi lời một dòng `"<Vai> <Tên>: <lời>"`. **Không** gồm các notice.
-7. "IV. KẾT THÚC PHIÊN TÒA", rồi dòng ký tên Thư ký và Chủ tọa.
-8. Dòng mô phỏng (lặp lại).
+Thứ tự hiển thị: dòng mô phỏng → `court_name` (trái) và `national_header` (phải) → `title`, `subtitle` (giữa) → `opening` → `sections` theo thứ tự → `closing` → `signatures` (hai cột) → dòng mô phỏng.
 
-Frontend hiển thị nguyên văn trong khối chữ có ngắt dòng, và có nút "In / lưu PDF" dùng chức năng in của trình duyệt. **Không** sửa, không cắt, không bỏ hai dòng mô phỏng.
+| Thành phần | Ý nghĩa |
+|---|---|
+| `fields[].value = null` | Không có dữ liệu. Hiển thị **dòng chấm trống** như mẫu (`......`), không tự điền |
+| `fields[].simulated = true` | Giá trị do code gán cho mô phỏng (ngày giờ, nơi xét xử, tên Viện kiểm sát khi chưa cấu hình, "công khai"). Có thể in nghiêng hoặc thêm chú thích "giả định" |
+| Dấu `......` bên trong `value` | Phần của mẫu không có dữ liệu (ví dụ "dân tộc", "con ông ... và bà ...", Văn phòng luật sư) |
+| `sections[].entries` | Lời trong phiên, nguyên văn, theo `seq`. Phần III = bước 1–2. Phần IV chia 4 mục: 1 = bước 3, 2 = bước 4–5, 3 = bước 6–8, 4 = bước 9. `text` theo quy ước văn bản ở 4.1 |
+| `sections[].notes` | Câu cố định của mẫu. Theo hướng dẫn (29) của mẫu, biên bản **không chép phần quyết định** của bản án; lời tuyên án vẫn có trong `utterances` bước 11 |
+| `signatures` | Tên đầy đủ của Thư ký và Chủ tọa |
+
+`text` là bản thuần của chính `record`: dòng mô phỏng ở đầu và cuối; tiêu đề phần (I–IV) in hoa trên một dòng riêng; mỗi trường một dòng `"<nhãn>: <giá trị>"` (trống thì `......`); mỗi lời một dòng `"<Vai> <Tên>: <lời>"`. Frontend nên render từ `record`; `text` dùng cho nút sao chép và cho bản in dự phòng. Có nút "In / lưu PDF" dùng chức năng in của trình duyệt. **Không** sửa, không cắt, không bỏ hai dòng mô phỏng.
 
 ---
 
@@ -278,6 +307,18 @@ Payload `utterance`:
 | `kind` | `speech` = lời thoại thường; `procedural` = câu thủ tục soạn sẵn (báo cáo của Thư ký, "kết thúc phần xét hỏi"...), hiển thị dạng dòng thủ tục nhỏ; `notice` = Chủ tọa nhắc trật tự hoặc tạm nghỉ, hiển thị kiểu riêng, **không** thuộc biên bản |
 | `text` | Lời của AI đã có tên thật thay cho placeholder. Lời người dùng giữ nguyên văn đã gửi |
 | `addressee` | Chỉ có ở câu hỏi của người dùng tại bước 5: id người được hỏi |
+
+### 4.1 Quy ước văn bản (lời AI, cáo trạng, biên bản)
+
+Server chuẩn hóa bằng code sau khi sinh, nên frontend có thể dựa vào:
+
+- Các **đoạn** cách nhau đúng **một dòng trống** (`\n\n`). Không có hai dòng trống liền nhau.
+- Dòng bắt đầu bằng `"- "` là **gạch đầu dòng**. Các dòng liền nhau bằng một `\n` (không có dòng trống) là ngắt dòng trong cùng một khối, ví dụ phần đầu cáo trạng (Viện kiểm sát, số, ngày) hoặc tiêu đề mục rồi tới dòng đầu tiên.
+- **Không có markdown**: không `**`, `#`, `*`. Hiển thị văn bản thuần; không chạy trình render markdown.
+- Lời dài (luận tội, bào chữa, đối đáp, tuyên án, lời khai mạc hoặc giải thích quyền dài hơn 600 ký tự) có nhiều đoạn, thường mở đầu bằng cụm dẫn kết thúc bằng dấu hai chấm ("Về hành vi phạm tội:"). Lời ngắn (hỏi, đáp, lời khai) chỉ có một đoạn.
+- Lời người dùng giữ nguyên văn đã gửi, không chuẩn hóa.
+
+Gợi ý render: tách theo `\n\n` thành đoạn; trong mỗi đoạn, nhóm các dòng `"- "` liên tiếp thành danh sách; các dòng còn lại là dòng thường.
 
 ---
 
@@ -370,7 +411,7 @@ Body của 409:
 
 ## 7. `case_file` (panel hồ sơ vụ án)
 
-Có trong `GET /{id}`. Tên người đã điền sẵn. Nơi cư trú do code gán từ danh sách địa danh giả định ("phường A, tỉnh X"...), giống cách gán tên người; model không đặt nơi cư trú. Server **không bao giờ** trả quyết định nghị án (`verdict_json`), lý do nghị án, các tham số dựng vụ án, hay "thẻ nhân vật". Nội dung phần quyết định chỉ xuất hiện dưới dạng lời tuyên án trong `utterances` ở bước 11.
+Có trong `GET /{id}`. Tên người đã điền sẵn **và đã ẩn danh** (dưới đây). Nơi cư trú do code gán từ danh sách địa danh giả định ("phường A, tỉnh X"...), giống cách gán tên người; model không đặt nơi cư trú. Server **không bao giờ** trả quyết định nghị án (`verdict_json`), lý do nghị án, các tham số dựng vụ án, hay "thẻ nhân vật". Nội dung phần quyết định chỉ xuất hiện dưới dạng lời tuyên án trong `utterances` ở bước 11.
 
 ```json
 {
@@ -391,9 +432,19 @@ Có trong `GET /{id}`. Tên người đã điền sẵn. Nơi cư trú do code g
   "mitigating":  [ { "khoan": "1", "diem": "s", "fact_ids": ["F2"] } ],
   "aggravating": [ { "khoan": "1", "diem": "g", "fact_ids": ["F3"] } ],
   "civil_claim": { "claimant_id": "BI_HAI", "amount_vnd": 2000000, "basis": "..." },
-  "indictment_text": "<cáo trạng>"
+  "indictment_text": "<cáo trạng, theo quy ước 4.1>",
+  "display_names": { "CHU_TOA": "Nguyễn Văn An", "KSV": "...", "BI_CAO": "Trần Đức H", "BI_HAI": "Huỳnh Hữu V" }
 }
 ```
+
+Mỗi object người (`defendant`, `victim`, `witnesses[]`, `related_party`) có thêm trường `name` (tên hiển thị trên panel).
+
+**Ẩn danh trong panel.** Bị cáo, bị hại, người làm chứng, người có quyền lợi, nghĩa vụ liên quan hiển thị dạng họ + tên đệm + chữ cái đầu của tên ("Trần Đức Hùng" → "Trần Đức H"). Chủ tọa, Hội thẩm, Thư ký, Kiểm sát viên, luật sư giữ tên đầy đủ. Server đã thay trong **mọi** trường văn bản của `case_file` (tóm tắt, cáo trạng, chứng cứ, lời khai, nhân thân). Frontend:
+- lấy tên người trong panel từ `display_names[id]` (ví dụ `claimant_id`, `pretrial_statements[].person_id`), **không** từ `participants`;
+- không tự ghép lại tên đầy đủ trong panel.
+Ẩn danh chỉ áp dụng cho panel. Diễn biến phiên tòa (`utterances`) và biên bản dùng tên đầy đủ.
+
+**Cáo trạng** (`indictment_text`, vụ tạo từ chặng 3D): phần đầu gồm Viện kiểm sát, số cáo trạng, ngày, mỗi thông tin một dòng; sau đó bốn mục, tiêu đề trên dòng riêng: "I. Nội dung vụ án", "II. Hành vi phạm tội và chứng cứ", "III. Nhân thân và tình tiết", "IV. Kết luận và truy tố"; chứng cứ là gạch đầu dòng. Có thể in đậm các dòng tiêu đề này. Vụ cũ có thể là một khối liền, nên frontend phải hiển thị được cả hai dạng. Khi người dùng là KSV, cáo trạng điền sẵn ở bước 3 là chính văn bản này.
 
 | Trường | Ghi chú hiển thị |
 |---|---|
@@ -419,9 +470,10 @@ Chuỗi nằm trong `disclaimer` (3.3). Bắt buộc hiện ở **mọi** màn h
 3. **Không tự dựng nút hành động** ngoài `state.allowed_actions`. Không suy ra bước kế tiếp ở client. Không cho chuyển bước bằng cách gõ lời.
 4. **Không tự động lặp lại `continue`** hay gửi lại request sau 409 hoặc `error`. Luôn đồng bộ bằng `GET /{id}` và để người dùng bấm.
 5. **Không hiển thị lời AI trước khi nhận sự kiện `utterance`**. Server gửi lời đã qua guard thành từng khối; không có streaming token, và frontend không được giả lập chữ chạy như thể đang sinh.
-6. **Không sửa, cắt hay tóm tắt** lời trong `utterances` hoặc trong biên bản; không bỏ dòng mô phỏng.
+6. **Không sửa, cắt hay tóm tắt** lời trong `utterances` hoặc trong biên bản; không bỏ dòng mô phỏng. Không render markdown (4.1).
 7. **Không hardcode** danh sách tội, giới hạn, tên bước hay tên Tòa án. Lấy từ `config`, `steps`, `step_title`, `court`.
 8. **Không dùng `EventSource`** cho các route SSE (cần POST + Authorization); dùng `fetch` + reader.
 9. **Không gửi trường thừa** trong body (server trả 422) và **không gửi văn bản tự do** khi tạo vụ án (bản đầu không có ô mô tả).
 10. **Không hiển thị như thật**: không gọi kết quả là "bản án", "phán quyết" ngoài khung mô phỏng; không chấm điểm người dùng.
 11. **Không gọi Gemini hay Supabase trực tiếp** cho tính năng này, và không đọc ghi các bảng `mock_trial_*` từ client. RLS chặn sẵn, mọi thứ phải đi qua backend.
+12. **Không hiện tên đầy đủ trong panel hồ sơ vụ án**: không lấy tên panel từ `participants`, dùng `case_file.display_names` (Mục 7).

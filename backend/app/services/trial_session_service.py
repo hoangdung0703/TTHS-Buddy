@@ -8,6 +8,7 @@ from typing import Any
 from app.core.config import Settings
 from app.models.trial import CaseFile, Verdict
 from app.models.trial_api import TrialStateOut, TrialSummaryOut, TrialUtteranceOut
+from app.services.trial_anonymise import anonymise_case_view
 from app.services.trial_legal_pack import build_pack
 from app.services.trial_metrics import TrialCallRecorder
 from app.services.trial_names import render
@@ -109,7 +110,8 @@ HIDDEN_CASE_FIELDS = ("defendant_plea",)
 def student_case_view(case: CaseFile) -> dict[str, Any]:
     """The hồ sơ the student's role may read (KSV and luật sư both read the file, BLTTHS Điều 73).
     The knobs are generation internals, the character cards are hidden (HIDDEN_PERSON_FIELDS),
-    and the verdict lives on the session and is never returned."""
+    and the verdict lives on the session and is never returned. Lay participants' names are
+    abbreviated (trial_anonymise) - in this view only."""
     data = case.draft.model_dump()
     for key in HIDDEN_CASE_FIELDS:
         data.pop(key, None)
@@ -119,7 +121,7 @@ def student_case_view(case: CaseFile) -> dict[str, Any]:
     for person in people:
         for key in HIDDEN_PERSON_FIELDS:
             person.pop(key, None)
-    return _render_tree(data, case)
+    return anonymise_case_view(_render_tree(data, case), case.participants)
 
 
 def steps_view() -> list[dict[str, Any]]:

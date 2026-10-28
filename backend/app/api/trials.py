@@ -54,7 +54,7 @@ from app.services.trial_config import (
     get_crime,
 )
 from app.services.trial_metrics import TrialCallRecorder
-from app.services.trial_record import build_record
+from app.services.trial_record import build_record, render_record_text
 from app.services.trial_repository import SupabaseTrialRepository, TrialRepository, lock_deadline, utc_now
 from app.services.trial_rule9 import extract_citations
 from app.services.trial_session_service import (
@@ -443,9 +443,9 @@ async def trial_record(session_id: uuid.UUID, request: Request,
     session, ctx = await _load(repo, current_user.user_id, session_id, settings, TrialCallRecorder())
     if ctx.state.status != "completed":
         return _conflict("not_completed", str(session_id), ctx)
-    text = build_record(ctx.case, ctx.transcript, _as_datetime(session.get("created_at")),
-                        _as_datetime(session.get("completed_at")))
-    return TrialRecordResponse(session_id=session_id, text=text)
+    record = build_record(ctx.case, ctx.transcript, _as_datetime(session.get("created_at")),
+                          _as_datetime(session.get("completed_at")))
+    return TrialRecordResponse(session_id=session_id, text=render_record_text(record), record=record)
 
 
 def _as_datetime(value) -> datetime | None:
