@@ -542,3 +542,22 @@ Thêm mục điều hướng thứ 5 vào `NAV_ITEMS`: "Phiên tòa giả địn
 10. **Hạn mức:** 5 vụ án/ngày/user và tối đa 1 phiên đang chạy có hợp lý không? Phiên bỏ dở có tự chuyển `abandoned` sau N ngày không?
 11. **Lưu trữ:** lời thoại của sinh viên (luận tội, bào chữa) được lưu để dựng biên bản. Có cần thời hạn lưu hay nút xóa phiên không? Có được dùng ẩn danh cho đánh giá NCKH không?
 12. **Model:** tạo vụ án dùng model complex (`GEMINI_CHAT_MODEL_COMPLEX`, preview) với fallback sang model thường có được không, khi chi phí và độ trễ của nó cao hơn?
+
+## Chặng 3H — sinh vụ kiểu điền khung, 29/10/2026
+
+- Code chốt trước khung vụ (`trial_case_frame.py`): người tham gia (id, thứ tự, số người làm chứng), con số định giá hoặc giám định chính xác, số tiền bồi thường, tội danh, điều, khoản, điểm, lập trường bị cáo, các điểm tình tiết.
+- Model chỉ điền văn bản vào schema dựng theo từng vụ:
+  - lời khai nằm trong object của từng người, dạng mảng câu, tối thiểu 3 câu;
+  - người làm chứng: số phần tử đúng bằng số người;
+  - tình tiết: object có khóa đúng các điểm đã chọn;
+  - chứng cứ tối thiểu 4.
+- Code chuyển đầu ra về `CaseDraft`. Validator và mọi ngưỡng giữ nguyên.
+- Gỡ cơ chế sửa theo trường và gộp lời khai của 3G vì số đo không cho thấy lợi ích.
+- Seed 9001–9012:
+  - 12/12 vụ qua, 9/12 qua ngay lần đầu, 1,25 lời gọi mỗi vụ;
+  - trung vị 16,4s, p90 22,6s;
+  - trung bình mỗi lần tạo vụ ~5,4K token vào, ~3,6K token ra, ~1,6K token thinking;
+  - nhãn lỗi ở lần 1: `fact_id_unknown`, `money_mismatch`, `indictment_citation`, mỗi nhãn 1 lần.
+- Đạt mục tiêu (≥90%, trung vị ≤25s), nên không chạy phương án B (model mạnh hơn). Cấu hình `TRIAL_CASE_MODEL` vẫn có sẵn nếu sau này cần.
+- Không hạ ngưỡng nào.
+

@@ -33,6 +33,7 @@ Code thay đổi thì sửa file này cùng commit. Thiết kế tổng thể: `
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `frontend/.env.local` (đã có) | Đăng nhập Supabase, lấy access token |
 | `TRIAL_ENABLED` | backend (`.env`, Render) | `true` mới bật tính năng. Mặc định tắt |
 | `TRIAL_COURT_NAME` | backend | Tên Tòa án in trên phiên tòa và biên bản. Chưa đặt thì hiện chỗ giữ chỗ "[tên Tòa án chờ nhóm luật xác nhận]" |
+| `TRIAL_CASE_MODEL` | backend | Tùy chọn: model riêng chỉ cho bước tạo vụ án. Chưa đặt thì dùng `GEMINI_CHAT_MODEL`. Frontend không cần biết |
 
 **Frontend không có biến cờ riêng.** Để biết tính năng có bật không, gọi `GET /api/trials`: nhận 404 thì ẩn mục "Phiên tòa giả định" khỏi sidebar và chặn truy cập các trang `/trial*`.
 

@@ -222,13 +222,13 @@ async def _generate_cases(configs: list, settings, qdrant, cap: int, recorders: 
             case_rows.append({"seed": seed, "crime": options.crime_key, "ok": False,
                               "errors_per_attempt": failure.error_counts, "calls": len(recorder.records),
                               "labels_per_attempt": [r.guard_violations for r in recorder.records],
-                              "seconds": round(time.monotonic() - started, 1),
+                              **_tokens(recorder), "seconds": round(time.monotonic() - started, 1),
                               "no_diacritics_caught": any(DIACRITIC_ERROR in e for es in failure.errors for e in es),
                               "no_diacritics_last_attempt": any(DIACRITIC_ERROR in e for e in failure.errors[-1])})
             continue
         sections = indictment_sections(creation.case.draft.indictment_text)
         case_rows.append({"seed": seed, "crime": options.crime_key, "ok": True, "attempts": creation.attempts,
-                          "labels_per_attempt": [r.guard_violations for r in recorder.records],
+                          "labels_per_attempt": [r.guard_violations for r in recorder.records], **_tokens(recorder),
                           "errors_per_attempt": [len(e) for e in creation.errors_per_attempt],
                           "no_diacritics_caught": any(DIACRITIC_ERROR in e for es in creation.errors_per_attempt
                                                       for e in es),
@@ -237,6 +237,12 @@ async def _generate_cases(configs: list, settings, qdrant, cap: int, recorders: 
                           "seconds": round(time.monotonic() - started, 1), "calls": len(recorder.records)})
         cases.append(creation)
         (out / "cases" / f"case_{seed}.json").write_text(creation.case.model_dump_json(indent=1), encoding="utf-8")
+
+
+def _tokens(recorder: TrialCallRecorder) -> dict:
+    return {"prompt_tokens": sum(r.prompt_tokens for r in recorder.records),
+            "output_tokens": sum(r.output_tokens for r in recorder.records),
+            "thinking_tokens": sum(r.thinking_tokens for r in recorder.records)}
 
 
 def _p90(values: list[float]) -> float | None:
@@ -255,6 +261,8 @@ def _case_summary(case_rows: list) -> dict:
                 label_table[label][f"attempt_{attempt}"] += 1
     return {"total": len(case_rows), "schema_ok": len(ok), "first_pass": sum(1 for r in ok if r["attempts"] == 1),
             "calls_per_case": round(sum(r["calls"] for r in case_rows) / len(case_rows), 2) if case_rows else None,
+            "tokens_per_case_mean": {k: round(sum(r.get(k, 0) for r in case_rows) / len(case_rows))
+                                     for k in ("prompt_tokens", "output_tokens", "thinking_tokens")} if case_rows else None,
             "seconds_all_median": statistics.median(seconds) if seconds else None, "seconds_all_p90": _p90(seconds),
             "failed_cases": [{"seed": r["seed"], "crime": r["crime"], "labels": r.get("labels_per_attempt")}
                              for r in case_rows if not r["ok"]],

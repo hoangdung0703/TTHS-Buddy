@@ -26,7 +26,7 @@ class ScriptedRecorder(TrialCallRecorder):
     prompts: list[str] = field(default_factory=list)
 
     async def call(self, settings, *, call_type, slot, attempt, system_prompt, user_prompt, response_schema,
-                   thinking_level, temperature):
+                   thinking_level, temperature, **_):
         self.prompts.append(user_prompt)
         text = self.answers.pop(0)
         record = CallRecord(call_type, slot, attempt, 0.0, 0, 0, 0, 0, thinking_level)

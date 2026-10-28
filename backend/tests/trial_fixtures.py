@@ -114,3 +114,39 @@ def valid_case_file(options: CaseOptions | None = None, draft: dict | None = Non
                     court=CourtInfo(name="Tòa án nhân dân [test]", hearing_date="19/10/2026", venue="phường A, tỉnh X"),
                     incident_date="01/03/2026", participants=assign_names(people, seed=7, excluded=frozenset()),
                     draft=model)
+
+
+def valid_frame():
+    """The frame that matches valid_draft_dict(): Điều 173 khoản 1, 12.500.000 đồng, 2.000.000 đồng
+    compensated, full admission, mitigating b and s, one witness."""
+    from app.services.trial_case_frame import CaseFrame
+    return CaseFrame(person_ids=("BI_CAO", "BI_HAI", "NLC_1"), witness_count=1, has_related_party=False,
+                     measure_kind="value_vnd", measure_value=12_500_000, compensation_vnd=2_000_000, dieu="173",
+                     khoan="1", diem=(), crime_name="Tội trộm cắp tài sản", plea="nhan_toan_bo",
+                     mitigating_points=("b", "s"), aggravating_points=())
+
+
+def fill_from_draft(draft: dict) -> dict:
+    """A CaseDraft-shaped dict in the model's fill format (chặng 3H): statements inside each person
+    as sentences, circumstances keyed by point, no frame-owned fields."""
+    import re as _re
+    statements = {s["person_id"]: s for s in draft["pretrial_statements"]}
+
+    def person(p: dict) -> dict:
+        out = {k: v for k, v in p.items() if k not in ("id", "residence_place")}
+        statement = statements.get(p["id"])
+        out["pretrial_statement"] = None if statement is None else {
+            "sentences": [s for s in _re.split(r"(?<=[.!?])\s+", statement["summary"]) if s],
+            "inconsistencies": statement["inconsistencies"]}
+        return out
+
+    fill = {k: draft[k] for k in ("title", "incident_summary", "facts", "evidence", "extra_amounts", "civil_claim",
+                                  "indictment_text")}
+    fill.update(defendant=person(draft["defendant"]), victim=person(draft["victim"]),
+                witnesses=[person(w) for w in draft["witnesses"]])
+    if draft.get("related_party"):
+        fill["related_party"] = person(draft["related_party"])
+    fill["mitigating_facts"] = {m["diem"]: m["fact_ids"] for m in draft["mitigating"] if m["khoan"] == "1"}
+    fill["mitigating_khoan_2"] = [{"fact_ids": m["fact_ids"]} for m in draft["mitigating"] if m["khoan"] == "2"]
+    fill["aggravating_facts"] = {a["diem"]: a["fact_ids"] for a in draft["aggravating"]}
+    return fill

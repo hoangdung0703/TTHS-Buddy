@@ -151,15 +151,16 @@ class GeminiJsonResult:
 def generate_json_with_usage(system_prompt: str, user_prompt: str, settings: Settings, response_schema: dict, *,
                              thinking_level: str | None = None, temperature: float = 0.7,
                              timeout: float = REQUEST_TIMEOUT_SECONDS,
-                             max_attempts: int = MAX_TRANSIENT_RETRIES) -> GeminiJsonResult:
+                             max_attempts: int = MAX_TRANSIENT_RETRIES,
+                             model: str | None = None) -> GeminiJsonResult:
     """Structured-output call for the mock trial (trial_case_service / trial_turn_service).
 
     Separate from generate_answer because these callers need the usageMetadata (prompt, output,
     thinking and cached token counts) to measure cost per call type, and a per-call thinking level.
-    Always settings.gemini_chat_model - the mock trial never uses the complex model (decision
-    2026-10-19). Thinking parts, if the API returns any, are skipped: only the answer text is
-    returned. Blocking; callers on the event loop use asyncio.to_thread."""
-    model = settings.gemini_chat_model
+    settings.gemini_chat_model unless `model` is given - only case generation may pass one
+    (Settings.trial_case_model, chặng 3H). Thinking parts, if the API returns any, are skipped: only
+    the answer text is returned. Blocking; callers on the event loop use asyncio.to_thread."""
+    model = model or settings.gemini_chat_model
     generation_config: dict[str, object] = {
         "temperature": temperature,
         "responseMimeType": "application/json",

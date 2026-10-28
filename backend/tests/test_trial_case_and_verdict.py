@@ -12,10 +12,10 @@ from unittest import mock
 
 from pydantic import ValidationError
 
-from app.models.trial import CASE_DRAFT_RESPONSE_SCHEMA, CaseDraft, CaseOptions, Verdict
+from app.models.trial import CaseDraft, CaseKnobs, CaseOptions, Verdict
 from app.prompts.trial_prompts import CASE_GENERATION_SYSTEM_PROMPT
 from app.services import trial_case_service
-from app.services.trial_case_repair import apply_repair, repair_plan
+from app.services.trial_case_frame import build_frame, fill_schema, fill_to_draft, frame_text
 from app.services.trial_case_service import CaseGenerationFailed, create_case
 from app.services.trial_case_validator import DIACRITIC_ERROR, error_label, normalise_draft_dict, validate_case_draft
 from app.services.trial_config import ABSTRACT_PLACES, AGGRAVATING_POOL, BLHS_DOCUMENT, CRIMES, get_crime
@@ -26,10 +26,11 @@ from app.services.trial_verdict_guard import check_verdict, parse_penalty_frame
 from tests.test_trial_turns import ScriptedRecorder
 from tests.trial_fixtures import (
     STATEMENT_BI_HAI,
-    STATEMENT_NLC_1,
+    fill_from_draft,
     pack_for,
     valid_case_file,
     valid_draft_dict,
+    valid_frame,
     valid_knobs,
     valid_options,
 )
@@ -64,7 +65,7 @@ class CaseValidatorTests(unittest.TestCase):
                   normalised["witnesses"][0]["residence_place"]]
         self.assertTrue(all(p in ABSTRACT_PLACES for p in places))
         self.assertEqual(errors_for(normalised), [])
-        self.assertNotIn("residence_place", json.dumps(CASE_DRAFT_RESPONSE_SCHEMA))
+        self.assertNotIn("residence_place", json.dumps(fill_schema(valid_frame())))
 
     def test_extra_field_is_rejected_by_schema(self):
         draft = valid_draft_dict()
@@ -256,19 +257,18 @@ class KnobTests(unittest.TestCase):
 
 
 class CasePromptTests(unittest.TestCase):
-    def test_retry_prompt_carries_errors_previous_draft_and_constraints(self):
+    def test_retry_prompt_carries_errors_previous_draft_and_constants(self):
         from app.prompts.trial_prompts import build_case_generation_prompt
-        from app.services.trial_case_service import knobs_text
-        common = dict(crime_name="x", dieu="173", allowed_khoan=["1"], band_text="b", person_ids=["BI_CAO"],
-                      victim_present=True, witness_count=0, has_related_party=False, places=["phường A, tỉnh X"],
-                      incident_date="1", hearing_date="2", legal_text="L", constraints=knobs_text(valid_knobs()))
+        common = dict(constants=frame_text(valid_frame()), victim_present=True, places=["phường A, tỉnh X"],
+                      incident_date="1", hearing_date="2", legal_text="L")
         first = build_case_generation_prompt(retry_errors=None, previous_draft="{}", **common)
         retry = build_case_generation_prompt(retry_errors=["lỗi A"], previous_draft='{"title": "T"}', **common)
         self.assertNotIn("BẢN TRƯỚC (JSON)", first)
         self.assertIn("lỗi A", retry)
         self.assertIn('{"title": "T"}', retry)
+        self.assertIn("12.500.000 đồng", first)
         self.assertIn("điểm b, điểm s", first)
-        self.assertIn("KHÔNG có tình tiết tăng nặng", first)
+        self.assertIn("{BI_CAO}, {BI_HAI}, {NLC_1}", first)
 
 
 class NameTests(unittest.TestCase):
@@ -383,54 +383,135 @@ def _strip_diacritics(text: str) -> str:
     return "".join(c for c in text if not unicodedata.combining(c))
 
 
+def _create(answers: list, frame=None) -> tuple[ScriptedRecorder, object]:
+    recorder = ScriptedRecorder(answers=[a if isinstance(a, str) else json.dumps(a, ensure_ascii=False)
+                                         for a in answers])
+    creation = asyncio.run(create_case(valid_options(), SimpleNamespace(trial_court_name=None), None, recorder,
+                                       pack=pack_for("blhs_173"), seed=1, knobs=valid_knobs(),
+                                       frame=frame or valid_frame()))
+    return recorder, creation
+
+
+class FrameTests(unittest.TestCase):
+    """Chặng 3H: code fixes the case frame, the model fills free text into a per-case schema."""
+
+    def test_fill_of_valid_draft_round_trips_and_passes(self):
+        recorder, creation = _create([fill_from_draft(valid_draft_dict())])
+        self.assertEqual(creation.attempts, 1)
+        draft = creation.case.draft
+        self.assertEqual([s.person_id for s in draft.pretrial_statements], ["BI_CAO", "BI_HAI", "NLC_1"])
+        self.assertEqual((draft.measure_value, draft.compensation_vnd, draft.charge.khoan), (12_500_000, 2_000_000, "1"))
+
+    def test_frame_owns_ids_order_charge_and_constants(self):
+        fill = fill_from_draft(valid_draft_dict())
+        fill["defendant"]["id"] = "NLC_1"                         # the model cannot misplace people
+        draft = fill_to_draft(fill, valid_frame())
+        self.assertEqual([draft["defendant"]["id"], draft["victim"]["id"], draft["witnesses"][0]["id"]],
+                         ["BI_CAO", "BI_HAI", "NLC_1"])
+        self.assertEqual(draft["charge"], {"dieu": "173", "khoan": "1", "diem": [], "crime_name": "Tội trộm cắp tài sản"})
+        self.assertEqual(draft["defendant_plea"], "nhan_toan_bo")
+        self.assertEqual([(m["diem"], m["fact_ids"]) for m in draft["mitigating"]], [("b", ["F2"]), ("s", ["F2"])])
+
+    def test_statement_sentences_are_joined_and_old_thresholds_still_apply(self):
+        fill = fill_from_draft(valid_draft_dict())
+        fill["victim"]["pretrial_statement"]["sentences"] = ["Tôi mất xe.", "Tôi báo công an.", "Tôi đề nghị xử lý."]
+        draft = CaseDraft.model_validate(normalise_draft_dict(fill_to_draft(fill, valid_frame())))
+        self.assertEqual(draft.pretrial_statements[1].summary, "Tôi mất xe. Tôi báo công an. Tôi đề nghị xử lý.")
+        errors = validate_case_draft(draft, valid_options(), get_crime("blhs_173"), pack_for("blhs_173"), valid_knobs())
+        self.assertEqual([error_label(e) for e in errors], ["statement_words"])   # 25-word minimum unchanged
+
+    def test_measure_evidence_takes_the_frame_value_but_text_is_still_checked(self):
+        fill = fill_from_draft(valid_draft_dict())
+        next(e for e in fill["evidence"] if e["type"] == "dinh_gia")["value_vnd"] = 13_000_000
+        draft = fill_to_draft(fill, valid_frame())
+        self.assertEqual(next(e for e in draft["evidence"] if e["type"] == "dinh_gia")["value_vnd"], 12_500_000)
+        fill["incident_summary"] += " Chiếc xe trị giá 13.000.000 đồng."
+        self.assertIn("money_mismatch", [error_label(e) for e in errors_for(
+            normalise_draft_dict(fill_to_draft(fill, valid_frame())))])
+
+    def test_schema_built_per_case(self):
+        frame = build_frame(get_crime("blhs_134"), CaseOptions(crime_key="blhs_134", user_role="ksv", witness_count=2,
+                                                               has_related_party=True),
+                            CaseKnobs(khoan="2", plea="choi_toi", has_compensation=False, aggravating_points=["i"],
+                                      mitigating_points=["s"]), random.Random(4))
+        schema = fill_schema(frame)
+        self.assertEqual((schema["properties"]["witnesses"]["minItems"], schema["properties"]["witnesses"]["maxItems"]),
+                         (2, 2))
+        self.assertIn("related_party", schema["required"])
+        self.assertEqual(schema["properties"]["mitigating_facts"]["required"], ["s"])
+        self.assertEqual(schema["properties"]["aggravating_facts"]["required"], ["i"])
+        self.assertEqual(schema["properties"]["evidence"]["minItems"], 4)
+        statement = schema["properties"]["defendant"]["properties"]["pretrial_statement"]
+        self.assertEqual(statement["properties"]["sentences"]["minItems"], 3)
+        self.assertNotIn("measure_value", schema["properties"])
+        self.assertEqual((frame.diem, frame.person_ids[-1]), (("a",), "NLQ"))
+        self.assertTrue(31 <= frame.measure_value <= 60)
+
+    def test_frame_values_respect_the_legal_bands(self):
+        for key in CRIMES:
+            crime = get_crime(key)
+            for khoan in crime.allowed_khoan:
+                for seed in range(30):
+                    knobs = CaseKnobs(khoan=khoan, plea="nhan_toan_bo", has_compensation=True, aggravating_points=[],
+                                      mitigating_points=[])
+                    frame = build_frame(crime, valid_options(), knobs, random.Random(seed))
+                    band = next(b for b in crime.bands if b.low <= frame.measure_value
+                                and (b.high is None or frame.measure_value < b.high))
+                    self.assertTrue(band.allowed and khoan in band.required_khoan, (key, khoan, frame.measure_value))
+                    if crime.measure == "value_vnd":
+                        self.assertTrue(0 < frame.compensation_vnd <= frame.measure_value)
+
+
 class CaseRetryTests(unittest.TestCase):
-    """Chặng 3F: a draft without diacritics is regenerated from scratch, any other failure is
-    repaired on top of the previous draft (A6)."""
-
-    def create(self, first: dict) -> tuple[ScriptedRecorder, object]:
-        recorder = ScriptedRecorder(answers=[json.dumps(first, ensure_ascii=False),
-                                             json.dumps(valid_draft_dict(), ensure_ascii=False)])
-        creation = asyncio.run(create_case(valid_options(), SimpleNamespace(trial_court_name=None), None, recorder,
-                                           pack=pack_for("blhs_173"), seed=1, knobs=valid_knobs()))
-        return recorder, creation
-
-    def test_unaccented_draft_is_regenerated_from_scratch(self):
+    def test_unaccented_fill_is_regenerated_from_scratch(self):
         draft = valid_draft_dict()
         draft["incident_summary"] = _strip_diacritics(draft["incident_summary"] + " " + STATEMENT_BI_HAI)
         draft["indictment_text"] = _strip_diacritics(draft["indictment_text"])
-        recorder, creation = self.create(draft)
+        recorder, creation = _create([fill_from_draft(draft), fill_from_draft(valid_draft_dict())])
         self.assertEqual(creation.attempts, 2)
         self.assertTrue(any(DIACRITIC_ERROR in e for e in creation.errors_per_attempt[0]))
-        self.assertNotIn("BẢN TRƯỚC", recorder.prompts[1])
         self.assertEqual(recorder.prompts[0], recorder.prompts[1])     # same fresh prompt
 
-    def test_other_errors_are_repaired_on_the_previous_draft(self):
+    def test_other_errors_are_fixed_on_the_previous_fill(self):
         draft = valid_draft_dict()
-        draft["evidence"] = draft["evidence"][:3]                       # below the evidence minimum
-        recorder, creation = self.create(draft)
+        draft["evidence"] = draft["evidence"][:3]
+        recorder, creation = _create([fill_from_draft(draft), fill_from_draft(valid_draft_dict())])
         self.assertEqual(creation.attempts, 2)
         self.assertIn("=== BẢN TRƯỚC (JSON) ===", recorder.prompts[1])
+        self.assertEqual(recorder.records[0].guard_violations, ["evidence_min"])
+
+    def test_broken_fill_is_a_schema_error_not_a_crash(self):
+        recorder, creation = _create(['{"defendant": "x"}', fill_from_draft(valid_draft_dict())])
+        self.assertEqual(recorder.records[0].guard_violations, ["schema"])
+        self.assertEqual(creation.attempts, 2)
+
+    def test_third_call_only_within_time_budget(self):
+        bad = fill_from_draft({**valid_draft_dict(), "evidence": valid_draft_dict()["evidence"][:3]})
+        recorder, creation = _create([bad, bad, fill_from_draft(valid_draft_dict())])
+        self.assertEqual(creation.attempts, 3)
+        with mock.patch.object(trial_case_service, "THIRD_ATTEMPT_MAX_ELAPSED", -1.0):
+            with self.assertRaises(CaseGenerationFailed) as failure:
+                _create([bad, bad, fill_from_draft(valid_draft_dict())])
+        self.assertEqual(len(failure.exception.errors), 2)
 
     def test_prompt_asks_for_diacritics(self):
         self.assertIn("CÓ DẤU", CASE_GENERATION_SYSTEM_PROMPT)
 
+    def test_case_model_override_reaches_the_call(self):
+        recorder = ScriptedRecorder(answers=[json.dumps(fill_from_draft(valid_draft_dict()), ensure_ascii=False)])
+        seen = []
+        original = recorder.call
+
+        async def call(*args, **kwargs):
+            seen.append(kwargs.get("model"))
+            return await original(*args, **kwargs)
+        recorder.call = call
+        asyncio.run(create_case(valid_options(), SimpleNamespace(trial_court_name=None, trial_case_model="m-x"), None,
+                                recorder, pack=pack_for("blhs_173"), seed=1, knobs=valid_knobs(), frame=valid_frame()))
+        self.assertEqual(seen, ["m-x"])
 
 
-def _scripted_create(answers: list) -> tuple[ScriptedRecorder, object]:
-    recorder = ScriptedRecorder(answers=[a if isinstance(a, str) else json.dumps(a, ensure_ascii=False)
-                                         for a in answers])
-    creation = asyncio.run(create_case(valid_options(), SimpleNamespace(trial_court_name=None), None, recorder,
-                                       pack=pack_for("blhs_173"), seed=1, knobs=valid_knobs()))
-    return recorder, creation
-
-
-def _fields(*pairs: tuple[str, str]) -> dict:
-    return {"fields": [{"path": path, "text": text} for path, text in pairs]}
-
-
-class FieldRepairTests(unittest.TestCase):
-    """Chặng 3G: field-local errors are repaired field by field, not by regenerating the case."""
-
+class ErrorLabelTests(unittest.TestCase):
     def test_error_labels(self):
         cases = {
             "incident_summary: số tiền 99.000.000 đồng không khớp giá trị nào đã khai (x)": "money_mismatch",
@@ -442,94 +523,6 @@ class FieldRepairTests(unittest.TestCase):
         }
         for message, label in cases.items():
             self.assertEqual(error_label(message), label, message)
-
-    def test_plan_only_when_every_error_is_field_local(self):
-        draft = valid_draft_dict()
-        money = "incident_summary: số tiền 99.000.000 đồng không khớp giá trị nào đã khai"
-        self.assertEqual(repair_plan([money], draft), {"incident_summary": [money]})
-        self.assertEqual(repair_plan(["Lời khai của BI_HAI phải có ít nhất 25 từ"], draft),
-                         {"statement[BI_HAI].summary": ["Lời khai của BI_HAI phải có ít nhất 25 từ"]})
-        self.assertIsNone(repair_plan([money, "Phải có ít nhất 4 chứng cứ (evidence), hiện có 3"], draft))
-        self.assertIsNone(repair_plan(["F9.description: số tiền 1.000.000 đồng không khớp"], draft))  # no F9
-
-    def test_apply_ignores_paths_not_asked(self):
-        draft = valid_draft_dict()
-        out = apply_repair(draft, {"incident_summary": ["x"]},
-                           json.dumps(_fields(("incident_summary", "Mới."), ("title", "Đổi tiêu đề"))))
-        self.assertEqual((out["incident_summary"], out["title"]), ("Mới.", draft["title"]))
-        self.assertNotEqual(draft["incident_summary"], "Mới.")             # original untouched
-
-    def test_money_mismatch_repaired_with_one_small_call(self):
-        bad = valid_draft_dict()
-        good_summary = bad["incident_summary"]
-        bad["incident_summary"] += " Bị cáo khai đã bán xe được 99.000.000 đồng."
-        recorder, creation = _scripted_create([bad, _fields(("incident_summary", good_summary))])
-        self.assertEqual(creation.attempts, 2)
-        self.assertEqual([r.call_type for r in recorder.records], ["case_generation", "case_repair"])
-        self.assertEqual(recorder.records[0].guard_violations, ["money_mismatch"])
-        self.assertIn("- incident_summary:", recorder.prompts[1])
-        self.assertEqual(creation.case.draft.incident_summary, good_summary)
-
-    def test_missing_statement_is_added_by_repair(self):
-        bad = valid_draft_dict()
-        bad["pretrial_statements"] = [st for st in bad["pretrial_statements"] if st["person_id"] != "NLC_1"]
-        recorder, creation = _scripted_create([bad, _fields(("statement[NLC_1].summary", STATEMENT_NLC_1))])
-        self.assertEqual(creation.attempts, 2)
-        self.assertIn("NLC_1", [st.person_id for st in creation.case.draft.pretrial_statements])
-
-    def test_split_statement_is_merged_by_code(self):
-        draft = valid_draft_dict()
-        first = draft["pretrial_statements"][0]
-        words = first["summary"].split()
-        half = len(words) // 2
-        first["summary"] = " ".join(words[:half])
-        draft["pretrial_statements"].insert(1, {"person_id": "BI_CAO", "summary": " ".join(words[half:]),
-                                                "inconsistencies": []})
-        merged = normalise_draft_dict(draft)["pretrial_statements"]
-        self.assertEqual([st["person_id"] for st in merged], ["BI_CAO", "BI_HAI", "NLC_1"])
-        self.assertEqual(merged[0]["summary"], " ".join(words))
-        self.assertEqual(errors_for(draft), [])
-
-    def test_repair_that_did_not_fix_is_followed_by_full_regeneration(self):
-        bad = valid_draft_dict()
-        bad["incident_summary"] += " Giá 99.000.000 đồng."
-        not_fixed = _fields(("incident_summary", bad["incident_summary"] + " Thêm câu."))
-        recorder, creation = _scripted_create([bad, not_fixed, valid_draft_dict()])
-        self.assertEqual([r.call_type for r in recorder.records],
-                         ["case_generation", "case_repair", "case_generation"])
-        self.assertEqual(creation.attempts, 3)
-        self.assertIn("=== BẢN TRƯỚC (JSON) ===", recorder.prompts[2])
-
-    def test_unapplied_repair_is_labelled_and_regenerates_from_the_original_draft(self):
-        bad = valid_draft_dict()
-        bad["incident_summary"] += " Giá 99.000.000 đồng."
-        recorder, creation = _scripted_create([bad, {"fields": []}, valid_draft_dict()])
-        self.assertEqual(recorder.records[1].guard_violations, ["repair_unapplied"])
-        self.assertEqual(recorder.records[2].call_type, "case_generation")
-        self.assertIn("99.000.000", recorder.prompts[2])                 # the original draft and its error
-        self.assertEqual(creation.attempts, 3)
-
-    def test_placeholder_style_paths_are_accepted(self):
-        bad = valid_draft_dict()
-        bad["pretrial_statements"] = [st for st in bad["pretrial_statements"] if st["person_id"] != "NLC_1"]
-        recorder, creation = _scripted_create([bad, _fields(("statement[{NLC_1}].summary", STATEMENT_NLC_1))])
-        self.assertEqual(creation.attempts, 2)
-
-    def test_unfixable_errors_regenerate_the_whole_case(self):
-        bad = valid_draft_dict()
-        bad["evidence"] = bad["evidence"][:3]
-        recorder, creation = _scripted_create([bad, valid_draft_dict()])
-        self.assertEqual([r.call_type for r in recorder.records], ["case_generation", "case_generation"])
-
-    def test_third_call_only_within_time_budget(self):
-        bad = valid_draft_dict()
-        bad["incident_summary"] += " Giá 99.000.000 đồng."
-        still_bad = _fields(("incident_summary", bad["incident_summary"] + " Thêm câu."))
-        with mock.patch.object(trial_case_service, "THIRD_ATTEMPT_MAX_ELAPSED", -1.0):
-            with self.assertRaises(CaseGenerationFailed) as failure:
-                _scripted_create([bad, still_bad, valid_draft_dict()])
-        self.assertEqual(len(failure.exception.errors), 2)
-        self.assertEqual(failure.exception.error_counts, [1, 1])
 
 
 if __name__ == "__main__":
