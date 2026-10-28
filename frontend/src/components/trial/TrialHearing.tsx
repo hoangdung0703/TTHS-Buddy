@@ -150,6 +150,23 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
     return () => cancelAnimationFrame(frame);
   }, [lastSeq, lastIsUser, scrollToLatest]);
 
+  // The sticky dock changes height on its own (the observer's procedure note opening for a new step,
+  // notices, the progress view). A reader who was following the newest utterance stays on it instead
+  // of having it slide under the taller dock.
+  useEffect(() => {
+    const dock = composerRef.current;
+    if (dock === null || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      if (atBottomRef.current) {
+        scrollToLatest();
+      }
+    });
+    observer.observe(dock);
+    return () => observer.disconnect();
+  }, [scrollToLatest, hasDetail]);
+
   // An on-screen keyboard shrinks the (visual) viewport; keep the newest utterance in view while
   // the student is typing.
   useEffect(() => {

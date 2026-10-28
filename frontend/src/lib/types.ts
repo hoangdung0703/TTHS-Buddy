@@ -229,7 +229,8 @@ export interface NoteUpsertRequest {
 // only and are re-read with GET /api/trials/{id}.
 // ============================================================================
 
-export type TrialUserRole = "ksv" | "luat_su";
+// The roles the client knows how to present. Which ones may be chosen comes from config.user_roles.
+export type TrialUserRole = "ksv" | "luat_su" | "nguoi_xem";
 export type TrialStatus = "active" | "completed" | "abandoned";
 export type TrialAwaiting = "user" | "ai" | "none";
 export type TrialUtteranceKind = "speech" | "procedural" | "notice";
@@ -282,6 +283,18 @@ export interface TrialState {
   // Characters allowed for the next "speak" in the current slot; null when speaking is not
   // allowed. Optional so an older backend without the field still parses.
   text_limits?: { min: number; max: number } | null;
+  // Observer role only (contract 5.1): the static procedure note of current_step; null otherwise.
+  procedure_note?: TrialProcedureNote | null;
+}
+
+export interface TrialProcedureNote {
+  step: number;
+  title: string;
+  text: string;
+  // BLTTHS article numbers.
+  legal_basis: string[];
+  // false = draft still waiting for the legal team's review.
+  reviewed: boolean;
 }
 
 export interface TrialUtterance {
@@ -420,6 +433,8 @@ export interface TrialRecordSection {
 export interface TrialRecordDocument {
   disclaimer: string;
   form_reference: string;
+  // Lines outside the form shown right after the opening disclaimer (observer sessions); [] otherwise.
+  preamble?: string[];
   court_name: string;
   national_header: string[];
   title: string;

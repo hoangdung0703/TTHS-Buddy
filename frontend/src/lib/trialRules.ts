@@ -154,9 +154,20 @@ export function endSlotLabel(step: number): string {
   return "Kết thúc phần của tôi";
 }
 
+// The observer role (contract 5.1) has no speaking turn at all: the AI plays every role and the
+// student only moves the hearing on.
+export const OBSERVER_ROLE = "nguoi_xem";
+
+export function isObserverRole(role: string): boolean {
+  return role === OBSERVER_ROLE;
+}
+
 // One line telling the student what this step expects of them. Purely explanatory: it never
 // decides which buttons exist.
 export function stepHint(step: number, role: string, isUserTurn: boolean): string {
+  if (isObserverRole(role)) {
+    return observerStepHint(step);
+  }
   const isKsv = role === "ksv";
   switch (step) {
     case 1:
@@ -200,6 +211,23 @@ export function stepHint(step: number, role: string, isUserTurn: boolean): strin
   }
 }
 
+function observerStepHint(step: number): string {
+  switch (step) {
+    case 3:
+      return "Kiểm sát viên công bố bản cáo trạng.";
+    case 5:
+      return "Kiểm sát viên xét hỏi trước, sau đó đến luật sư bào chữa.";
+    case 6:
+      return "Kiểm sát viên trình bày bản luận tội.";
+    case 7:
+      return "Luật sư trình bày bài bào chữa cho bị cáo.";
+    case 8:
+      return "Kiểm sát viên đối đáp, luật sư đáp lại.";
+    default:
+      return stepHint(step, "", false);
+  }
+}
+
 // --- Utterances -----------------------------------------------------------------------------------
 
 // Adds streamed utterances to the transcript: an event whose seq is already present is ignored
@@ -228,6 +256,9 @@ export interface ParsedTrialError {
   // "Trial not found" (missing or someone else's session) is NOT this.
   featureDisabled: boolean;
   state: TrialState | null;
+  // error.message of the envelope. Shown verbatim only for the codes whose message the contract
+  // says is student-facing (see messageForTrialError).
+  serverMessage: string | null;
 }
 
 export function parseTrialErrorBody(status: number, bodyText: string): ParsedTrialError {
@@ -238,20 +269,34 @@ export function parseTrialErrorBody(status: number, bodyText: string): ParsedTri
     body = null;
   }
   const record = (body !== null && typeof body === "object" ? body : {}) as Record<string, unknown>;
-  const envelope = record.error as { code?: unknown } | undefined;
+  const envelope = record.error as { code?: unknown; message?: unknown } | undefined;
   const code = envelope !== undefined && typeof envelope.code === "string" ? envelope.code : null;
+  const serverMessage = envelope !== undefined && typeof envelope.message === "string" && envelope.message.trim().length > 0
+    ? envelope.message
+    : null;
   const state = record.state !== undefined && record.state !== null && typeof record.state === "object"
     ? (record.state as TrialState)
     : null;
   const featureDisabled = status === 404 && envelope === undefined && record.detail === "Not Found";
-  return { status, code, featureDisabled, state };
+  return { status, code, featureDisabled, state, serverMessage };
 }
 
+// Fallbacks for the two case-creation refusals whose server message is shown verbatim.
+export const GLOBAL_DAILY_LIMIT_MESSAGE =
+  "Hôm nay hệ thống đã tạo đủ số vụ án mô phỏng cho phép. Bạn vui lòng quay lại vào ngày mai; các phiên tòa đang dở vẫn tiếp tục được.";
+export const USAGE_LOG_UNAVAILABLE_MESSAGE =
+  "Tạm thời chưa tạo được vụ án mới vì hệ thống không kiểm tra được hạn mức. Bạn vui lòng thử lại sau; các phiên tòa đang dở vẫn tiếp tục được.";
+
 // Vietnamese, student-facing. Never includes anything the student typed.
-export function messageForTrialError(error: Pick<ParsedTrialError, "status" | "code">): string {
+export function messageForTrialError(error: Pick<ParsedTrialError, "status" | "code"> & { serverMessage?: string | null }): string {
   switch (error.code) {
     case "trial_daily_case_limit":
       return "Hôm nay bạn đã tạo đủ số vụ án cho phép. Bạn quay lại vào ngày mai nhé.";
+    // Contract Mục 2: these two messages are written for the student and shown as sent.
+    case "trial_global_daily_limit":
+      return error.serverMessage ?? GLOBAL_DAILY_LIMIT_MESSAGE;
+    case "trial_usage_log_unavailable":
+      return error.serverMessage ?? USAGE_LOG_UNAVAILABLE_MESSAGE;
     case "trial_active_session_limit":
       return "Bạn đang có đủ số phiên tòa dở dang cho phép. Hãy hoàn thành, bỏ hoặc xóa bớt một phiên trước khi tạo phiên mới.";
     case "rate_limit_exceeded":
@@ -302,6 +347,13 @@ export function messageForTrialError(error: Pick<ParsedTrialError, "status" | "c
   return "Đã có lỗi xảy ra. Bạn thử lại sau ít phút nhé.";
 }
 
+// Refusals to create a case that are limits, not failures: shown as a calm notice, not an error box.
+// The global cap and the fail-closed usage log are about the whole system, not this student.
+export function isCaseLimitCode(code: string | null): boolean {
+  return code === "trial_daily_case_limit" || code === "trial_active_session_limit"
+    || code === "trial_global_daily_limit" || code === "trial_usage_log_unavailable";
+}
+
 // 409 codes after which the client just re-syncs (contract Mục 6): soft, not an error box.
 export function isResyncConflict(code: string | null): boolean {
   return code === "trial_version_mismatch" || code === "trial_step_mismatch" || code === "trial_not_your_turn"
@@ -320,7 +372,8 @@ export function formatVnd(amount: number): string {
 
 export const TRIAL_ROLE_LABELS: Record<string, string> = {
   ksv: "Kiểm sát viên",
-  luat_su: "Luật sư bào chữa"
+  luat_su: "Luật sư bào chữa",
+  nguoi_xem: "Người xem"
 };
 
 export const TRIAL_STATUS_LABELS: Record<string, string> = {

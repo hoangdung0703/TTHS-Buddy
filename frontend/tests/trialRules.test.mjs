@@ -5,13 +5,19 @@ import { test } from "node:test";
 
 import {
   composerMode,
+  GLOBAL_DAILY_LIMIT_MESSAGE,
+  isCaseLimitCode,
+  isObserverRole,
   isResyncConflict,
   mergeUtterances,
   messageForTrialError,
   parseAllowedActions,
   parseTrialErrorBody,
+  stepHint,
+  TRIAL_ROLE_LABELS,
   textLimitsForState,
   textLimitsForStep,
+  USAGE_LOG_UNAVAILABLE_MESSAGE,
   validateTrialText
 } from "../src/lib/trialRules.ts";
 
@@ -140,5 +146,55 @@ test("no verdict field is ever read: the source has no verdict handling", async 
     const source = await readFile(file, "utf8");
     const hit = source.match(/verdict_json|kết quả nghị án|defendant_plea|character_card|\bstance\b|\bdemeanor\b/i);
     assert.equal(hit, null, `${file} mentions ${hit?.[0]}`);
+  }
+});
+
+// --- Observer role (contract 5.1) and the case-creation limits (contract Mục 2) ------------------
+
+test("observer: only advance/continue drive the composer; text_limits null never opens an input", () => {
+  const observer = { ...baseState, text_limits: null, procedure_note: { step: 5, title: "t", text: "x", legal_basis: ["307"], reviewed: false } };
+  assert.equal(composerMode({ ...observer, allowed_actions: ["advance:6"] }), "advance");
+  assert.equal(composerMode({ ...observer, awaiting: "ai", allowed_actions: ["continue"] }), "paused");
+  assert.equal(composerMode({ ...observer, awaiting: "ai", allowed_actions: [] }), "exhausted");
+  assert.equal(composerMode({ ...observer, current_step: 11, status: "completed", awaiting: "none" }), "finished");
+  assert.equal(isObserverRole("nguoi_xem"), true);
+  assert.equal(isObserverRole("ksv"), false);
+  assert.equal(TRIAL_ROLE_LABELS.nguoi_xem, "Người xem");
+});
+
+test("observer step hints never address the student as a speaker", () => {
+  for (let step = 1; step <= 11; step++) {
+    const hint = stepHint(step, "nguoi_xem", false);
+    assert.doesNotMatch(hint, /\bbạn\b|ít nhất|Bấm/i, `step ${step}: ${hint}`);
+  }
+  assert.match(stepHint(8, "nguoi_xem", false), /Kiểm sát viên đối đáp, luật sư đáp lại/);
+});
+
+test("global daily cap: server message shown verbatim, distinct from the per-user limit", () => {
+  const body = JSON.stringify({ error: { code: "trial_global_daily_limit", message: "Câu thân thiện của máy chủ." } });
+  const parsed = parseTrialErrorBody(429, body);
+  assert.equal(parsed.serverMessage, "Câu thân thiện của máy chủ.");
+  assert.equal(messageForTrialError(parsed), "Câu thân thiện của máy chủ.");
+  assert.equal(messageForTrialError({ status: 429, code: "trial_global_daily_limit" }), GLOBAL_DAILY_LIMIT_MESSAGE);
+  const perUser = messageForTrialError(parseTrialErrorBody(429, JSON.stringify({ error: { code: "trial_daily_case_limit", message: "m" } })));
+  assert.notEqual(perUser, GLOBAL_DAILY_LIMIT_MESSAGE);
+  assert.match(perUser, /bạn đã tạo đủ/);
+});
+
+test("503 trial_usage_log_unavailable: fail-closed message, not the generic data_unavailable", () => {
+  const parsed = parseTrialErrorBody(503, JSON.stringify({ error: { code: "trial_usage_log_unavailable", message: "Thử lại sau nhé." } }));
+  assert.equal(messageForTrialError(parsed), "Thử lại sau nhé.");
+  assert.equal(messageForTrialError({ status: 503, code: "trial_usage_log_unavailable", serverMessage: null }), USAGE_LOG_UNAVAILABLE_MESSAGE);
+  assert.notEqual(messageForTrialError({ status: 503, code: "data_unavailable" }), USAGE_LOG_UNAVAILABLE_MESSAGE);
+  // Only these documented codes are echoed; any other server message stays hidden.
+  assert.doesNotMatch(messageForTrialError(parseTrialErrorBody(500, JSON.stringify({ error: { code: "internal_server_error", message: "trace" } }))), /trace/);
+});
+
+test("limit refusals are notices, other failures are errors", () => {
+  for (const code of ["trial_daily_case_limit", "trial_active_session_limit", "trial_global_daily_limit", "trial_usage_log_unavailable"]) {
+    assert.equal(isCaseLimitCode(code), true, code);
+  }
+  for (const code of [null, "rate_limit_exceeded", "data_unavailable", "http_error"]) {
+    assert.equal(isCaseLimitCode(code), false, String(code));
   }
 });

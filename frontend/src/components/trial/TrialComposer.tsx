@@ -4,12 +4,14 @@ import { ArrowRight, FileText, Lock, Play, Send, Trash2, XCircle } from "lucide-
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 
+import { ObserverControls } from "@/components/trial/ObserverControls";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   composerMode,
   endSlotLabel,
   GUARD_EXHAUSTED_MESSAGE,
+  isObserverRole,
   parseAllowedActions,
   TRIAL_TEXT_DEFAULT_MAX,
   stepHint,
@@ -82,6 +84,22 @@ export function TrialComposer({
 
   const hint = stepHint(state.current_step, userRole, mode === "speak");
   const nextStepTitle = actions.advanceTo !== null ? steps.find((step) => step.number === actions.advanceTo)?.title : undefined;
+
+  // Observer (contract 5.1): no input at all; the end-of-hearing bar and the guard fuse below are
+  // shared with the other roles.
+  if (isObserverRole(userRole) && (busy || (mode !== "finished" && mode !== "exhausted"))) {
+    return (
+      <ObserverControls
+        state={state}
+        mode={mode}
+        steps={steps}
+        busy={busy}
+        statusMessage={statusMessage}
+        lastWasPause={lastWasPause}
+        onAction={onAction}
+      />
+    );
+  }
 
   if (busy || mode === "waiting") {
     return (

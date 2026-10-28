@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, ArrowLeft, Check } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Info } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
 import { createTrial, getTrials, TrialApiError } from "@/lib/api";
 import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
-import { LAW_VERSION_BLTTHS, messageForTrialError } from "@/lib/trialRules";
+import { isCaseLimitCode, LAW_VERSION_BLTTHS, messageForTrialError } from "@/lib/trialRules";
 import type { TrialConfig, TrialUserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,8 @@ interface RoleCard {
 }
 
 // The six roles of the design (THIET-KE Mục 7, màn 2A). Only the ones listed in config.user_roles
-// are selectable; the rest are shown dimmed as "Sắp có".
+// are selectable; the rest are shown dimmed as "Sắp có". A role the server enables but this list
+// does not know is not offered: the hearing screen would not know how to present it.
 const ROLE_CARDS: RoleCard[] = [
   {
     key: "ksv",
@@ -40,7 +41,8 @@ const ROLE_CARDS: RoleCard[] = [
   { key: "bi_cao", label: "Bị cáo", description: "Trả lời xét hỏi, tự bào chữa và nói lời sau cùng." },
   { key: "chu_toa", label: "Chủ tọa", description: "Điều khiển phiên tòa theo đúng trình tự tố tụng." },
   { key: "thu_ky", label: "Thư ký", description: "Báo cáo sự có mặt và ghi biên bản phiên tòa." },
-  { key: "nguoi_xem", label: "Người xem", description: "Theo dõi toàn bộ phiên tòa do AI đóng mọi vai." }
+  // Contract 3.1: no article pill on this card.
+  { key: "nguoi_xem", label: "Người xem", description: "Theo dõi trọn một phiên tòa do hệ thống đóng mọi vai." }
 ];
 
 type Phase = "form" | "creating" | "failed" | "cancelled";
@@ -104,7 +106,7 @@ export default function NewTrialPage() {
   const [hasRelatedParty, setHasRelatedParty] = useState(false);
   const [phase, setPhase] = useState<Phase>("form");
   const [statusLines, setStatusLines] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; code: string | null } | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const slowRequest = useSlowRequestNotice();
@@ -184,7 +186,11 @@ export default function NewTrialPage() {
       }
       stopSlow();
       setPhase("failed");
-      setError(createError instanceof TrialApiError ? messageForTrialError(createError) : "Mất kết nối tới máy chủ. Bạn thử lại nhé.");
+      setError(
+        createError instanceof TrialApiError
+          ? { message: messageForTrialError(createError), code: createError.code }
+          : { message: "Mất kết nối tới máy chủ. Bạn thử lại nhé.", code: null }
+      );
       return;
     } finally {
       stopSlow();
@@ -197,7 +203,7 @@ export default function NewTrialPage() {
       return;
     }
     setPhase("failed");
-    setError(outcome.streamError ?? "Chưa dựng được hồ sơ vụ án. Bạn thử lại nhé.");
+    setError({ message: outcome.streamError ?? "Chưa dựng được hồ sơ vụ án. Bạn thử lại nhé.", code: null });
   }
 
   function handleCancel(): void {
@@ -403,9 +409,21 @@ export default function NewTrialPage() {
             ) : null}
 
             {phase === "failed" && error !== null ? (
-              <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{error}</span>
+              <div
+                role="alert"
+                data-testid="trial-create-error"
+                data-code={error.code ?? ""}
+                className={cn(
+                  "flex items-start gap-2 rounded-lg border px-4 py-3 text-sm",
+                  isCaseLimitCode(error.code) ? "border-border bg-muted/40 text-foreground" : "border-red-200 bg-red-50 text-red-700"
+                )}
+              >
+                {isCaseLimitCode(error.code) ? (
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                )}
+                <span>{error.message}</span>
               </div>
             ) : null}
 

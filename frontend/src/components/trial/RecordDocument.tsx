@@ -4,8 +4,9 @@ import { TrialText } from "@/components/trial/TrialText";
 import type { TrialRecordDocument, TrialRecordEntry, TrialRecordField, TrialRecordSection } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// The record laid out as Mẫu số 22-HS (contract 3.7). Order: disclaimer, court name | national
-// header, title, opening, sections, closing, signatures, appendix (outside the form), disclaimer.
+// The record laid out as Mẫu số 22-HS (contract 3.7). Order: disclaimer, preamble (outside the form,
+// observer sessions only), court name | national header, title, opening, sections, closing,
+// signatures, appendix (outside the form), disclaimer.
 // Every string is shown as sent - nothing is edited, shortened or filled in: a null field is the
 // form's dotted blank.
 
@@ -106,6 +107,16 @@ export function RecordDocument({ record }: { record: TrialRecordDocument }) {
   return (
     <div className="flex flex-col gap-6">
       <Disclaimer text={record.disclaimer} />
+
+      {(record.preamble ?? []).length > 0 ? (
+        <div data-testid="record-preamble" className="-mt-3 flex flex-col gap-0.5 text-center text-xs italic text-muted-foreground print:text-[9pt] print:text-black">
+          {record.preamble?.map((line, index) => (
+            <p key={index} className="break-words">
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       <p className="text-right text-[0.7rem] italic leading-snug text-muted-foreground print:text-black">{record.form_reference}</p>
 

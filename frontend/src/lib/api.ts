@@ -440,6 +440,7 @@ export class TrialApiError extends ApiError {
   public readonly code: string | null;
   public readonly featureDisabled: boolean;
   public readonly state: TrialState | null;
+  public readonly serverMessage: string | null;
 
   public constructor(parsed: ParsedTrialError) {
     super(parsed.status, parsed.code ?? `HTTP ${parsed.status}`);
@@ -447,6 +448,7 @@ export class TrialApiError extends ApiError {
     this.code = parsed.code;
     this.featureDisabled = parsed.featureDisabled;
     this.state = parsed.state;
+    this.serverMessage = parsed.serverMessage;
   }
 }
 
@@ -463,10 +465,11 @@ async function trialRequest(path: string, init: RequestInit = {}): Promise<Respo
 }
 
 // --- Feature probe ---------------------------------------------------------------------------------
-// The flag lives only in the backend: GET /api/trials answering 404 {"detail":"Not Found"} means
-// the feature is off. Probed once per page load and kept in module memory (never in storage).
-// Only a definite answer is cached; a network error or 5xx leaves it unknown so a later page can
-// ask again.
+// The flag lives only in the backend. HEAD /api/trials (contract 3.0) answers 204 when the feature
+// is on, 404 when it is off and 401 without a valid token; unlike GET it runs no cleanup and no
+// limit counting. Probed once per page load and kept in module memory (never in storage). Only a
+// definite answer is cached; 401, a network error or 5xx leaves it unknown so a later page can ask
+// again.
 export type TrialFeatureStatus = "unknown" | "enabled" | "disabled";
 
 let trialFeatureStatus: TrialFeatureStatus = "unknown";
@@ -497,14 +500,8 @@ export function probeTrialFeature(): Promise<TrialFeatureStatus> {
     return Promise.resolve(trialFeatureStatus);
   }
   if (trialFeatureProbe === null) {
-    trialFeatureProbe = getTrials()
-      .then(() => "enabled" as const)
-      .catch((error: unknown) => {
-        if (error instanceof TrialApiError && error.featureDisabled) {
-          return "disabled" as const;
-        }
-        return "unknown" as const;
-      })
+    trialFeatureProbe = headTrialFeature()
+      .catch((): TrialFeatureStatus => "unknown")
       .then((status) => {
         trialFeatureProbe = null;
         if (status !== "unknown") {
@@ -514,6 +511,25 @@ export function probeTrialFeature(): Promise<TrialFeatureStatus> {
       });
   }
   return trialFeatureProbe;
+}
+
+async function headTrialFeature(): Promise<TrialFeatureStatus> {
+  const authHeader = await getAuthHeader();
+  const response = await fetch(`${getApiBaseUrl()}/api/trials`, { method: "HEAD", headers: authHeader });
+  if (response.ok) {
+    return "enabled";
+  }
+  // A HEAD response has no body, but this route only answers 404 when TRIAL_ENABLED is off.
+  if (response.status === 404) {
+    return "disabled";
+  }
+  // A backend that predates the HEAD route: fall back to the GET probe.
+  if (response.status === 405) {
+    return getTrials()
+      .then((): TrialFeatureStatus => "enabled")
+      .catch((error: unknown): TrialFeatureStatus => (error instanceof TrialApiError && error.featureDisabled ? "disabled" : "unknown"));
+  }
+  return "unknown";
 }
 
 function noteFeatureFromError(error: unknown): void {
@@ -604,7 +620,7 @@ async function streamTrial(path: string, body: unknown, handlers: TrialStreamHan
     throw error;
   }
   if (response.body === null) {
-    throw new TrialApiError({ status: response.status, code: null, featureDisabled: false, state: null });
+    throw new TrialApiError({ status: response.status, code: null, featureDisabled: false, state: null, serverMessage: null });
   }
   await readSseBlocks(response.body, (block) => dispatchTrialBlock(block, handlers));
 }
