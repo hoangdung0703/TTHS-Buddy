@@ -1,8 +1,8 @@
 # Phiên tòa giả định — Tài liệu thiết kế
 
 Trạng thái: thiết kế đã duyệt kèm các quyết định ngày 19/10/2026 (mục ngay dưới). Chặng 1 (nền backend + spike) xong trên nhánh `muc5-mock-trial`, chờ duyệt trước chặng 2.
-Migration: `backend/migrations/0012_mock_trials.sql`. Chạy tay, **chưa chạy**. Nháp cũ trong thư mục này đã xóa.
-Thiết kế 4 vai còn lại (Người xem, Bị cáo, Thư ký, Chủ tọa): Mục 11 ở cuối tài liệu. Đã duyệt kèm quyết định 29/10/2026 (11.8), chưa code. Migration `0013_mock_trial_roles.sql` đã viết, **chưa chạy**.
+Migration: `backend/migrations/0012_mock_trials.sql`. Chạy tay; **đã chạy** ở database thật. Nháp cũ trong thư mục này đã xóa.
+Thiết kế 4 vai còn lại (Người xem, Bị cáo, Thư ký, Chủ tọa): Mục 11 ở cuối tài liệu. Đã duyệt kèm quyết định 29/10/2026 (11.8). Chặng R1 (Người xem) đã code: xem 11.9. Migration `0013_mock_trial_roles.sql` **đã chạy** ở database thật ngày 29/10/2026 (nới check `user_role` thêm `nguoi_xem`; thêm `mock_trial_utterances.procedure_item` và `mock_trial_sessions.user_work`, cả hai cho phép null).
 
 ## Quyết định 19/10/2026 (ghi đè phần thân khi mâu thuẫn)
 
@@ -1002,3 +1002,33 @@ Theo số câu hỏi ở 11.7:
 20. Điều 323 cho Chủ tọa: có, tối đa 1 lần mỗi phiên, theo 11.4.6.
 21. Phụ lục "Biên bản nghị án" cho Chủ tọa: có, dựng bằng code.
 22. Hạn mức: giữ 5 vụ/ngày/người dùng. **Thêm trần toàn hệ thống mỗi ngày**, đặt bằng biến môi trường (tên đề xuất `TRIAL_GLOBAL_DAILY_CASE_LIMIT`; chưa có trong code, làm ở R1). Chi phí theo bảng giá anh/chị đã tra: vai tốn nhất (Bị cáo, ~1,6 lần phiên KSV) khoảng **$0,08 mỗi phiên**.
+
+### 11.9 Chặng R1 — vai Người xem, 29/10/2026
+
+**Trạng thái migration.** 0012 và 0013 đã chạy tay ở database thật (0013 ngày 29/10/2026). R1 không cần migration mới; chưa dùng 2 cột của 0013.
+
+**Đã làm (backend):**
+- `SlotSpec.user_roles` (11.0a) và `active_slots(step, shape, user_role)`. Chưa slot nào dùng; có test lọc theo vai.
+- Vai không id: `TrialContext.student_id = None`; enum người nói không loại ai; prompt hệ thống có biến thể "người học quan sát", bỏ câu "không viết lời thay {vai}". KSV và luật sư giữ nguyên câu chữ, chỉ thêm 1 dòng tên Tòa án và Viện kiểm sát.
+- Đối đáp AI–AI: slot `debate` mà không phía nào là người dùng chạy `AI_DEBATE_ROUNDS = 1` vòng, KSV rồi luật sư, mỗi bài một lượt AI `long_speech` riêng (lưu state sau mỗi bài, guard Rule 9 chạy từng bài). Đếm bằng `slot_user_turns`, không thêm trường.
+- Người xem chỉ có `advance`/`continue`; `speak`/`end_slot` luôn 409. `state.procedure_note` mang chú giải thủ tục của bước (11 đoạn tĩnh, ≤ 80 từ, `backend/app/services/trial_procedure_notes.py`). **Bản nháp, `reviewed: false`, chờ nhóm luật duyệt.**
+- Biên bản phiên Người xem có dòng ngoài mẫu ở đầu: "Phiên tòa mô phỏng do hệ thống đóng mọi vai; người học quan sát."
+- API chỉ nhận vai trong `ENABLED_USER_ROLES = {ksv, luat_su, nguoi_xem}` (422 với vai khác); `config.user_roles` lấy từ đây.
+- Thẻ nhân vật: không trả cho vai nào (chưa có Bị cáo). Có test: phiên Người xem và KSV không có `role_brief`/`stance`/`knowledge`/`demeanor`, không có quyết định nghị án, kể cả khi đã nghị án xong.
+- "Nói thay vai người dùng": với Người xem không áp dụng. Chặn cấu trúc (enum) giữ nguyên cho KSV, luật sư; mức đo theo nội dung không đổi.
+
+**Việc thêm:**
+- Trần toàn hệ thống `TRIAL_GLOBAL_DAILY_CASE_LIMIT` (mặc định 100, ngày theo giờ Việt Nam, đếm `mock_trial_cases` của mọi người dùng): vượt thì `POST /api/trials` trả 429 `trial_global_daily_limit`; phiên đang dở không bị ảnh hưởng.
+- Tên cơ quan: `TRIAL_COURT_NAME` mặc định `Tòa án nhân dân khu vực 1, tỉnh X`; Viện kiểm sát suy ra (`Viện kiểm sát nhân dân khu vực 1, tỉnh X`, Điều 239 khoản 1 BLTTHS). Code chèn 2 tên làm hằng số vào khung vụ án và prompt hệ thống. Validator báo lỗi `office_name` khi cáo trạng nêu Viện kiểm sát hoặc Tòa án có cấp lãnh thổ khác tên cấu hình ("tối cao", "cùng cấp" không bị bắt). Lời AI tại phiên tòa nêu sai tên: cờ đo `office_name` (không chặn). Bỏ chỗ giữ chỗ "[giả định]"; vụ cũ lưu tên giữ chỗ được hiển thị bằng tên mặc định.
+
+**Đối chiếu corpus** (không gọi Gemini): Luật TCTAND 34/2024 (sửa 2025) Điều 4 khoản 1 điểm c (cấp "Tòa án nhân dân khu vực"), Điều 59 khoản 1 (TAND khu vực sơ thẩm vụ án theo luật); BLTTHS Điều 268 khoản 1 (sửa bởi Luật 99/2025/QH15: TAND khu vực xét xử sơ thẩm tội có mức cao nhất của khung đến 20 năm tù), khoản 2 điểm b (ngoại lệ lên cấp tỉnh); BLHS Điều 173, 174, 134 khoản 1-2 tối đa 7/7/6 năm, Điều 171 khoản 2 tối đa 10 năm. Kết luận: cả 4 tội, khoản 1-2, thuộc TAND khu vực. Corpus có cấp "Viện kiểm sát nhân dân khu vực" (TTLT 04/2025, QĐ 06/QĐ-VKSTC) nhưng **không có** Luật Tổ chức VKSND và **không có** mẫu tên cụ thể ("khu vực 1, tỉnh X" là quy ước của dự án, nhóm luật xác nhận).
+
+**Đo (Gemini thật, 62 lời gọi, trần chặng 150):**
+- Tạo vụ, seed 9101–9112 (đã đổi prompt): 12/12 qua, 12/12 qua ngay lần đầu, 1,0 lời gọi/vụ, trung vị 15,2s, p90 17,3s; ~3,9K token vào, ~2,9K ra, ~1,9K thinking mỗi vụ; 12/12 cáo trạng nêu đúng tên Viện kiểm sát, 0 nhãn `office_name`.
+- Người xem, 3 phiên đủ 11 bước (seed 9201 Điều 173, 9202 Điều 134, 9203 Điều 174; script `run_trial_probes --observer`): 50 lời gọi gồm tạo vụ (4) và tóm tắt biên bản (4), trung bình ~16,7 lời gọi, ~189K token vào, ~13,3K ra, ~4,6K thinking mỗi phiên (thấp hơn ước tính 11.1). Độ trễ một lời gọi trong phiên: trung vị 3,0s, p90 4,4s; bài dài trung vị 3,1s, p90 6,8s.
+- Guard: 1/42 lời gọi sinh lời trong phiên bị loại (`invented_name`, sinh lại qua), 0 lần tạm nghỉ; cờ đo: `unknown_percent` 1, `office_name` 0.
+- Bố cục: 15/15 bài dài có ≥ 2 đoạn, 13/15 có ≥ 3 đoạn (2 bài đối đáp có 2 đoạn).
+- Độ trùng từ vựng (Jaccard): đối đáp KSV so với luận tội 0,33–0,44; đối đáp luật sư so với bào chữa 0,37–0,40.
+- Biên bản: 3/3 đủ I–IV, IV.1–IV.4 có nội dung, chữ ký, phụ lục tuyên án, dòng Người xem; tóm tắt IV.2 chạy 3/3, IV.3 2/3 (1 lần về nguyên văn vì viện dẫn "Điều 65" không nêu luật: cơ chế dự phòng đúng thiết kế); 0 tên cơ quan sai, 0 chỗ giữ chỗ.
+
+**Còn chờ:** nhóm luật duyệt 11 đoạn chú giải (`PROCEDURE_NOTES_REVIEWED`), đọc 3 biên bản; xác nhận tên "khu vực 1, tỉnh X"; giao diện Người xem (chặng sau, theo 11.1.7 và API-CONTRACT 5.1).

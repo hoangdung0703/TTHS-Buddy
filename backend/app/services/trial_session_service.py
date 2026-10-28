@@ -12,11 +12,13 @@ from app.services.trial_anonymise import anonymise_case_view
 from app.services.trial_legal_pack import build_pack
 from app.services.trial_metrics import TrialCallRecorder
 from app.services.trial_names import render
+from app.services.trial_procedure_notes import procedure_note
 from app.services.trial_repository import utc_now
 from app.services.trial_state_machine import (
     ROLE_LABELS,
     STEP_BY_NUMBER,
     STEPS,
+    OBSERVER_ROLE,
     CaseShape,
     SessionState,
     allowed_actions,
@@ -96,7 +98,9 @@ def state_out(session_id: str, state: SessionState, guard_exhausted: bool = Fals
     return TrialStateOut(session_id=session_id, current_step=state.current_step,
                          step_title=STEP_BY_NUMBER[state.current_step].title, status=state.status,
                          awaiting=awaiting(state), allowed_actions=actions, version=state.version,
-                         text_limits={"min": limits[0], "max": limits[1]} if limits else None)
+                         text_limits={"min": limits[0], "max": limits[1]} if limits else None,
+                         procedure_note=procedure_note(state.current_step) if state.user_role == OBSERVER_ROLE
+                         else None)
 
 
 def utterance_out(u: Utterance, case: CaseFile) -> TrialUtteranceOut:

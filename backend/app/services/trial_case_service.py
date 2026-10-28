@@ -34,7 +34,14 @@ from app.models.trial import (
     CourtInfo,
 )
 from app.prompts.trial_prompts import CASE_GENERATION_SYSTEM_PROMPT, build_case_generation_prompt
-from app.services.trial_case_frame import CaseFrame, build_frame, fill_schema, fill_to_draft, frame_text
+from app.services.trial_case_frame import (
+    CaseFrame,
+    build_frame,
+    fill_schema,
+    fill_to_draft,
+    frame_text,
+    offices_text,
+)
 from app.services.trial_case_validator import (
     DIACRITIC_ERROR,
     error_label,
@@ -45,10 +52,11 @@ from app.services.trial_config import (
     ABSTRACT_PLACES,
     BLHS_DOCUMENT,
     BLTTHS_DOCUMENT,
-    DEFAULT_COURT_NAME,
     THINKING_LEVEL_DECISION,
     CrimeConfig,
+    court_name,
     get_crime,
+    procuracy_name,
 )
 from app.services.trial_legal_pack import LegalPack, build_pack, fetch_payloads, missing_keys, pack_request_for_crime
 from app.services.trial_metrics import TrialCallRecorder
@@ -115,7 +123,7 @@ def _assemble_case(draft: CaseDraft, options: CaseOptions, knobs: CaseKnobs, set
     participants = assign_names(court_people + people, seed)
     return CaseFile(
         crime_key=options.crime_key, options=options, knobs=knobs,
-        court=CourtInfo(name=settings.trial_court_name or DEFAULT_COURT_NAME,
+        court=CourtInfo(name=court_name(settings),
                         hearing_date=hearing.strftime("%d/%m/%Y"), venue=ABSTRACT_PLACES[0]),
         incident_date=incident.strftime("%d/%m/%Y"), participants=participants, draft=draft,
     )
@@ -142,6 +150,8 @@ async def create_case(options: CaseOptions, settings: Settings, qdrant_client: Q
     ) if a is not None)
     frame = frame or build_frame(crime, options, knobs, rng)
     schema = fill_schema(frame)
+    court = court_name(settings)
+    constants = frame_text(frame) + "\n" + offices_text(court, procuracy_name(court))
     errors_per_attempt: list[list[str]] = []
     retry_errors: list[str] | None = None
     previous_draft: str | None = None
@@ -150,7 +160,7 @@ async def create_case(options: CaseOptions, settings: Settings, qdrant_client: Q
         if attempt == MAX_GENERATION_ATTEMPTS and time.monotonic() - started > THIRD_ATTEMPT_MAX_ELAPSED:
             break
         prompt = build_case_generation_prompt(
-            constants=frame_text(frame), victim_present=options.victim_present, places=list(ABSTRACT_PLACES),
+            constants=constants, victim_present=options.victim_present, places=list(ABSTRACT_PLACES),
             incident_date=incident.strftime("%d/%m/%Y"), hearing_date=hearing.strftime("%d/%m/%Y"),
             legal_text=legal_text, retry_errors=retry_errors, previous_draft=previous_draft,
         )
@@ -163,7 +173,7 @@ async def create_case(options: CaseOptions, settings: Settings, qdrant_client: Q
         try:
             fill = json.loads(result.text)
             draft = CaseDraft.model_validate(normalise_draft_dict(fill_to_draft(fill, frame)))
-            errors = validate_case_draft(draft, options, crime, pack, knobs)
+            errors = validate_case_draft(draft, options, crime, pack, knobs, court=court)
         except (ValueError, ValidationError, TypeError, AttributeError) as error:
             fill, draft, errors = None, None, [f"JSON không hợp lệ theo schema: {type(error).__name__}"]
         errors_per_attempt.append(errors)

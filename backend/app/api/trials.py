@@ -49,6 +49,7 @@ from app.services.trial_case_service import CaseGenerationFailed, create_case, l
 from app.services.trial_config import (
     ABANDON_AFTER_DAYS,
     CRIMES,
+    DEFAULT_GLOBAL_DAILY_CASE_LIMIT,
     MAX_ACTIVE_SESSIONS,
     MAX_CASES_PER_DAY,
     get_crime,
@@ -71,7 +72,8 @@ from app.services.trial_session_service import (
     verdict_json,
 )
 from app.services.trial_state_machine import (
-    PHASE1_USER_ROLES,
+    ENABLED_USER_ROLES,
+    OBSERVER_ROLE,
     STEP_BY_NUMBER,
     TrialConflict,
     UserAction,
@@ -110,6 +112,8 @@ GUARD_PAUSE_TEXT = ("Hội đồng xét xử tạm nghỉ ít phút để kiểm
 CREATE_FAILED_TEXT = "Chưa dựng được hồ sơ vụ án hợp lệ. Bạn vui lòng thử lại."
 RECORD_STATUS_TEXT = "Đang lập biên bản..."
 TURN_FAILED_TEXT = "Xin lỗi, đã có lỗi xảy ra trong phiên tòa. Bạn vui lòng bấm \"Tiếp tục\" để thử lại."
+GLOBAL_LIMIT_TEXT = ("Hôm nay hệ thống đã tạo đủ số vụ án mô phỏng cho phép. Bạn vui lòng quay lại vào ngày mai; "
+                     "các phiên tòa đang dở vẫn tiếp tục được bình thường.")
 
 
 def get_trial_repository(request: Request) -> TrialRepository:
@@ -134,6 +138,10 @@ def _not_found() -> HTTPException:
 def _today_start_utc() -> datetime:
     local = datetime.now(VIETNAM_TZ)
     return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+
+
+def global_daily_case_limit(settings: Settings) -> int:
+    return getattr(settings, "trial_global_daily_case_limit", DEFAULT_GLOBAL_DAILY_CASE_LIMIT)
 
 
 def _stale_cutoff() -> datetime:
@@ -268,7 +276,7 @@ async def list_trials(request: Request, current_user: AuthUser = Depends(require
     config = TrialConfigOut(
         crimes=[TrialCrimeOut(crime_key=c.key, crime_name=c.crime_name, dieu=c.dieu, allowed_khoan=list(c.allowed_khoan))
                 for c in CRIMES.values()],
-        user_roles=sorted(PHASE1_USER_ROLES),
+        user_roles=sorted(ENABLED_USER_ROLES),
         limits=TrialLimitsOut(max_cases_per_day=MAX_CASES_PER_DAY, max_active_sessions=MAX_ACTIVE_SESSIONS,
                               max_witnesses=MAX_WITNESSES, abandon_after_days=ABANDON_AFTER_DAYS),
         remaining=TrialRemainingOut(cases_today=max(0, MAX_CASES_PER_DAY - cases_today),
@@ -301,6 +309,11 @@ async def create_trial(body: TrialCreateRequest, request: Request,
     if await asyncio.to_thread(repo.count_active_sessions, user_id) >= MAX_ACTIVE_SESSIONS:
         return _error(status.HTTP_429_TOO_MANY_REQUESTS, "trial_active_session_limit",
                       f"Chỉ được có tối đa {MAX_ACTIVE_SESSIONS} phiên tòa đang dở dang.")
+    # System-wide cost cap, checked last so a user's own limits are reported first. Only creation
+    # is refused: sessions already running keep playing (their turns never come through here).
+    if await asyncio.to_thread(repo.count_all_cases_since, _today_start_utc()) >= global_daily_case_limit(settings):
+        logger.warning("Trial global daily case limit reached")
+        return _error(status.HTTP_429_TOO_MANY_REQUESTS, "trial_global_daily_limit", GLOBAL_LIMIT_TEXT)
 
     telemetry.start_request(user_id, source="trial")
     telemetry.set_path("trial_create")
@@ -472,7 +485,8 @@ async def trial_record(session_id: uuid.UUID, request: Request,
     if ctx.state.status != "completed":
         return _conflict("not_completed", str(session_id), ctx)
     record = build_record(ctx.case, ctx.transcript, _as_datetime(session.get("created_at")),
-                          _as_datetime(session.get("completed_at")), summary=ctx.record_summary)
+                          _as_datetime(session.get("completed_at")), summary=ctx.record_summary,
+                          observer=session["user_role"] == OBSERVER_ROLE)
     return TrialRecordResponse(session_id=session_id, text=render_record_text(record), record=record)
 
 

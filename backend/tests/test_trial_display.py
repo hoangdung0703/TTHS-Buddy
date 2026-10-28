@@ -13,14 +13,13 @@ from datetime import datetime, timezone
 from app.models.trial import CaseDraft, Participant
 from app.services.trial_anonymise import anonymise_case_view, anonymise_text, display_names
 from app.services.trial_case_validator import lacks_diacritics, normalise_draft_dict, validate_case_draft
-from app.services.trial_config import get_crime
+from app.services.trial_config import DEFAULT_COURT_NAME, LEGACY_COURT_PLACEHOLDER, get_crime, procuracy_name
 from app.services.trial_names import assign_names, short_name
 from app.services.trial_record import (
     NOTICE_LINE,
-    PROSECUTOR_PLACEHOLDER,
+    OBSERVER_NOTE,
     build_record,
     indictment_reference,
-    prosecutor_office,
     render_record_text,
 )
 from app.services.trial_session_service import student_case_view
@@ -267,10 +266,27 @@ class RecordTests(unittest.TestCase):
         self.assertTrue(self.text.startswith(NOTICE_LINE) and self.text.endswith(NOTICE_LINE))
 
     def test_prosecutor_office(self):
-        self.assertEqual(prosecutor_office("Tòa án nhân dân khu vực 1 - tỉnh X"),
+        self.assertEqual(procuracy_name("Tòa án nhân dân khu vực 1 - tỉnh X"),
                          "Viện kiểm sát nhân dân khu vực 1 - tỉnh X")
-        from app.services.trial_config import DEFAULT_COURT_NAME
-        self.assertEqual(prosecutor_office(DEFAULT_COURT_NAME), PROSECUTOR_PLACEHOLDER)
+        # No "[giả định]" placeholder any more: unset or legacy names use the default court.
+        self.assertEqual(procuracy_name(DEFAULT_COURT_NAME), "Viện kiểm sát nhân dân khu vực 1, tỉnh X")
+        self.assertEqual(procuracy_name(LEGACY_COURT_PLACEHOLDER), "Viện kiểm sát nhân dân khu vực 1, tỉnh X")
+
+    def test_record_uses_configured_offices_and_marks_observer_sessions(self):
+        fields = {f.label: f for f in self.record.opening}
+        self.assertEqual(self.record.court_name, self.case.court.name)
+        self.assertEqual(fields["Bị Viện kiểm sát"].value, procuracy_name(self.case.court.name))
+        self.assertFalse(fields["Bị Viện kiểm sát"].simulated)
+        self.assertNotIn("[giả định]", self.text)
+        self.assertEqual(self.record.preamble, [])
+        legacy = self.case.model_copy(update={"court": self.case.court.model_copy(
+            update={"name": LEGACY_COURT_PLACEHOLDER})})
+        observed = build_record(legacy, [], None, None, observer=True)
+        self.assertEqual(observed.court_name, DEFAULT_COURT_NAME)
+        self.assertEqual(observed.preamble, [OBSERVER_NOTE])
+        text = render_record_text(observed)
+        self.assertTrue(text.startswith(NOTICE_LINE + "\n" + OBSERVER_NOTE))
+        self.assertNotIn("chờ nhóm luật", text)
 
 
 if __name__ == "__main__":

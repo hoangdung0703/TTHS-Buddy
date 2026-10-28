@@ -9,6 +9,10 @@ Each step is data (StepSpec) holding its slots in the order the law prescribes. 
 ROLE that acts in it; at runtime a slot whose role equals the student's role is a student turn and
 every other slot is an AI turn. One script therefore serves every role - adding the Bị cáo or Chủ
 tọa role later needs UI for that role's actions, not a new engine.
+
+Người xem (chặng R1, design doc Mục 11.1) is a role with no participant id: every slot is an AI
+slot, the student only advances between steps, and the đối đáp of step 8 becomes a fixed number of
+AI rounds (AI_DEBATE_ROUNDS), each speech a separate AI turn.
 """
 from __future__ import annotations
 
@@ -22,12 +26,15 @@ Role = Literal["chu_toa", "hoi_tham", "thu_ky", "ksv", "luat_su", "bi_cao", "bi_
 SlotKind = Literal["template", "segment", "speech", "indictment", "qa_loop", "long_speech", "debate",
                    "deliberation"]
 Requirement = Literal["witnesses", "victim_present", "related_party"]
+# Roles a student may take (the database check of migration 0013 allows the same list).
+UserRole = Literal["chu_toa", "thu_ky", "ksv", "luat_su", "bi_cao", "nguoi_xem"]
 
 ROLE_LABELS: dict[str, str] = {
     "chu_toa": "Chủ tọa", "hoi_tham": "Hội thẩm", "thu_ky": "Thư ký", "ksv": "Kiểm sát viên",
     "luat_su": "Luật sư bào chữa", "bi_cao": "Bị cáo", "bi_hai": "Bị hại",
     "nguoi_lam_chung": "Người làm chứng", "nguoi_lq": "Người có quyền lợi, nghĩa vụ liên quan",
     "hdxx": "Hội đồng xét xử",
+    "nguoi_xem": "Người xem",
 }
 
 # Participant ids per role; witnesses expand to NLC_1..NLC_n.
@@ -37,7 +44,12 @@ ROLE_TO_IDS: dict[str, tuple[str, ...]] = {
     "nguoi_lq": ("NLQ",), "hdxx": ("CHU_TOA", "HOI_THAM_1", "HOI_THAM_2"),
 }
 LAY_IDS_PREFIXES = ("BI_CAO", "BI_HAI", "NLC_", "NLQ")
-PHASE1_USER_ROLES: frozenset[str] = frozenset({"ksv", "luat_su"})
+# Roles whose stage is enabled: the API accepts no other (config.user_roles is built from this).
+ENABLED_USER_ROLES: frozenset[str] = frozenset({"ksv", "luat_su", "nguoi_xem"})
+# Observes only: no participant id, never speaks, every slot is an AI slot.
+OBSERVER_ROLE = "nguoi_xem"
+# Đối đáp when neither side is the student: KSV then luật sư per round (decision 2026-10-29, item 3).
+AI_DEBATE_ROUNDS = 1
 
 
 @dataclass(frozen=True)
@@ -53,6 +65,8 @@ class SlotSpec:
     min_chars: int = 0
     # Debate only: the other side.
     opponent: Role | None = None
+    # The slot exists only when the student's role is in this set; None = every role (Mục 11.0a).
+    user_roles: frozenset[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -145,7 +159,7 @@ class CaseShape:
 
 @dataclass(frozen=True)
 class SessionState:
-    user_role: Role
+    user_role: UserRole
     shape: CaseShape
     current_step: int = 1
     slot_index: int = 0
@@ -166,12 +180,14 @@ class TrialConflict(Exception):
         self.state = state
 
 
-def active_slots(step: int, shape: CaseShape) -> tuple[SlotSpec, ...]:
-    return tuple(s for s in STEP_BY_NUMBER[step].slots if shape.satisfies(s.requires))
+def active_slots(step: int, shape: CaseShape, user_role: str | None = None) -> tuple[SlotSpec, ...]:
+    """Slots of `step` for this case shape and, when given, this student role (SlotSpec.user_roles)."""
+    return tuple(s for s in STEP_BY_NUMBER[step].slots if shape.satisfies(s.requires)
+                 and (s.user_roles is None or user_role is None or user_role in s.user_roles))
 
 
 def current_slot(state: SessionState) -> SlotSpec | None:
-    slots = active_slots(state.current_step, state.shape)
+    slots = active_slots(state.current_step, state.shape, state.user_role)
     return slots[state.slot_index] if state.slot_index < len(slots) else None
 
 
@@ -204,8 +220,19 @@ def _enter(state: SessionState) -> SessionState:
     return replace(state, pending_ai=False)
 
 
-def new_session(user_role: Role, shape: CaseShape) -> SessionState:
-    if user_role not in PHASE1_USER_ROLES:
+def is_ai_debate(slot: SlotSpec, user_role: str) -> bool:
+    """A debate neither side of which is the student: AI_DEBATE_ROUNDS rounds of AI speeches."""
+    return slot.kind == "debate" and not is_user_slot(slot, user_role)
+
+
+def debate_speaker_role(slot: SlotSpec, speeches_done: int) -> str:
+    """AI-AI debate: the slot's own role (KSV) opens each round, the opponent answers."""
+    assert slot.opponent is not None
+    return slot.role if speeches_done % 2 == 0 else slot.opponent
+
+
+def new_session(user_role: UserRole, shape: CaseShape) -> SessionState:
+    if user_role not in ENABLED_USER_ROLES:
         raise ValueError(f"Role not enabled: {user_role}")
     return _enter(SessionState(user_role=user_role, shape=shape))
 
@@ -293,6 +320,8 @@ def apply_user_action(state: SessionState, action: UserAction) -> ActionOutcome:
         raise TrialConflict("step_mismatch", state)
     if awaiting(state) != "user":
         raise TrialConflict("not_your_turn", state)
+    if state.user_role == OBSERVER_ROLE and action.kind != "advance":
+        raise TrialConflict("action_not_allowed", state)
     slot = current_slot(state)
 
     if action.kind == "advance":
@@ -355,6 +384,11 @@ def complete_ai_turn(state: SessionState) -> SessionState:
             moved = replace(state, slot_user_turns=turns, pending_ai=False, version=state.version + 1)
             return _next_slot(moved) if turns >= slot.max_user_turns else moved
         return replace(state, pending_ai=False, version=state.version + 1)
+    if is_ai_debate(slot, state.user_role):
+        # slot_user_turns counts the AI speeches here; the state is stored after each one.
+        speeches = state.slot_user_turns + 1
+        if speeches < 2 * AI_DEBATE_ROUNDS:
+            return replace(state, slot_user_turns=speeches, version=state.version + 1)
     return _next_slot(state)
 
 

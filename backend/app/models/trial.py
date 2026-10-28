@@ -26,7 +26,8 @@ TRIAL_DISCLAIMER = (
     "Nhân vật và tình tiết đều là giả định."
 )
 
-UserRole = Literal["ksv", "luat_su"]  # phase 1 roles; trial_state_machine knows the full set
+# Roles a stored case may record; which ones a NEW case may use is trial_state_machine.ENABLED_USER_ROLES.
+UserRole = Literal["ksv", "luat_su", "nguoi_xem"]
 EvidenceType = Literal["vat_chung", "giam_dinh", "dinh_gia", "tai_lieu"]
 Gender = Literal["nam", "nu"]
 PleaValue = Literal["nhan_toan_bo", "nhan_mot_phan", "choi_toi"]

@@ -6,7 +6,7 @@ statement in order, the end time and the signatures of Thư ký and Chủ tọa.
 is the transcript arranged into the form, so it can never contain a line nobody said.
 - Only data the system holds is used (case file, participants, utterances, session timestamps).
   A field with no data is None, which the frontend shows as the form's dotted blank; a value the
-  simulation assigns by code (hearing date, venue, prosecutor office, "công khai") is flagged
+  simulation assigns by code (hearing date, venue, "công khai") is flagged
   `simulated`.
 - Full names everywhere (the panel's anonymisation does not apply here).
 - Order-keeping notices (kind="notice") are not part of the record.
@@ -29,7 +29,7 @@ from app.models.trial_api import (
     TrialRecordSection,
     TrialRecordSignature,
 )
-from app.services.trial_config import DEFAULT_COURT_NAME
+from app.services.trial_config import DEFAULT_COURT_NAME, LEGACY_COURT_PLACEHOLDER, procuracy_name
 from app.services.trial_names import render
 from app.services.trial_state_machine import ROLE_LABELS
 from app.services.trial_turn_service import Utterance, role_of
@@ -39,7 +39,8 @@ NOTICE_LINE = f"*** {TRIAL_DISCLAIMER.upper()} ***"
 FORM_REFERENCE = ("Mẫu số 22-HS (Ban hành kèm theo Nghị quyết số 05/2017/NQ-HĐTP ngày 19 tháng 9 năm 2017 "
                   "của Hội đồng Thẩm phán Tòa án nhân dân tối cao)")
 BLANK = "......"
-PROSECUTOR_PLACEHOLDER = "Viện kiểm sát nhân dân [giả định]"
+# Outside the form, first line of a Người xem record (design doc Mục 11.1.5).
+OBSERVER_NOTE = "Phiên tòa mô phỏng do hệ thống đóng mọi vai; người học quan sát."
 
 # Hearing steps -> numbered items of form part IV ("Phần tranh tụng tại phiên tòa"); the last
 # element is the record_summary key for the items that may be summarised.
@@ -76,12 +77,10 @@ def _vn_datetime(date_ddmmyyyy: str, moment: datetime) -> str:
     return f"{moment:%H} giờ {moment:%M} phút ngày {int(day)} tháng {int(month)} năm {year}"
 
 
-def prosecutor_office(court_name: str) -> str:
-    """The prosecutor office paired with the configured court; a placeholder while the court name
-    itself is still a placeholder (design doc Mục 9 item 4)."""
-    if court_name != DEFAULT_COURT_NAME and court_name.startswith("Tòa án nhân dân "):
-        return "Viện kiểm sát nhân dân " + court_name.removeprefix("Tòa án nhân dân ")
-    return PROSECUTOR_PLACEHOLDER
+def court_office(case: CaseFile) -> str:
+    """The court printed on the record. Cases from before chặng R1 stored a placeholder; they show
+    the default court instead."""
+    return DEFAULT_COURT_NAME if case.court.name == LEGACY_COURT_PLACEHOLDER else case.court.name
 
 
 def indictment_reference(indictment: str) -> tuple[str | None, str | None]:
@@ -104,12 +103,11 @@ def _opening(case: CaseFile, start: datetime) -> list[TrialRecordField]:
     number, date = indictment_reference(case.draft.indictment_text)
     return [
         TrialRecordField(label="Vào hồi", value=_vn_datetime(case.court.hearing_date, start), simulated=True),
-        TrialRecordField(label="Tại", value=f"trụ sở {case.court.name}, {case.court.venue}", simulated=True),
-        TrialRecordField(label="Tòa án", value=case.court.name),
+        TrialRecordField(label="Tại", value=f"trụ sở {court_office(case)}, {case.court.venue}", simulated=True),
+        TrialRecordField(label="Tòa án", value=court_office(case)),
         TrialRecordField(label="Mở phiên tòa để xét xử sơ thẩm vụ án hình sự đối với bị cáo",
                          value=names["BI_CAO"].name),
-        TrialRecordField(label="Bị Viện kiểm sát", value=prosecutor_office(case.court.name),
-                         simulated=prosecutor_office(case.court.name) == PROSECUTOR_PLACEHOLDER),
+        TrialRecordField(label="Bị Viện kiểm sát", value=procuracy_name(court_office(case))),
         TrialRecordField(label="Truy tố về tội", value=case.draft.charge.crime_name),
         TrialRecordField(label="Theo", value=_charge_text(case)),
         TrialRecordField(label="Tại Cáo trạng số", value=number),
@@ -120,7 +118,7 @@ def _opening(case: CaseFile, start: datetime) -> list[TrialRecordField]:
 
 def _court_section(case: CaseFile) -> TrialRecordSection:
     n = case.participants
-    office = prosecutor_office(case.court.name)
+    office = procuracy_name(court_office(case))
     return TrialRecordSection(heading="I. Những người tiến hành tố tụng", fields=[
         TrialRecordField(label="Thẩm phán - Chủ tọa phiên tòa", value=_named(n["CHU_TOA"])),
         TrialRecordField(label="Các Hội thẩm nhân dân",
@@ -183,12 +181,14 @@ def _debate_item(case: CaseFile, utterances: list[Utterance], heading: str, step
 
 
 def build_record(case: CaseFile, utterances: list[Utterance], started_at: datetime | None,
-                 completed_at: datetime | None, summary: dict | None = None) -> TrialRecordOut:
+                 completed_at: datetime | None, summary: dict | None = None,
+                 observer: bool = False) -> TrialRecordOut:
     start = (started_at or datetime.now(timezone.utc)).astimezone(VIETNAM_TZ)
     end = (completed_at or datetime.now(timezone.utc)).astimezone(VIETNAM_TZ)
     names = case.participants
     return TrialRecordOut(
-        disclaimer=TRIAL_DISCLAIMER, form_reference=FORM_REFERENCE, court_name=case.court.name,
+        disclaimer=TRIAL_DISCLAIMER, form_reference=FORM_REFERENCE, preamble=[OBSERVER_NOTE] if observer else [],
+        court_name=court_office(case),
         national_header=["CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", "Độc lập - Tự do - Hạnh phúc"],
         title="BIÊN BẢN", subtitle="PHIÊN TÒA HÌNH SỰ SƠ THẨM",
         opening=_opening(case, start),
@@ -238,7 +238,7 @@ def _section_lines(section: TrialRecordSection, top: bool) -> list[str]:
 def render_record_text(record: TrialRecordOut) -> str:
     """Plain-text rendering for copy/print. Headings of the form's parts are in capitals (the
     frontend styles capitalised lines as headings)."""
-    lines = [NOTICE_LINE, "", record.court_name.upper(), *[h.upper() for h in record.national_header], "",
+    lines = [NOTICE_LINE, *record.preamble, "", record.court_name.upper(), *[h.upper() for h in record.national_header], "",
              record.title, record.subtitle, ""]
     lines += [_field_line(f) for f in record.opening]
     for section in record.sections:

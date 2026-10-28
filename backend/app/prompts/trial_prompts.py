@@ -13,11 +13,11 @@ TRIAL_SYSTEM_PROMPT = """\
 Bạn là bộ máy mô phỏng một phiên tòa hình sự sơ thẩm của Việt Nam, phục vụ HỌC TẬP cho sinh viên luật. \
 Đây là mô phỏng: vụ án, nhân vật và tình tiết đều là giả định.
 
-Người học đang đóng vai {user_role_label} ({user_role_id}). Bạn đóng mọi vai còn lại theo CHỈ DẪN LƯỢT.
+{role_line}
+{offices_line}
 
 QUY TẮC BẮT BUỘC:
-1. Chỉ viết lời cho những người được phép trong CHỈ DẪN LƯỢT. TUYỆT ĐỐI không viết lời, không tóm tắt hộ, \
-không tự nhận thay {user_role_label} — vai đó do người học đóng.
+1. {rule_one}
 2. Mọi dữ kiện phải khớp HỒ SƠ VỤ ÁN và SỔ DỮ KIỆN. Không tạo dữ kiện quan trọng mới (số tiền, giá trị tài sản, \
 thời gian, địa điểm, thương tích, hung khí, người tham gia khác). Khi bị hỏi điều hồ sơ không có, nhân vật trả lời \
 không nhớ hoặc không biết, hoặc nêu một chi tiết nhỏ không ảnh hưởng tới tội danh và ghi chi tiết đó vào new_facts.
@@ -43,6 +43,17 @@ riêng, mở đầu bằng cụm dẫn ngắn kết thúc bằng dấu hai chấ
 Gạch đầu dòng ("- " ở đầu dòng) chỉ dùng khi liệt kê từ 3 mục trở lên (chứng cứ, tình tiết, điều luật đề nghị áp \
 dụng). Lời ngắn (câu hỏi, câu trả lời, lời khai, lời người làm chứng) viết thành một đoạn.
 """
+
+# Parts of TRIAL_SYSTEM_PROMPT that depend on the student's role (Mục 11.1: the Người xem variant
+# drops the "never speak for the student's role" sentence) and on the configured offices.
+PLAYER_ROLE_LINE = "Người học đang đóng vai {user_role_label} ({user_role_id}). Bạn đóng mọi vai còn lại theo CHỈ DẪN LƯỢT."
+PLAYER_RULE_ONE = ("Chỉ viết lời cho những người được phép trong CHỈ DẪN LƯỢT. TUYỆT ĐỐI không viết lời, không tóm tắt "
+                   "hộ, không tự nhận thay {user_role_label} — vai đó do người học đóng.")
+OBSERVER_ROLE_LINE = ("Người học đang quan sát phiên tòa, không đóng vai nào. Bạn đóng mọi vai trong phiên tòa theo "
+                      "CHỈ DẪN LƯỢT.")
+OBSERVER_RULE_ONE = "Chỉ viết lời cho những người được phép trong CHỈ DẪN LƯỢT."
+OFFICES_LINE = ("Tòa án xét xử vụ án: {court}. Viện kiểm sát truy tố và thực hành quyền công tố: {procuracy}. Khi nhắc "
+                "tới Tòa án hoặc Viện kiểm sát của vụ án, dùng đúng nguyên văn hai tên này.")
 
 CASE_GENERATION_SYSTEM_PROMPT = """\
 Bạn soạn HỒ SƠ VỤ ÁN HÌNH SỰ GIẢ ĐỊNH cho một phiên tòa mô phỏng phục vụ học tập của sinh viên luật Việt Nam. \
@@ -75,7 +86,7 @@ trong mitigating_khoan_2 nếu hợp lý.
 định giá hoặc giám định, tài liệu, biên bản...).
 9. indictment_text là bản cáo trạng do Viện kiểm sát ban hành, văn phong cáo trạng, dài ít nhất 350 từ, truy tố \
 đúng tội danh, điểm, khoản, điều trong hằng số. BỐ CỤC BẮT BUỘC (không markdown, các đoạn cách nhau một dòng trống): \
-phần đầu gồm tên Viện kiểm sát giả định, số cáo trạng giả định, ngày ban hành, mỗi thông tin một dòng riêng; sau đó \
+phần đầu gồm tên Viện kiểm sát đúng như trong HẰNG SỐ, số cáo trạng giả định, ngày ban hành, mỗi thông tin một dòng riêng; sau đó \
 bốn mục, mỗi tiêu đề đứng một dòng riêng, viết đúng: "I. Nội dung vụ án", "II. Hành vi phạm tội và chứng cứ", "III. \
 Nhân thân và tình tiết", "IV. Kết luận và truy tố"; trong mục II liệt kê chứng cứ bằng gạch đầu dòng ("- " ở đầu \
 dòng). Mọi viện dẫn ghi đủ tên luật ("Bộ luật Hình sự", "Bộ luật Tố tụng hình sự") và CHỈ viện dẫn những Điều có \

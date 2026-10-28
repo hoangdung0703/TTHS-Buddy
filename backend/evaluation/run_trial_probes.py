@@ -24,7 +24,11 @@ to --out for a human reader.
     summary call: tokens, latency, guard labels, verbatim fallbacks. 2 calls are kept for the
     summary under the cap.
 
-Usage (from backend/):  ../.venv/bin/python -m evaluation.run_trial_probes --out <dir> [--format|--summary]
+--observer (chặng R1): 3 full Người xem hearings (seeds 9201-9203, Điều 173/134/174) with the biên bản
+summary: calls, tokens, latency, guard labels, paragraph layout of long speeches, overlap of the AI-AI
+đối đáp with luận tội/bào chữa, completeness of the Mẫu 22-HS record. Records go to --out/observer.
+
+Usage (from backend/):  ../.venv/bin/python -m evaluation.run_trial_probes --out <dir> [--format|--summary|--observer]
 """
 from __future__ import annotations
 
@@ -51,6 +55,7 @@ from app.services.trial_metrics import TrialCallRecorder
 from app.services.trial_names import render
 from app.services.trial_rule9 import extract_citations
 from app.services.trial_session_service import shape_of
+from app.services.trial_record import build_record, render_record_text
 from app.services.trial_state_machine import STEPS, UserAction, awaiting, current_slot, new_session
 from app.services.trial_text_format import INDICTMENT_SECTIONS, indictment_sections, paragraphs
 from app.services.trial_record_summary import section_sources, summarise_record
@@ -477,6 +482,133 @@ async def format_main(out: Path, cap: int) -> int:
     return 0
 
 
+# Chặng R1: full Người xem hearings on fresh seeds, one per crime.
+OBSERVER_CONFIGS = (
+    (9201, CaseOptions(crime_key="blhs_173", user_role="nguoi_xem", victim_present=True, witness_count=1)),
+    (9202, CaseOptions(crime_key="blhs_134", user_role="nguoi_xem", victim_present=True, witness_count=2)),
+    (9203, CaseOptions(crime_key="blhs_174", user_role="nguoi_xem", victim_present=False, witness_count=1,
+                       has_related_party=True)),
+)
+
+OBSERVER_SESSION_WORST_CASE = 2   # one AI turn (attempt + one regeneration) checked before each turn
+
+
+def _jaccard(a: str, b: str) -> float:
+    left, right = set(a.casefold().split()), set(b.casefold().split())
+    return round(len(left & right) / len(left | right), 3) if left | right else 0.0
+
+
+def _record_complete(record) -> dict:
+    """Mẫu 22-HS parts the code must always fill: I-IV (with IV.1-IV.4), closing, signatures, appendix."""
+    headings = [s.heading.split(".")[0] for s in record.sections]
+    debate = record.sections[-1].subsections
+    return {"parts_I_IV": headings == ["I", "II", "III", "IV"], "iv_items": len(debate),
+            "iv_items_with_content": sum(1 for s in debate if s.entries or s.summary),
+            "signatures": len(record.signatures), "appendix_entries": len(record.appendix[0].entries) if record.appendix else 0,
+            "opening_blank": [f.label for f in record.opening if f.value is None],
+            "preamble": len(record.preamble)}
+
+
+async def _play_observer(seed: int, options: CaseOptions, settings, qdrant, cap: int, recorders: list,
+                         out: Path) -> dict:
+    case_recorder, recorder = TrialCallRecorder(), TrialCallRecorder()
+    recorders += [case_recorder, recorder]
+    if calls(recorders) + 3 > cap:
+        raise Cap("cap reached before case generation")
+    started = time.monotonic()
+    creation = await create_case(options, settings, qdrant, case_recorder, seed=seed)
+    row = {"seed": seed, "crime": options.crime_key, "case_attempts": creation.attempts,
+           "case_seconds": round(time.monotonic() - started, 1)}
+    ctx = TrialContext(case=creation.case, pack=creation.pack, state=new_session("nguoi_xem", shape_of(creation.case)),
+                       settings=settings, recorder=recorder)
+    events: list = []
+    steps_seen = []
+    while ctx.state.status == "active":
+        await ai_until_user(ctx, recorders, cap, events)
+        if ctx.state.status != "active":
+            break
+        steps_seen.append(ctx.state.current_step)
+        student(ctx, "advance", target_step=ctx.state.current_step + 1)
+    steps_seen.append(ctx.state.current_step)
+    if calls(recorders) + SUMMARY_RESERVE > cap:
+        raise Cap("cap reached before the record summary")
+    ctx.record_summary = await summarise_record(ctx)
+    if any(f.startswith("error:HTTPStatusError") for f in ctx.record_summary["flags"]):
+        raise Cap("Gemini error during the record summary - stopped")
+    record = build_record(ctx.case, ctx.transcript, None, None, summary=ctx.record_summary, observer=True)
+
+    long_keys = {(6, "KSV"): "luan_toi", (7, "LUAT_SU"): "bao_chua", (8, "KSV"): "doi_dap_KSV",
+                 (8, "LUAT_SU"): "doi_dap_LUAT_SU", (11, "CHU_TOA"): "tuyen_an"}
+    long_texts = {long_keys[(u.step, u.speaker_id)]: u.text for u in ctx.transcript
+                  if u.kind == "speech" and (u.step, u.speaker_id) in long_keys}
+    flags: dict[str, int] = {}
+    for u in ctx.transcript:
+        for f in u.guard_flags:
+            flags[f.split(":")[0]] = flags.get(f.split(":")[0], 0) + 1
+    rejected: dict[str, int] = {}
+    for r in recorder.records:
+        if not r.accepted:
+            for label in {v.split(":")[0] for v in r.guard_violations}:
+                rejected[label] = rejected.get(label, 0) + 1
+    row.update({
+        "completed": ctx.state.status == "completed", "steps_reached": sorted(set(steps_seen)),
+        "hearing_calls": len(recorder.records), "case_calls": len(case_recorder.records),
+        "calls_by_type": {t: sum(1 for r in recorder.records if r.call_type == t)
+                          for t in sorted({r.call_type for r in recorder.records})},
+        "rejected_attempts": sum(not r.accepted for r in recorder.records), "rejected_labels": rejected,
+        "guard_pauses": [e["guard_pause"] for e in events if "guard_pause" in e],
+        "utterance_flags": flags, "is_user_utterances": sum(u.is_user for u in ctx.transcript),
+        "utterances": len(ctx.transcript),
+        "long_paragraphs": {k: len(paragraphs(v)) for k, v in long_texts.items()},
+        "debate_overlap": {"ksv_vs_luan_toi": _jaccard(long_texts.get("doi_dap_KSV", ""), long_texts.get("luan_toi", "")),
+                           "ls_vs_bao_chua": _jaccard(long_texts.get("doi_dap_LUAT_SU", ""),
+                                                      long_texts.get("bao_chua", ""))},
+        "summary_flags": ctx.record_summary["flags"],
+        "summary_sections": [k for k in ("iv2", "iv3") if ctx.record_summary.get(k)],
+        "record": _record_complete(record),
+    })
+    (out / "observer").mkdir(parents=True, exist_ok=True)
+    (out / "observer" / f"record_{seed}.txt").write_text(render_record_text(record), encoding="utf-8")
+    return row
+
+
+async def observer_main(out: Path, cap: int) -> int:
+    configure_logging("test")  # INFO + redaction; never DEBUG
+    settings = get_settings()
+    qdrant = create_qdrant_client(settings)
+    out.mkdir(parents=True, exist_ok=True)
+    recorders: list[TrialCallRecorder] = []
+    rows, stopped = [], None
+    for seed, options in OBSERVER_CONFIGS:
+        try:
+            rows.append(await _play_observer(seed, options, settings, qdrant, cap, recorders, out))
+        except (Cap, CaseGenerationFailed) as stop:
+            rows.append({"seed": seed, "crime": options.crime_key, "stopped": type(stop).__name__})
+            if isinstance(stop, Cap):
+                stopped = str(stop)
+                break
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code in (402, 429):
+                stopped = f"Gemini {error.response.status_code} - stopped"
+                break
+            raise
+    records = [r for rec in recorders for r in rec.records]
+    hearing = [r for rec in recorders for r in rec.records if r.call_type != "case_generation"]
+    latencies = [r.latency_seconds for r in hearing]
+    report = {
+        "gemini_calls": len(records), "cap": cap, "stopped": stopped,
+        "tokens": {"prompt": sum(r.prompt_tokens for r in records), "output": sum(r.output_tokens for r in records),
+                   "thinking": sum(r.thinking_tokens for r in records), "cached": sum(r.cached_tokens for r in records)},
+        "hearing_call_latency": {"median": statistics.median(latencies) if latencies else None, "p90": _p90(latencies)},
+        "long_latency": {"median": statistics.median([r.latency_seconds for r in hearing if r.call_type == "long_speech"] or [0]),
+                         "p90": _p90([r.latency_seconds for r in hearing if r.call_type == "long_speech"])},
+        "sessions": rows,
+    }
+    (out / "observer.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=1))
+    return 0
+
+
 async def main(out: Path, cap: int) -> int:
     configure_logging("test")  # INFO + redaction; never DEBUG
     settings = get_settings()
@@ -504,11 +636,12 @@ if __name__ == "__main__":
     parser.add_argument("--format", action="store_true", help="chặng 3D layout measurement")
     parser.add_argument("--summary", action="store_true", help="chặng 3E cases + full hearing + biên bản summary")
     parser.add_argument("--diacritics", action="store_true", help="chặng 3F: seed 5006 + 6001-6006")
+    parser.add_argument("--observer", action="store_true", help="chặng R1: 3 full Người xem hearings + biên bản")
     parser.add_argument("--reliability", type=int, metavar="SEED_BASE",
                         help="chặng 3G: 12 cases on SEED_BASE+1..+12, rule labels per attempt")
     args = parser.parse_args()
     if args.reliability is not None:
         sys.exit(asyncio.run(reliability_main(args.out, args.hard_cap, args.reliability)))
-    entry = (format_main if args.format else summary_main if args.summary else
+    entry = (observer_main if args.observer else format_main if args.format else summary_main if args.summary else
              diacritics_main if args.diacritics else main)
     sys.exit(asyncio.run(entry(args.out, args.hard_cap)))

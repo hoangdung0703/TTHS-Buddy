@@ -5,7 +5,9 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.services.trial_state_machine import ENABLED_USER_ROLES
 
 
 class _Strict(BaseModel):
@@ -15,10 +17,18 @@ class _Strict(BaseModel):
 class TrialCreateRequest(_Strict):
     """No free-text brief (decision 2026-10-19): only choices from the approved lists."""
     crime_key: str
-    user_role: Literal["ksv", "luat_su"]
+    user_role: str
     victim_present: bool = True
     witness_count: int = Field(default=1, ge=0, le=2)
     has_related_party: bool = False
+
+    @field_validator("user_role")
+    @classmethod
+    def _role_enabled(cls, value: str) -> str:
+        # Single source: a role is accepted only once its stage is enabled (config.user_roles).
+        if value not in ENABLED_USER_ROLES:
+            raise ValueError("user_role is not enabled")
+        return value
 
 
 class TrialTurnRequest(_Strict):
@@ -37,6 +47,16 @@ class TrialTextLimits(BaseModel):
     max: int
 
 
+class TrialProcedureNote(BaseModel):
+    """Static note on the current step (Người xem only). `reviewed` stays false until the legal team
+    has approved the text."""
+    step: int
+    title: str
+    text: str
+    legal_basis: list[str]
+    reviewed: bool
+
+
 class TrialStateOut(BaseModel):
     session_id: uuid.UUID
     current_step: int
@@ -47,6 +67,8 @@ class TrialStateOut(BaseModel):
     version: int
     # Character limits for the next "speak" in the current slot; null when speaking is not allowed.
     text_limits: TrialTextLimits | None = None
+    # Người xem only: the procedure note of current_step; null for every other role.
+    procedure_note: TrialProcedureNote | None = None
 
 
 class TrialUtteranceOut(BaseModel):
@@ -158,6 +180,8 @@ class TrialRecordOut(BaseModel):
     """Biên bản phiên tòa laid out after Mẫu số 22-HS (Nghị quyết 05/2017/NQ-HĐTP)."""
     disclaimer: str
     form_reference: str
+    # Lines outside the form shown right under the first simulation line (e.g. the Người xem note).
+    preamble: list[str] = []
     court_name: str
     national_header: list[str]
     title: str

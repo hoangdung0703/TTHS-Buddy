@@ -12,11 +12,13 @@ Checked here, against the case's real legal pack (not against model claims):
 - every person is 18-80 and no text mentions a minor;
 - no invented personal names (placeholders only), places from the abstract list;
 - mitigating/aggravating points exist in Điều 51/52;
-- every citation in the indictment passes the Rule 9 pair guard.
+- every citation in the indictment passes the Rule 9 pair guard;
+- the indictment names no Viện kiểm sát or Tòa án other than the configured ones (chặng R1).
 """
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterator
 
 from app.models.trial import CaseDraft, CaseKnobs, CaseOptions, PersonDraft
@@ -32,6 +34,7 @@ from app.services.trial_config import (
     MIN_PERSON_AGE,
     MIN_STATEMENT_WORDS,
     CrimeConfig,
+    procuracy_name,
 )
 from app.services.trial_legal_pack import LegalPack
 from app.services.trial_names import COURT_ROLES, NAME_LIKE_PATTERN, placeholders_in
@@ -395,6 +398,42 @@ def _check_knobs(draft: CaseDraft, knobs: CaseKnobs, errors: list[str]) -> None:
                                                   else "là null (bị cáo chưa bồi thường)"))
 
 
+# A named court or prosecutor office: the institution followed by a territorial level. "Tòa án nhân
+# dân tối cao" or "Viện kiểm sát cùng cấp" name no level from this list and are never flagged.
+_OFFICE_PATTERN = re.compile(
+    r"(viện kiểm sát nhân dân|tòa án nhân dân|toà án nhân dân)\s+"
+    r"(?:khu vực|tỉnh|thành phố|huyện|quận|thị xã|cấp cao|cấp tỉnh|cấp huyện)(?!\w)")
+
+
+def _fold(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFC", text).casefold().split())
+
+
+def office_name_mismatches(text: str, court: str) -> list[str]:
+    """Every court/prosecutor-office name in `text` that is not exactly the configured court or its
+    paired Viện kiểm sát (trial_config.procuracy_name). Case and whitespace are ignored."""
+    folded = _fold(text)
+    expected = {"tòa": _fold(court), "toà": _fold(court), "viện": _fold(procuracy_name(court))}
+    wrong: list[str] = []
+    for match in _OFFICE_PATTERN.finditer(folded):
+        name = expected[match.group(1).split()[0]]
+        if match.group(1).startswith("toà"):
+            name = name.replace("tòa", "toà", 1)
+        rest = folded[match.start():]
+        if rest.startswith(name) and not rest[len(name):len(name) + 1].isalnum():
+            continue
+        tail = re.match(r"(?:\s*[^\s.,;:]+){0,1}(?:,\s*(?:tỉnh|thành phố)\s+[^\s.,;:]+)?", folded[match.end():])
+        wrong.append(match.group(0) + (tail.group(0) if tail else ""))
+    return wrong
+
+
+def _check_offices(draft: CaseDraft, court: str, errors: list[str]) -> None:
+    expected = f"{procuracy_name(court)}\" / \"{court}"
+    for found in office_name_mismatches(draft.indictment_text, court):
+        errors.append(f"indictment_text: tên cơ quan tiến hành tố tụng phải viết đúng \"{expected}\", "
+                      f"không viết \"{found}\"")
+
+
 # Stable rule labels for validator messages (chặng 3G): measurements and logs keep the label only,
 # never the message, which can quote values of the generated case. First match wins.
 _ERROR_LABELS: tuple[tuple[str, str], ...] = (
@@ -443,6 +482,7 @@ _ERROR_LABELS: tuple[tuple[str, str], ...] = (
     (r"^Tình tiết tăng nặng phải", "knob_aggravating"),
     (r"^compensation_vnd phải", "knob_compensation"),
     (r"^indictment_text: viện dẫn", "indictment_citation"),
+    (r"^indictment_text: tên cơ quan", "office_name"),
     (r"viện dẫn điều luật không hợp lệ", "text_citation"),
 )
 _ERROR_LABEL_PATTERNS = tuple((re.compile(pattern), label) for pattern, label in _ERROR_LABELS)
@@ -453,9 +493,11 @@ def error_label(message: str) -> str:
 
 
 def validate_case_draft(draft: CaseDraft, options: CaseOptions, crime: CrimeConfig, pack: LegalPack,
-                        knobs: CaseKnobs | None = None) -> list[str]:
+                        knobs: CaseKnobs | None = None, court: str | None = None) -> list[str]:
     errors: list[str] = []
     _check_minimums(draft, errors)
+    if court is not None:
+        _check_offices(draft, court, errors)
     if knobs is not None:
         _check_knobs(draft, knobs, errors)
     _check_charge(draft, crime, pack, errors)

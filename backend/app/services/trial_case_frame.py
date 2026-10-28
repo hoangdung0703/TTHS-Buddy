@@ -103,6 +103,15 @@ def frame_text(frame: CaseFrame) -> str:
     return "\n".join(lines)
 
 
+def offices_text(court: str, procuracy: str) -> str:
+    """Constant lines naming the two offices (chặng R1): the indictment's header and every mention
+    of the court or the prosecutor office must use exactly these names."""
+    return (f"- Viện kiểm sát ban hành cáo trạng và truy tố: {procuracy}.\n"
+            f"- Tòa án xét xử sơ thẩm: {court}.\n"
+            "- Mọi chỗ nhắc tới Viện kiểm sát hoặc Tòa án của vụ án này (kể cả dòng đầu cáo trạng) phải viết đúng "
+            "nguyên văn hai tên trên; không nêu Viện kiểm sát hay Tòa án nào khác.")
+
+
 # --- Per-case response schema ---------------------------------------------------------------------
 
 _STR = {"type": "STRING"}

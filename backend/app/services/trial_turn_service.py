@@ -12,7 +12,8 @@ Guards on every AI output (one regeneration with feedback, then fail closed for 
 speaker in the enum and not the student's role; lay speakers cite no Điều; legal speakers pass the
 pair guard; no invented names or unknown placeholders; numbers (money, percent) match the case
 file or the fact ledger (soft: flagged on the utterance, no regeneration). "Speaks for the student" is measured
-only (decision 2026-10-19).
+only (decision 2026-10-19); structurally the student's id is never in the speaker enum. A court or
+prosecutor office named other than the configured ones is flagged `office_name` (measured, chặng R1).
 """
 from __future__ import annotations
 
@@ -28,6 +29,11 @@ from app.core.logging import get_logger
 from app.models.trial import VERDICT_RESPONSE_SCHEMA, CaseFile, Verdict
 from app.prompts.trial_prompts import (
     AI_QA_GOALS,
+    OBSERVER_ROLE_LINE,
+    OBSERVER_RULE_ONE,
+    OFFICES_LINE,
+    PLAYER_ROLE_LINE,
+    PLAYER_RULE_ONE,
     SLOT_INSTRUCTIONS,
     TRIAL_SYSTEM_PROMPT,
     TUYEN_AN_INSTRUCTION,
@@ -38,9 +44,17 @@ from app.services.trial_case_validator import (
     PERCENT_PATTERN,
     declared_amounts,
     declared_percents,
+    office_name_mismatches,
     parse_money,
 )
-from app.services.trial_config import BLHS_DOCUMENT, THINKING_LEVEL_DECISION, get_crime
+from app.services.trial_config import (
+    BLHS_DOCUMENT,
+    DEFAULT_COURT_NAME,
+    LEGACY_COURT_PLACEHOLDER,
+    THINKING_LEVEL_DECISION,
+    get_crime,
+    procuracy_name,
+)
 from app.services.trial_legal_pack import LegalPack
 from app.services.trial_metrics import CallRecord, TrialCallRecorder
 from app.services.trial_names import NAME_LIKE_PATTERN, placeholders_in
@@ -64,6 +78,8 @@ from app.services.trial_state_machine import (
     awaiting,
     complete_ai_turn,
     current_slot,
+    debate_speaker_role,
+    is_ai_debate,
     is_user_slot,
     skip_refusal_text,
     text_limits,
@@ -125,8 +141,15 @@ class TrialContext:
     record_summary: dict | None = None
 
     @property
-    def student_id(self) -> str:
-        return ROLE_TO_IDS[self.state.user_role][0]
+    def student_id(self) -> str | None:
+        """The student's participant id; None for Người xem, who plays no participant."""
+        ids = ROLE_TO_IDS.get(self.state.user_role)
+        return ids[0] if ids else None
+
+    @property
+    def court(self) -> str:
+        name = self.case.court.name
+        return DEFAULT_COURT_NAME if name == LEGACY_COURT_PLACEHOLDER else name
 
     def add(self, speaker_id: str, text: str, *, is_user: bool = False, kind: str = "speech",
             flags: list[str] | None = None, addressee: str | None = None) -> Utterance:
@@ -279,7 +302,12 @@ def _user_prompt(ctx: TrialContext, instruction: str, speakers: tuple[str, ...],
 
 
 def _system_prompt(ctx: TrialContext, base: str = TRIAL_SYSTEM_PROMPT) -> str:
-    return base.format(user_role_label=ROLE_LABELS[ctx.state.user_role], user_role_id="{" + ctx.student_id + "}")
+    offices = OFFICES_LINE.format(court=ctx.court, procuracy=procuracy_name(ctx.court))
+    if ctx.student_id is None:
+        return base.format(role_line=OBSERVER_ROLE_LINE, rule_one=OBSERVER_RULE_ONE, offices_line=offices)
+    role = {"user_role_label": ROLE_LABELS[ctx.state.user_role], "user_role_id": "{" + ctx.student_id + "}"}
+    return base.format(role_line=PLAYER_ROLE_LINE.format(**role), rule_one=PLAYER_RULE_ONE.format(**role),
+                       offices_line=offices)
 
 
 # --- Guards ---------------------------------------------------------------------------------------
@@ -337,9 +365,11 @@ def _check_utterance(ctx: TrialContext, speaker_id: str, text: str, allowed: tup
         violations.append("unknown_amount")
     if any(int(m.group(1)) not in percents for m in PERCENT_PATTERN.finditer(text)):
         violations.append("unknown_percent")
-    pattern = _SPEAKS_FOR_STUDENT.get(ctx.student_id)
+    pattern = _SPEAKS_FOR_STUDENT.get(ctx.student_id or "")
     if pattern and speaker_id != ctx.student_id and pattern.search(text):
         flags.append("speaks_for_student")
+    if office_name_mismatches(text, ctx.court):
+        flags.append("office_name")
     return violations, flags
 
 
@@ -565,6 +595,15 @@ async def _dispatch(ctx: TrialContext, slot: SlotSpec) -> list[Utterance]:
         speaker = ROLE_TO_IDS[slot.role][0]
         return [await _generate_speech(ctx, slot.key, SLOT_INSTRUCTIONS[slot.key].format(), speaker,
                                        mode="lenient", thinking_level=None)]
+    if is_ai_debate(slot, state.user_role):
+        # One speech per AI turn; each answers the other side's latest view (the bào chữa for the
+        # first KSV speech).
+        side = debate_speaker_role(slot, state.slot_user_turns)
+        other = slot.opponent if side == slot.role else slot.role
+        speaker = ROLE_TO_IDS[side][0]
+        instruction = SLOT_INSTRUCTIONS["doi_dap"].format(
+            speaker_id="{" + speaker + "}", opponent_label=ROLE_LABELS[other])
+        return [await _generate_speech(ctx, slot.key, instruction, speaker, mode="lenient", thinking_level=None)]
     if slot.kind == "debate":
         speaker = "LUAT_SU" if state.user_role == "ksv" else "KSV"
         instruction = SLOT_INSTRUCTIONS["doi_dap"].format(

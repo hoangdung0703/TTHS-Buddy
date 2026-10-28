@@ -38,6 +38,7 @@ def _iso(moment: datetime) -> str:
 
 class TrialRepository(Protocol):
     def count_cases_since(self, user_id: str, since: datetime) -> int: ...
+    def count_all_cases_since(self, since: datetime) -> int: ...
     def count_active_sessions(self, user_id: str) -> int: ...
     def abandon_stale(self, user_id: str, cutoff: datetime) -> int: ...
     def insert_case(self, row: dict[str, Any]) -> str: ...
@@ -64,6 +65,13 @@ class SupabaseTrialRepository:
         response = execute_with_retry(
             lambda: self.client.table(CASES).select("id", count="exact").eq("user_id", user_id)
             .gte("created_at", _iso(since)), "trial: count cases")
+        return response.count or 0
+
+    def count_all_cases_since(self, since: datetime) -> int:
+        """Every user's cases (service role, no user filter): the system-wide daily cap."""
+        response = execute_with_retry(
+            lambda: self.client.table(CASES).select("id", count="exact").gte("created_at", _iso(since)),
+            "trial: count all cases")
         return response.count or 0
 
     def count_active_sessions(self, user_id: str) -> int:
@@ -166,6 +174,9 @@ class InMemoryTrialRepository:
 
     def count_cases_since(self, user_id: str, since: datetime) -> int:
         return sum(1 for c in self.cases.values() if c["user_id"] == user_id and c["created_at"] >= since)
+
+    def count_all_cases_since(self, since: datetime) -> int:
+        return sum(1 for c in self.cases.values() if c["created_at"] >= since)
 
     def count_active_sessions(self, user_id: str) -> int:
         return sum(1 for s in self.sessions.values() if s["user_id"] == user_id and s["status"] == "active")

@@ -51,10 +51,11 @@ class Settings(BaseSettings):
     # development only; not set on Render. Before 2026-10-18 all three were always on in production,
     # publishing every route, parameter and response shape of the API.
     enable_api_docs: bool = Field(default=False, alias="ENABLE_API_DOCS")
-    # "Phiên tòa giả định": the court name printed on simulated hearings and records. Left as a
-    # visible placeholder until the legal team confirms the post-2025 naming (see
-    # docs/phien-toa-gia-dinh/THIET-KE.md Mục 9); unset keeps that placeholder.
+    # "Phiên tòa giả định": the court name used in generated cases, prompts and records; the
+    # prosecutor office is derived from it. Unset: trial_config.DEFAULT_COURT_NAME.
     trial_court_name: str | None = Field(default=None, alias="TRIAL_COURT_NAME")
+    # Cases created per Vietnam calendar day across ALL users; POST /api/trials answers 429 above it.
+    trial_global_daily_case_limit: int = Field(default=100, ge=0, alias="TRIAL_GLOBAL_DAILY_CASE_LIMIT")
     # Feature flag for "Phiên tòa giả định". OFF by default: every /api/trials* route then answers
     # 404 exactly like an unknown path, so a deployment without the flag does not reveal the feature.
     trial_enabled: bool = Field(default=False, alias="TRIAL_ENABLED")

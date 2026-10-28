@@ -470,7 +470,7 @@ class TrialRouteTests(unittest.TestCase):
     def test_list_carries_config_and_remaining_quota(self):
         config = self.client.get("/api/trials").json()["config"]
         self.assertEqual({c["crime_key"] for c in config["crimes"]}, {"blhs_173", "blhs_174", "blhs_134", "blhs_171"})
-        self.assertEqual(config["user_roles"], ["ksv", "luat_su"])
+        self.assertEqual(config["user_roles"], ["ksv", "luat_su", "nguoi_xem"])
         self.assertEqual(config["limits"], {"max_cases_per_day": 5, "max_active_sessions": 3, "max_witnesses": 2,
                                             "abandon_after_days": 14})
         self.assertEqual(config["remaining"], {"cases_today": 5, "active_sessions": 3})
@@ -489,6 +489,75 @@ class TrialRouteTests(unittest.TestCase):
         self.assertEqual(self.client.get(f"/api/trials/{sid}").status_code, 404)
         self.assertEqual(self.repo.cases, {})
         self.assertEqual(self.repo.utterances, [])
+
+    # --- chặng R1: Người xem, global cap ------------------------------------------------------
+    def test_observer_full_hearing_advance_only(self):
+        sid, state = self.create(role="nguoi_xem")
+        seen_steps = []
+        while state["status"] == "active":
+            self.assertIsNone(state["text_limits"])
+            self.assertEqual(state["procedure_note"]["step"], state["current_step"])
+            self.assertFalse(state["procedure_note"]["reviewed"])
+            self.assertEqual(state["allowed_actions"], [f"advance:{state['current_step'] + 1}"])
+            seen_steps.append(state["current_step"])
+            speak = self.turn(sid, state, "speak", text="Tôi muốn phát biểu.")
+            self.assertEqual(speak.status_code, 409)
+            self.assertEqual(speak.json()["error"]["code"], "trial_action_not_allowed")
+            state, _ = self.act(sid, state, "advance", target_step=state["current_step"] + 1)
+        self.assertEqual(state["status"], "completed")
+        self.assertEqual(seen_steps, list(range(1, 11)))
+        detail = self.client.get(f"/api/trials/{sid}").json()
+        self.assertEqual(detail["user_role"], "nguoi_xem")
+        self.assertFalse(any(u["is_user"] for u in detail["utterances"]))
+        debate = [u["speaker_id"] for u in detail["utterances"] if u["step"] == 8 and u["kind"] == "speech"]
+        self.assertEqual(debate, ["KSV", "LUAT_SU"])
+        record = self.client.get(f"/api/trials/{sid}/record").json()
+        self.assertEqual(record["record"]["preamble"], ["Phiên tòa mô phỏng do hệ thống đóng mọi vai; người học quan sát."])
+        self.assertNotIn("guilty", json.dumps(detail))
+
+    def test_observer_sees_no_character_card_or_verdict(self):
+        sid, state = self.create(role="nguoi_xem")
+        while state["current_step"] < 11 and state["status"] == "active":   # past nghị án, before tuyên án
+            if state["current_step"] == 10 and state["allowed_actions"] == ["advance:11"]:
+                break
+            state, _ = self.act(sid, state, "advance", target_step=state["current_step"] + 1)
+        self.assertIsNotNone(self.repo.sessions[sid]["verdict_json"])   # decided, stored
+        body = self.client.get(f"/api/trials/{sid}").json()
+        dumped = json.dumps(body, ensure_ascii=False)
+        for hidden in ("stance", "knowledge", "demeanor", "role_brief", "defendant_plea", "verdict", "reasoning_summary",
+                       "penalty_months"):
+            self.assertNotIn(f'"{hidden}"', dumped)
+        for person in body["participants"].values():
+            self.assertEqual(set(person), {"id", "role", "name", "gender"})
+        ksv_sid, _ = self.create(role="ksv")
+        self.assertNotIn('"role_brief"', self.client.get(f"/api/trials/{ksv_sid}").text)
+        self.assertIsNone(self.client.get(f"/api/trials/{ksv_sid}").json()["state"]["procedure_note"])
+
+    def test_roles_of_later_stages_are_rejected(self):
+        for role in ("bi_cao", "thu_ky", "chu_toa"):
+            response = self.client.post("/api/trials", json={"crime_key": "blhs_173", "user_role": role})
+            self.assertEqual(response.status_code, 422, role)
+
+    def test_global_daily_limit_blocks_creation_only(self):
+        app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
+            gemini_chat_model="fake", trial_court_name=None, trial_enabled=True, trial_global_daily_case_limit=2)
+        sid, state = self.create()
+        self.repo.insert_case({"user_id": "22222222-2222-2222-2222-222222222222", "crime_key": "blhs_173"})
+        response = self.client.post("/api/trials", json={"crime_key": "blhs_173", "user_role": "ksv"})
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json()["error"]["code"], "trial_global_daily_limit")
+        self.assertIn("ngày mai", response.json()["error"]["message"])
+        state, _ = self.act(sid, state, "advance", target_step=2)   # the running hearing goes on
+        self.assertEqual(state["current_step"], 2)
+        # Yesterday's cases (Vietnam time) do not count.
+        for case in self.repo.cases.values():
+            case["created_at"] = trials_api._today_start_utc() - timedelta(minutes=1)
+        self.create()
+
+    def test_global_daily_limit_defaults_to_100(self):
+        self.assertEqual(trials_api.global_daily_case_limit(SimpleNamespace()), 100)
+        from app.core.config import Settings
+        self.assertEqual(Settings.model_fields["trial_global_daily_case_limit"].default, 100)
 
 
 if __name__ == "__main__":

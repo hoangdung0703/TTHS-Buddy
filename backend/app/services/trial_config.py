@@ -2,7 +2,7 @@
 
 Everything the legal team is expected to review lives here as plain data: the crime whitelist,
 which khoản of each crime a learning case may be built on, the value/injury bands that decide
-the khoản, the court name placeholder and the per-user limits. Code elsewhere reads these and
+the khoản, the court name and the limits. Code elsewhere reads these and
 never hardcodes a crime, a khoản or a threshold of its own.
 """
 from __future__ import annotations
@@ -20,9 +20,31 @@ LAW_SHORT_NAMES: dict[str, str] = {
     BLTTHS_DOCUMENT: "Bộ luật Tố tụng hình sự",
 }
 
-# Placeholder until the legal team confirms the court's name after the 2025 court reform
-# (design doc Mục 9 item 4). Overridable through Settings.trial_court_name.
-DEFAULT_COURT_NAME = "Tòa án nhân dân [tên Tòa án chờ nhóm luật xác nhận]"
+# Court of first instance for every learning case. BLTTHS Điều 268 khoản 1 (amended by Luật
+# 99/2025/QH15) gives Tòa án nhân dân khu vực first-instance jurisdiction over crimes whose highest
+# penalty bracket is at most 20 years; every allowed khoản below is (highest: 10 years, Điều 171
+# khoản 2). Luật Tổ chức TAND 34/2024 Điều 4 khoản 1 điểm c names the level; "khu vực 1, tỉnh X"
+# keeps the abstract province of ABSTRACT_PLACES. Overridable through TRIAL_COURT_NAME.
+DEFAULT_COURT_NAME = "Tòa án nhân dân khu vực 1, tỉnh X"
+COURT_PREFIX = "Tòa án nhân dân "
+PROCURACY_PREFIX = "Viện kiểm sát nhân dân "
+# Stored by cases generated before chặng R1; shown as the configured court instead.
+LEGACY_COURT_PLACEHOLDER = "Tòa án nhân dân [tên Tòa án chờ nhóm luật xác nhận]"
+
+
+def court_name(settings: object) -> str:
+    """The configured court name; unset or blank means DEFAULT_COURT_NAME."""
+    configured = (getattr(settings, "trial_court_name", None) or "").strip()
+    return configured or DEFAULT_COURT_NAME
+
+
+def procuracy_name(court: str) -> str:
+    """The prosecutor office paired with a court. BLTTHS Điều 239 khoản 1 ties the power to
+    prosecute to the court competent to try the case, so it is the same-level Viện kiểm sát:
+    "Tòa án nhân dân khu vực 1, tỉnh X" -> "Viện kiểm sát nhân dân khu vực 1, tỉnh X"."""
+    if not court.startswith(COURT_PREFIX) or court == LEGACY_COURT_PLACEHOLDER:
+        court = DEFAULT_COURT_NAME
+    return PROCURACY_PREFIX + court.removeprefix(COURT_PREFIX)
 
 # Abstract place names (decision 2026-10-19): never a real ward/province.
 ABSTRACT_PLACES: tuple[str, ...] = (
@@ -31,6 +53,9 @@ ABSTRACT_PLACES: tuple[str, ...] = (
 
 # Limits (decision 2026-10-19). Enforced by the session repository (chặng 2).
 MAX_CASES_PER_DAY = 5
+# Cases created per Vietnam calendar day by ALL users together (decision 2026-10-29, Mục 11.8 item
+# 22). Overridable through TRIAL_GLOBAL_DAILY_CASE_LIMIT.
+DEFAULT_GLOBAL_DAILY_CASE_LIMIT = 100
 MAX_ACTIVE_SESSIONS = 3
 ABANDON_AFTER_DAYS = 14
 
