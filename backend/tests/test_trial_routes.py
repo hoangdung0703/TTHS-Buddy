@@ -41,6 +41,12 @@ GOOD_VERDICT = {"guilty": True, "dieu": "173", "khoan": "1", "diem": [], "penalt
                 "civil_amount_vnd": None, "reasoning_summary": "Nhận định."}
 
 
+GOOD_SUMMARY = {"iv2": "Hội đồng xét xử và Kiểm sát viên hỏi {BI_CAO} về diễn biến vụ án; {BI_CAO} trình bày "
+                       "theo đúng hồ sơ.",
+                "iv3": "Kiểm sát viên {KSV} trình bày luận tội; luật sư {LUAT_SU} trình bày ý kiến bào chữa và đề "
+                       "nghị Hội đồng xét xử xem xét."}
+
+
 class FakeModel:
     """Valid output for whatever schema is asked, unless a test queued a bad one for that kind."""
 
@@ -48,9 +54,12 @@ class FakeModel:
         self.bad: dict[str, list[str]] = defaultdict(list)
         self.calls: list[str] = []
         self.delay = 0.0
+        self.fail: set[str] = set()    # kinds that raise instead of answering
 
     def kind(self, schema: dict, user_prompt: str) -> str:
         props = schema.get("properties", {})
+        if "iv2" in props:
+            return "record_summary"
         if "utterances" in props:
             return "dialogue"
         if "guilty" in props:
@@ -66,6 +75,8 @@ class FakeModel:
             time.sleep(self.delay)
         kind = self.kind(response_schema, user_prompt)
         self.calls.append(kind)
+        if kind in self.fail:
+            raise RuntimeError("fake model failure")
         if self.bad[kind]:
             text = self.bad[kind].pop(0)
         elif kind == "dialogue":
@@ -74,6 +85,8 @@ class FakeModel:
                                               for s in speakers[:3]], "new_facts": []}, ensure_ascii=False)
         elif kind == "verdict":
             text = json.dumps(GOOD_VERDICT)
+        elif kind == "record_summary":
+            text = json.dumps(GOOD_SUMMARY, ensure_ascii=False)
         elif kind == "tuyen_an":
             text = json.dumps({"text": GOOD_TUYEN_AN}, ensure_ascii=False)
         else:
@@ -143,6 +156,7 @@ class TrialRouteTests(unittest.TestCase):
         response = self.turn(sid, state, action, **kw)
         self.assertEqual(response.status_code, 200, response.text)
         events = sse(response)
+        self.last_events = events
         return next(d for e, d in reversed(events) if e == "state"), events
 
     def play_to(self, sid, state, until_step: int | None = None) -> dict:
@@ -182,9 +196,16 @@ class TrialRouteTests(unittest.TestCase):
         self.assertEqual(record.status_code, 200)
         text = record.json()["text"]
         self.assertEqual(text.count("MÔ PHỎNG HỌC TẬP"), 2)
-        self.assertIn("BIÊN BẢN PHIÊN TÒA", text)
-        self.assertIn("11. TUYÊN ÁN", text)
+        self.assertIn("PHIÊN TÒA HÌNH SỰ SƠ THẨM", text)
+        self.assertIn("IV. PHẦN TRANH TỤNG TẠI PHIÊN TÒA", text)
         self.assertNotIn("{BI_CAO}", text)
+        structured = record.json()["record"]
+        self.assertEqual([s["heading"][:4] for s in structured["sections"]], ["I. N", "II. ", "III.", "IV. "])
+        self.assertEqual(len(structured["sections"][3]["subsections"]), 4)
+        self.assertEqual(len(structured["signatures"]), 2)
+        # Full names in the record; abbreviated only in the panel's case_file.
+        defendant = self.client.get(f"/api/trials/{sid}").json()["participants"]["BI_CAO"]["name"]
+        self.assertIn(defendant, text)
         detail = self.client.get(f"/api/trials/{sid}").json()
         self.assertEqual(detail["state"]["status"], "completed")
         dumped = json.dumps(detail)
@@ -192,6 +213,39 @@ class TrialRouteTests(unittest.TestCase):
                        "defendant_plea"):
             self.assertNotIn(hidden, dumped)
         self.assertNotIn("{BI_CAO}", json.dumps(detail["case_file"]))   # names rendered
+
+    def test_record_summary_once_after_judgment(self):
+        sid, state = self.create()
+        state = self.play_to(sid, state)
+        self.assertEqual(state["status"], "completed")
+        statuses = [d["message"] for e, d in self.last_events if e == "status"]
+        self.assertEqual(statuses[-1], trials_api.RECORD_STATUS_TEXT)
+        self.assertEqual(self.fake.calls.count("record_summary"), 1)
+        stored = self.repo.sessions[sid]["verdict_json"]["record_summary"]
+        self.assertEqual(stored["flags"], [])
+        record = self.client.get(f"/api/trials/{sid}/record").json()["record"]
+        items = record["sections"][3]["subsections"]
+        self.assertEqual([i["content"] for i in items], ["verbatim", "summary", "summary", "verbatim"])
+        self.assertNotIn("{BI_CAO}", items[1]["summary"])
+        self.assertEqual(items[1]["entries"], [])
+        self.assertEqual(record["appendix"][0]["entries"][0]["step"], 11)
+        # Idempotent: reading the record (twice) and reloading the session never calls the model again.
+        self.client.get(f"/api/trials/{sid}/record")
+        self.client.get(f"/api/trials/{sid}")
+        self.assertEqual(self.fake.calls.count("record_summary"), 1)
+        self.assertEqual(self.client.get(f"/api/trials/{sid}").json()["state"]["status"], "completed")
+
+    def test_record_summary_failure_falls_back_to_verbatim(self):
+        self.fake.fail.add("record_summary")
+        sid, state = self.create()
+        state = self.play_to(sid, state)
+        self.assertEqual(state["status"], "completed")
+        self.assertNotIn("error", [e for e, _ in self.last_events])
+        stored = self.repo.sessions[sid]["verdict_json"]["record_summary"]
+        self.assertEqual(stored["flags"], ["error:RuntimeError"])
+        items = self.client.get(f"/api/trials/{sid}/record").json()["record"]["sections"][3]["subsections"]
+        self.assertEqual([i["content"] for i in items], ["verbatim"] * 4)
+        self.assertTrue(items[1]["entries"])
 
     def test_a_b_invented_or_wrong_code_citation_in_judgment_pauses_then_recovers(self):
         sid, state = self.create()

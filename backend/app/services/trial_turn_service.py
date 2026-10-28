@@ -68,6 +68,7 @@ from app.services.trial_state_machine import (
     skip_refusal_text,
     text_limits,
 )
+from app.services.trial_text_format import format_speech, format_utterance
 from app.services.trial_verdict_guard import check_verdict, normalise_verdict
 
 logger = get_logger(__name__)
@@ -120,6 +121,8 @@ class TrialContext:
     fact_ledger: list[dict[str, str]] = field(default_factory=list)
     verdict: Verdict | None = None
     verdict_flags: list[str] = field(default_factory=list)
+    # Biên bản summaries (trial_record_summary), stored inside verdict_json once computed.
+    record_summary: dict | None = None
 
     @property
     def student_id(self) -> str:
@@ -371,6 +374,8 @@ async def _generate_segment(ctx: TrialContext, slot_key: str, instruction: str,
             feedback = _feedback(["schema"])
             continue
         pack = context_pack(ctx, slot_key)
+        for utterance in out.utterances:  # layout by code, before the guards (content unchanged)
+            utterance.text = format_utterance(utterance.text)
         checked = [(u, *_check_utterance(ctx, u.speaker_id, u.text, speakers, pack=pack)) for u in out.utterances]
         violations = [v for _, vs, _ in checked for v in vs] or ([] if out.utterances else ["empty"])
         record.guard_violations = violations
@@ -408,7 +413,7 @@ async def _generate_speech(ctx: TrialContext, slot_key: str, instruction: str, s
             response_schema=_SPEECH_SCHEMA, thinking_level=thinking_level, temperature=SPEECH_TEMPERATURE,
         )
         try:
-            text = _SpeechOut.model_validate(json.loads(result.text)).text
+            text = format_speech(_SpeechOut.model_validate(json.loads(result.text)).text, multi_paragraph=True)
         except (ValueError, ValidationError):
             record.guard_violations, record.accepted, last = ["schema"], False, ["schema"]
             feedback = _feedback(["schema"])

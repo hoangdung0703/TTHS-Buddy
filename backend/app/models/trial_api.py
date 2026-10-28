@@ -116,9 +116,66 @@ class TrialDetailResponse(BaseModel):
     utterances: list[TrialUtteranceOut]
 
 
+class TrialRecordField(BaseModel):
+    label: str
+    # None = no data: the frontend shows the form's dotted blank. Never filled with invented facts.
+    value: str | None = None
+    # True when the value is assigned by code for the simulation (date, venue, prosecutor office...),
+    # not taken from the case file or the hearing.
+    simulated: bool = False
+
+
+class TrialRecordEntry(BaseModel):
+    """One utterance of the hearing, verbatim (full names)."""
+    seq: int
+    step: int
+    speaker_role: str
+    speaker_name: str
+    text: str
+
+
+class TrialRecordSection(BaseModel):
+    heading: str
+    # "summary": show `summary` (clerk's summary, chặng 3E) instead of `entries`; "verbatim": show
+    # `entries`. `summary_fallback` = a summary was attempted but failed its checks.
+    content: Literal["verbatim", "summary"] = "verbatim"
+    summary: str | None = None
+    summary_fallback: bool = False
+    fields: list[TrialRecordField] = []
+    entries: list[TrialRecordEntry] = []
+    # Fixed sentences of the form, e.g. "Hội đồng xét xử vào phòng nghị án để nghị án."
+    notes: list[str] = []
+    subsections: list[TrialRecordSection] = []
+
+
+class TrialRecordSignature(BaseModel):
+    title: str
+    note: str
+    name: str
+
+
+class TrialRecordOut(BaseModel):
+    """Biên bản phiên tòa laid out after Mẫu số 22-HS (Nghị quyết 05/2017/NQ-HĐTP)."""
+    disclaimer: str
+    form_reference: str
+    court_name: str
+    national_header: list[str]
+    title: str
+    subtitle: str
+    opening: list[TrialRecordField]
+    sections: list[TrialRecordSection]
+    closing: list[TrialRecordField]
+    signatures: list[TrialRecordSignature]
+    # Outside Mẫu 22-HS: the judgment as pronounced, verbatim from the transcript.
+    appendix: list[TrialRecordSection] = []
+
+
 class TrialRecordResponse(BaseModel):
     session_id: uuid.UUID
+    # Plain-text rendering of `record` (same paragraph convention as utterances), both simulation
+    # lines included: for copy and print.
     text: str
+    record: TrialRecordOut
 
 
 class TrialSessionEvent(BaseModel):

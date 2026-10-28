@@ -54,7 +54,8 @@ from app.services.trial_config import (
     get_crime,
 )
 from app.services.trial_metrics import TrialCallRecorder
-from app.services.trial_record import build_record
+from app.services.trial_record import build_record, render_record_text
+from app.services.trial_record_summary import summarise_record
 from app.services.trial_repository import SupabaseTrialRepository, TrialRepository, lock_deadline, utc_now
 from app.services.trial_rule9 import extract_citations
 from app.services.trial_session_service import (
@@ -67,6 +68,7 @@ from app.services.trial_session_service import (
     summary_out,
     utterance_out,
     utterance_rows,
+    verdict_json,
 )
 from app.services.trial_state_machine import (
     PHASE1_USER_ROLES,
@@ -106,6 +108,7 @@ MAX_CONSECUTIVE_GUARD_PAUSES = 3
 GUARD_PAUSE_TEXT = ("Hội đồng xét xử tạm nghỉ ít phút để kiểm tra lại nội dung theo đúng hồ sơ và quy định pháp "
                     "luật. Đề nghị bấm \"Tiếp tục\" để phiên tòa tiếp tục.")
 CREATE_FAILED_TEXT = "Chưa dựng được hồ sơ vụ án hợp lệ. Bạn vui lòng thử lại."
+RECORD_STATUS_TEXT = "Đang lập biên bản..."
 TURN_FAILED_TEXT = "Xin lỗi, đã có lỗi xảy ra trong phiên tòa. Bạn vui lòng bấm \"Tiếp tục\" để thử lại."
 
 
@@ -188,6 +191,18 @@ def _log_turn(ctx: TrialContext, produced: list[Utterance], action: str, student
     }))
 
 
+async def _summarise_and_store(repo: TrialRepository, user_id: str, session_id: str, ctx: TrialContext) -> None:
+    """Shielded so a client leaving during the call still gets the summary stored. Never raises."""
+    ctx.record_summary = await summarise_record(ctx)
+    try:
+        stored = await asyncio.to_thread(repo.update_state, user_id, session_id, ctx.state.version,
+                                         {"verdict_json": verdict_json(ctx)})
+    except Exception:  # noqa: BLE001 - the record falls back to verbatim
+        stored = False
+    if not stored:
+        logger.warning("Trial record summary not stored; the record stays verbatim")
+
+
 async def run_ai_stream(repo: TrialRepository, user_id: str, session_id: str, ctx: TrialContext,
                         first_events: list[str]) -> AsyncIterator[str]:
     """Runs every AI turn owed, persisting and emitting each one, until it is the student's turn.
@@ -218,6 +233,11 @@ async def run_ai_stream(repo: TrialRepository, user_id: str, session_id: str, ct
             _log_turn(ctx, produced, "ai", 0)
             for event in _events_for(produced, ctx):
                 yield event
+        if ctx.state.status == "completed" and ctx.record_summary is None:
+            # The session is already stored as completed; the summary only improves the biên bản.
+            yield _sse_format("status", ChatStreamStatusEvent(message=RECORD_STATUS_TEXT))
+            with telemetry.stage("record_summary"):
+                await asyncio.shield(_summarise_and_store(repo, user_id, session_id, ctx))
         yield _sse_format("state", _state_of(session_id, ctx))
         yield _sse_format("done", TrialDoneEvent())
     except (asyncio.CancelledError, GeneratorExit):
@@ -443,9 +463,9 @@ async def trial_record(session_id: uuid.UUID, request: Request,
     session, ctx = await _load(repo, current_user.user_id, session_id, settings, TrialCallRecorder())
     if ctx.state.status != "completed":
         return _conflict("not_completed", str(session_id), ctx)
-    text = build_record(ctx.case, ctx.transcript, _as_datetime(session.get("created_at")),
-                        _as_datetime(session.get("completed_at")))
-    return TrialRecordResponse(session_id=session_id, text=text)
+    record = build_record(ctx.case, ctx.transcript, _as_datetime(session.get("created_at")),
+                          _as_datetime(session.get("completed_at")), summary=ctx.record_summary)
+    return TrialRecordResponse(session_id=session_id, text=render_record_text(record), record=record)
 
 
 def _as_datetime(value) -> datetime | None:

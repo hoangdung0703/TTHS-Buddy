@@ -50,6 +50,23 @@ NAME_LIKE_PATTERN = re.compile(
 )
 
 
+# Lay participants: shown abbreviated in the case-file panel (trial_anonymise.py). Their short
+# forms must differ within a case, so assign_names keeps them apart.
+ANONYMISED_ID_PREFIXES = ("BI_CAO", "BI_HAI", "NLC_", "NLQ")
+
+
+def is_anonymised(person_id: str) -> bool:
+    return person_id.startswith(ANONYMISED_ID_PREFIXES)
+
+
+def short_name(full: str) -> str:
+    """Surname + middle names + initial of the given name: "Trần Đức Hùng" -> "Trần Đức H"."""
+    tokens = unicodedata.normalize("NFC", full).split()
+    if not tokens:
+        return full
+    return " ".join([*tokens[:-1], tokens[-1][0]])
+
+
 def normalise_name(name: str) -> str:
     return " ".join(unicodedata.normalize("NFC", name).split()).casefold()
 
@@ -69,20 +86,26 @@ def _excluded_hashes() -> frozenset[str]:
 def assign_names(people: list[tuple[str, str, str]], seed: int,
                  excluded: frozenset[str] | None = None) -> dict[str, Participant]:
     """`people` = [(id, role label, gender)]. Returns id -> Participant with a unique full name
-    no two people share a given name, and none whose hash is in the exclusion set."""
+    no two people share a given name, no two anonymised people share a short form, and none whose
+    hash is in the exclusion set."""
     rng = random.Random(seed)
     blocked = _excluded_hashes() if excluded is None else excluded
     used_given: set[str] = set()
+    used_short: set[str] = set()
     result: dict[str, Participant] = {}
     for person_id, role, gender in people:
+        anonymised = is_anonymised(person_id)
         for _ in range(500):
             given = rng.choice(GIVEN_NAMES[gender])
             full = f"{rng.choice(SURNAMES)} {rng.choice(MIDDLE_NAMES[gender])} {given}"
-            if given not in used_given and name_hash(full) not in blocked:
+            if (given not in used_given and name_hash(full) not in blocked
+                    and not (anonymised and short_name(full) in used_short)):
                 break
         else:  # pragma: no cover - pools are far larger than any case
             raise RuntimeError("Name pool exhausted")
         used_given.add(given)
+        if anonymised:
+            used_short.add(short_name(full))
         result[person_id] = Participant(id=person_id, role=role, name=full, gender=gender)
     return result
 
