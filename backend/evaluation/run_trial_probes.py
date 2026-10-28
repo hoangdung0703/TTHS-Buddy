@@ -202,10 +202,13 @@ def _slot_position(key: str) -> tuple[int, int]:
     return next((step.number, i) for step in STEPS for i, slot in enumerate(step.slots) if slot.key == key)
 
 
-async def _generate_cases(seed_offset: int, settings, qdrant, cap: int, recorders: list, out: Path,
+def _configs(seed_offset: int) -> list:
+    return [(seed + seed_offset, options, forced) for seed, options, forced in BIS_CONFIGS[:FORMAT_CASES]]
+
+
+async def _generate_cases(configs: list, settings, qdrant, cap: int, recorders: list, out: Path,
                           cases: list, case_rows: list) -> None:
-    for seed, options, forced in BIS_CONFIGS[:FORMAT_CASES]:
-        seed += seed_offset
+    for seed, options, forced in configs:
         if calls(recorders) + 2 > cap:
             raise Cap("cap reached before case generation")
         recorder = TrialCallRecorder()
@@ -218,10 +221,14 @@ async def _generate_cases(seed_offset: int, settings, qdrant, cap: int, recorder
         except CaseGenerationFailed as failure:
             case_rows.append({"seed": seed, "crime": options.crime_key, "ok": False,
                               "errors_per_attempt": failure.error_counts, "calls": len(recorder.records),
-                              "no_diacritics_caught": any(DIACRITIC_ERROR in e for es in failure.errors for e in es)})
+                              "labels_per_attempt": [r.guard_violations for r in recorder.records],
+                              **_tokens(recorder), "seconds": round(time.monotonic() - started, 1),
+                              "no_diacritics_caught": any(DIACRITIC_ERROR in e for es in failure.errors for e in es),
+                              "no_diacritics_last_attempt": any(DIACRITIC_ERROR in e for e in failure.errors[-1])})
             continue
         sections = indictment_sections(creation.case.draft.indictment_text)
         case_rows.append({"seed": seed, "crime": options.crime_key, "ok": True, "attempts": creation.attempts,
+                          "labels_per_attempt": [r.guard_violations for r in recorder.records], **_tokens(recorder),
                           "errors_per_attempt": [len(e) for e in creation.errors_per_attempt],
                           "no_diacritics_caught": any(DIACRITIC_ERROR in e for es in creation.errors_per_attempt
                                                       for e in es),
@@ -232,9 +239,34 @@ async def _generate_cases(seed_offset: int, settings, qdrant, cap: int, recorder
         (out / "cases" / f"case_{seed}.json").write_text(creation.case.model_dump_json(indent=1), encoding="utf-8")
 
 
+def _tokens(recorder: TrialCallRecorder) -> dict:
+    return {"prompt_tokens": sum(r.prompt_tokens for r in recorder.records),
+            "output_tokens": sum(r.output_tokens for r in recorder.records),
+            "thinking_tokens": sum(r.thinking_tokens for r in recorder.records)}
+
+
+def _p90(values: list[float]) -> float | None:
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(round(0.9 * (len(ordered) - 1))))] if ordered else None
+
+
 def _case_summary(case_rows: list) -> dict:
     ok = [r for r in case_rows if r["ok"]]
+    seconds = [r["seconds"] for r in case_rows if "seconds" in r]
+    label_table: dict[str, dict[str, int]] = {}
+    for r in case_rows:
+        for attempt, labels in enumerate(r.get("labels_per_attempt", []), 1):
+            for label in set(labels):
+                label_table.setdefault(label, {}).setdefault(f"attempt_{attempt}", 0)
+                label_table[label][f"attempt_{attempt}"] += 1
     return {"total": len(case_rows), "schema_ok": len(ok), "first_pass": sum(1 for r in ok if r["attempts"] == 1),
+            "calls_per_case": round(sum(r["calls"] for r in case_rows) / len(case_rows), 2) if case_rows else None,
+            "tokens_per_case_mean": {k: round(sum(r.get(k, 0) for r in case_rows) / len(case_rows))
+                                     for k in ("prompt_tokens", "output_tokens", "thinking_tokens")} if case_rows else None,
+            "seconds_all_median": statistics.median(seconds) if seconds else None, "seconds_all_p90": _p90(seconds),
+            "failed_cases": [{"seed": r["seed"], "crime": r["crime"], "labels": r.get("labels_per_attempt")}
+                             for r in case_rows if not r["ok"]],
+            "label_table": dict(sorted(label_table.items(), key=lambda kv: -sum(kv[1].values()))),
             "no_diacritics_caught": sum(1 for r in case_rows if r["no_diacritics_caught"]),
             "all_four_sections": sum(1 for r in ok if r["all_sections"]),
             "median_seconds": statistics.median(r["seconds"] for r in ok) if ok else None, "rows": case_rows}
@@ -284,7 +316,7 @@ async def summary_main(out: Path, cap: int) -> int:
     recorders: list[TrialCallRecorder] = []
     cases, case_rows, stopped, session = [], [], None, {}
     try:
-        await _generate_cases(SUMMARY_SEED_OFFSET, settings, qdrant, cap - SUMMARY_RESERVE, recorders, out, cases,
+        await _generate_cases(_configs(SUMMARY_SEED_OFFSET), settings, qdrant, cap - SUMMARY_RESERVE, recorders, out, cases,
                               case_rows)
         if cases:
             creation = cases[0]
@@ -329,6 +361,67 @@ async def summary_main(out: Path, cap: int) -> int:
     return 0
 
 
+RELIABILITY_CASES = 12
+
+
+def _reliability_configs(base: int) -> list:
+    """12 seeds base+1..base+12, cycling the A5-bis option mix (every crime, forced knobs)."""
+    return [(base + i, BIS_CONFIGS[(i - 1) % len(BIS_CONFIGS)][1], BIS_CONFIGS[(i - 1) % len(BIS_CONFIGS)][2])
+            for i in range(1, RELIABILITY_CASES + 1)]
+
+
+async def reliability_main(out: Path, cap: int, seed_base: int) -> int:
+    configure_logging("test")
+    settings = get_settings()
+    qdrant = create_qdrant_client(settings)
+    (out / "cases").mkdir(parents=True, exist_ok=True)
+    recorders: list[TrialCallRecorder] = []
+    cases, case_rows, stopped = [], [], None
+    try:
+        await _generate_cases(_reliability_configs(seed_base), settings, qdrant, cap, recorders, out, cases,
+                              case_rows)
+    except Cap as cap_hit:
+        stopped = str(cap_hit)
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code in (402, 429):
+            stopped = f"Gemini {error.response.status_code} - stopped"
+        else:
+            raise
+    report = {"gemini_calls": calls(recorders), "cap": cap, "stopped": stopped, "cases": _case_summary(case_rows)}
+    (out / f"reliability_{seed_base}.json").write_text(json.dumps(report, ensure_ascii=False, indent=1),
+                                                       encoding="utf-8")
+    print(json.dumps({k: v for k, v in report["cases"].items() if k != "rows"} | {
+        "gemini_calls": report["gemini_calls"], "stopped": stopped}, ensure_ascii=False, indent=1))
+    return 0
+
+
+# Chặng 3F: 5006 (no diacritics in chặng 3E) again, plus 6001-6006.
+DIACRITICS_CONFIGS = _configs(SUMMARY_SEED_OFFSET)[5:6] + _configs(4000)
+
+
+async def diacritics_main(out: Path, cap: int) -> int:
+    configure_logging("test")
+    settings = get_settings()
+    qdrant = create_qdrant_client(settings)
+    (out / "cases").mkdir(parents=True, exist_ok=True)
+    recorders: list[TrialCallRecorder] = []
+    cases, case_rows, stopped = [], [], None
+    try:
+        await _generate_cases(DIACRITICS_CONFIGS, settings, qdrant, cap, recorders, out, cases, case_rows)
+    except Cap as cap_hit:
+        stopped = str(cap_hit)
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code in (402, 429):
+            stopped = f"Gemini {error.response.status_code} - stopped"
+        else:
+            raise
+    report = {"gemini_calls": calls(recorders), "cap": cap, "stopped": stopped, "cases": _case_summary(case_rows),
+              "still_unaccented": sum(1 for r in case_rows if not r["ok"] and r["no_diacritics_last_attempt"])}
+    (out / "diacritics.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=1))
+    return 0
+
+
 async def format_main(out: Path, cap: int) -> int:
     configure_logging("test")
     settings = get_settings()
@@ -338,7 +431,7 @@ async def format_main(out: Path, cap: int) -> int:
     recorders: list[TrialCallRecorder] = []
     cases, case_rows, slot_rows, stopped = [], [], [], None
     try:
-        await _generate_cases(FORMAT_SEED_OFFSET, settings, qdrant, cap, recorders, out, cases, case_rows)
+        await _generate_cases(_configs(FORMAT_SEED_OFFSET), settings, qdrant, cap, recorders, out, cases, case_rows)
         for creation in cases[:FORMAT_SLOT_CASES]:
             case = creation.case
             for key, role in LONG_SLOTS:
@@ -410,6 +503,12 @@ if __name__ == "__main__":
     parser.add_argument("--hard-cap", type=int, default=30)
     parser.add_argument("--format", action="store_true", help="chặng 3D layout measurement")
     parser.add_argument("--summary", action="store_true", help="chặng 3E cases + full hearing + biên bản summary")
+    parser.add_argument("--diacritics", action="store_true", help="chặng 3F: seed 5006 + 6001-6006")
+    parser.add_argument("--reliability", type=int, metavar="SEED_BASE",
+                        help="chặng 3G: 12 cases on SEED_BASE+1..+12, rule labels per attempt")
     args = parser.parse_args()
-    entry = format_main if args.format else summary_main if args.summary else main
+    if args.reliability is not None:
+        sys.exit(asyncio.run(reliability_main(args.out, args.hard_cap, args.reliability)))
+    entry = (format_main if args.format else summary_main if args.summary else
+             diacritics_main if args.diacritics else main)
     sys.exit(asyncio.run(entry(args.out, args.hard_cap)))

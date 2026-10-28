@@ -277,6 +277,14 @@ async def list_trials(request: Request, current_user: AuthUser = Depends(require
     return TrialListResponse(sessions=[summary_out(r) for r in rows], config=config)
 
 
+@router.head("", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def probe_trials(request: Request, current_user: AuthUser = Depends(require_supabase_user)) -> Response:
+    """Feature probe for the frontend: 204 when TRIAL_ENABLED (the router dependency answers 404
+    otherwise). Unlike GET it runs no stale-session cleanup and no limit counting."""
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("")
 @limiter.limit(LLM_ROUTE_RATE_LIMIT)
 async def create_trial(body: TrialCreateRequest, request: Request,

@@ -27,7 +27,7 @@ except Exception as error:  # no .env in a fresh clone: app.main cannot build it
 from app.models.auth import AuthUser
 from app.services import trial_metrics
 from app.services.gemini_client import GeminiJsonResult
-from app.services.trial_case_service import CaseCreation, case_hash
+from app.services.trial_case_service import CaseCreation, CaseGenerationFailed, case_hash
 from app.services.trial_repository import InMemoryTrialRepository, utc_now
 from app.services.trial_session_service import build_context
 from tests.trial_fixtures import pack_for, valid_case_file, valid_options
@@ -124,6 +124,7 @@ class TrialRouteTests(unittest.TestCase):
             return CaseCreation(case=case, pack=pack_for("blhs_173"), case_hash=case_hash(case), attempts=1)
 
         trials_api.create_case, trials_api.load_pack_for_crime = fake_create, fake_pack
+        self._fake_create = fake_create
         app.dependency_overrides[trials_api.get_trial_repository] = lambda: self.repo
         app.dependency_overrides[require_supabase_user] = lambda: AuthUser(user_id=self.user, email=None, claims={})
         app.dependency_overrides[get_settings] = lambda: SimpleNamespace(gemini_chat_model="fake",
@@ -213,6 +214,30 @@ class TrialRouteTests(unittest.TestCase):
                        "defendant_plea"):
             self.assertNotIn(hidden, dumped)
         self.assertNotIn("{BI_CAO}", json.dumps(detail["case_file"]))   # names rendered
+
+    def test_failed_case_generation_uses_no_quota_and_leaves_nothing(self):
+        async def failing_create(*args, **kwargs):
+            raise CaseGenerationFailed([["x"], ["y"]])
+        trials_api.create_case = failing_create
+        for _ in range(trials_api.MAX_CASES_PER_DAY + 1):
+            response = self.client.post("/api/trials", json={"crime_key": "blhs_173", "user_role": "ksv"})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual([e for e, _ in sse(response)][-1], "error")
+        self.assertEqual((self.repo.cases, self.repo.sessions), ({}, {}))
+        listing = self.client.get("/api/trials").json()
+        self.assertEqual(listing["config"]["remaining"]["cases_today"], trials_api.MAX_CASES_PER_DAY)
+        self.assertEqual(listing["sessions"], [])
+        trials_api.create_case = self._fake_create
+        sid, state = self.create()                                   # quota still available
+        self.assertEqual(state["current_step"], 1)
+
+    def test_head_probe_runs_no_cleanup_or_counting(self):
+        calls = []
+        self.repo.abandon_stale = lambda *a: calls.append("abandon") or 0
+        self.repo.count_cases_since = lambda *a: calls.append("count") or 0
+        response = self.client.head("/api/trials")
+        self.assertEqual((response.status_code, response.content), (204, b""))
+        self.assertEqual(calls, [])
 
     def test_record_summary_once_after_judgment(self):
         sid, state = self.create()
@@ -440,6 +465,7 @@ class TrialRouteTests(unittest.TestCase):
             response = getattr(anonymous, method)(path, **({"json": body} if body is not None else {}))
             self.assertEqual(response.status_code, 404, (method, path))
             self.assertEqual(response.json(), anonymous.get("/api/no-such-route").json())
+        self.assertEqual(anonymous.head("/api/trials").status_code, 404)   # the frontend's flag probe
 
     def test_list_carries_config_and_remaining_quota(self):
         config = self.client.get("/api/trials").json()["config"]

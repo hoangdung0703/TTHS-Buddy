@@ -73,6 +73,22 @@ Migration: `backend/migrations/0012_mock_trials.sql`. Chạy tay, **chưa chạy
 - Đo 1 phiên KSV: 1 lời gọi, ~4,8K token vào, ~0,9K token ra, 3,3s; không guard nào kích hoạt; cả 2 mục được tóm tắt (~21% nguyên văn).
 - Seed 5001–5006: 5/6 vụ qua schema, 4/6 qua ngay lần đầu, trung vị 16,8s; 1 vụ bị bắt lỗi không dấu và lần sinh lại vẫn hỏng.
 
+## Chặng 3F — 28/10/2026
+
+- Prompt sinh vụ yêu cầu tiếng Việt có dấu đầy đủ. Lỗi "không dấu" thì sinh mới từ đầu, không sửa trên bản trước. Seed 5006 và 6001–6006: 5/7 vụ qua schema, 3/7 qua ngay lần đầu, 0 vụ còn không dấu, trung vị 18,3s. Hai vụ hỏng do các lỗi khác.
+- Vụ sinh thất bại không ghi gì vào DB và không tính vào hạn mức (đã có test). Thêm `HEAD /api/trials` để dò cờ.
+
+## Chặng 3G — độ tin cậy khi tạo vụ, 28/10/2026
+
+- Mỗi luật kiểm tra của validator có một nhãn cố định (`error_label`). Số đo và log chỉ ghi nhãn.
+- Trước khi sửa (seed 7001–7012): 9/12 vụ qua, 5/12 qua ngay lần đầu, trung vị 20,6s, p90 28,4s. Lỗi nhiều nhất: `money_mismatch` 4 lần, `statement_count` 3, `invented_name` 2.
+- Sửa:
+  - Lời khai trùng người được code gộp lại.
+  - Sửa theo trường: khi mọi lỗi đều nằm ở trường văn bản, chỉ nhờ model viết lại đúng các trường đó.
+  - Lần gọi thứ 3 chỉ chạy khi tổng thời gian còn dưới 30s.
+- Đo sau, bản đầu (seed 8001–8011, trần ngân sách chặn seed 8012): 7/11 vụ qua. Sửa theo trường không lần nào đạt: mỗi lần chỉ 1–4s và lỗi giữ nguyên, nghi do path trả về không khớp hoặc danh sách rỗng.
+- Đã chỉnh sau lần đo đó: chỉ sửa trường một lần; nếu không đạt thì sinh lại cả vụ như trước; path được chuẩn hóa; lần sửa không áp được gắn nhãn `repair_unapplied`. **Chưa đo lại** vì đã hết trần 40 lời gọi.
+
 Chỉnh thiết kế sau khi có số đo: xem báo cáo chặng 1. Tóm tắt các điểm chính:
 - Thêm trường khai báo các khoản tiền phụ cho guard số tiền (vụ 171 có người có quyền lợi liên quan fail vì điểm này).
 - Prompt của bài phát biểu dài ~17K token, lớn hơn ước tính; nên tỉa Phần chung BLHS theo từng bài.
@@ -526,3 +542,22 @@ Thêm mục điều hướng thứ 5 vào `NAV_ITEMS`: "Phiên tòa giả địn
 10. **Hạn mức:** 5 vụ án/ngày/user và tối đa 1 phiên đang chạy có hợp lý không? Phiên bỏ dở có tự chuyển `abandoned` sau N ngày không?
 11. **Lưu trữ:** lời thoại của sinh viên (luận tội, bào chữa) được lưu để dựng biên bản. Có cần thời hạn lưu hay nút xóa phiên không? Có được dùng ẩn danh cho đánh giá NCKH không?
 12. **Model:** tạo vụ án dùng model complex (`GEMINI_CHAT_MODEL_COMPLEX`, preview) với fallback sang model thường có được không, khi chi phí và độ trễ của nó cao hơn?
+
+## Chặng 3H — sinh vụ kiểu điền khung, 29/10/2026
+
+- Code chốt trước khung vụ (`trial_case_frame.py`): người tham gia (id, thứ tự, số người làm chứng), con số định giá hoặc giám định chính xác, số tiền bồi thường, tội danh, điều, khoản, điểm, lập trường bị cáo, các điểm tình tiết.
+- Model chỉ điền văn bản vào schema dựng theo từng vụ:
+  - lời khai nằm trong object của từng người, dạng mảng câu, tối thiểu 3 câu;
+  - người làm chứng: số phần tử đúng bằng số người;
+  - tình tiết: object có khóa đúng các điểm đã chọn;
+  - chứng cứ tối thiểu 4.
+- Code chuyển đầu ra về `CaseDraft`. Validator và mọi ngưỡng giữ nguyên.
+- Gỡ cơ chế sửa theo trường và gộp lời khai của 3G vì số đo không cho thấy lợi ích.
+- Seed 9001–9012:
+  - 12/12 vụ qua, 9/12 qua ngay lần đầu, 1,25 lời gọi mỗi vụ;
+  - trung vị 16,4s, p90 22,6s;
+  - trung bình mỗi lần tạo vụ ~5,4K token vào, ~3,6K token ra, ~1,6K token thinking;
+  - nhãn lỗi ở lần 1: `fact_id_unknown`, `money_mismatch`, `indictment_citation`, mỗi nhãn 1 lần.
+- Đạt mục tiêu (≥90%, trung vị ≤25s), nên không chạy phương án B (model mạnh hơn). Cấu hình `TRIAL_CASE_MODEL` vẫn có sẵn nếu sau này cần.
+- Không hạ ngưỡng nào.
+

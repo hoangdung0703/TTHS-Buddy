@@ -46,69 +46,58 @@ dụng). Lời ngắn (câu hỏi, câu trả lời, lời khai, lời người 
 
 CASE_GENERATION_SYSTEM_PROMPT = """\
 Bạn soạn HỒ SƠ VỤ ÁN HÌNH SỰ GIẢ ĐỊNH cho một phiên tòa mô phỏng phục vụ học tập của sinh viên luật Việt Nam. \
-Hồ sơ phải chặt chẽ, nhất quán và đủ chi tiết để xét hỏi, tranh luận và nghị án.
+Hệ thống đã quyết định sẵn khung vụ án (người tham gia, tội danh, điều, khoản, điểm, con số định giá hoặc giám định, \
+khoản bồi thường, lập trường bị cáo, các điểm tình tiết) trong mục HẰNG SỐ CỦA VỤ ÁN. Bạn chỉ viết nội dung vào \
+đúng các trường của schema, CHÉP NGUYÊN VĂN mọi hằng số, không đổi bất kỳ hằng số nào.
 
 QUY TẮC BẮT BUỘC:
-1. Chỉ dựng vụ án theo đúng tội danh, điều, khoản được giao. Điểm (nếu có) phải có thật trong khoản đó \
-theo văn bản luật được cung cấp. Không dùng điểm hoặc tình tiết liên quan người dưới 18 tuổi.
-2. Mọi người tham gia đều từ 18 tuổi trở lên. Không có người dưới 18 tuổi ở bất kỳ vai trò hay tình tiết nào.
-3. KHÔNG đặt tên người. Gọi người bằng placeholder: {BI_CAO}, {BI_HAI}, {NLC_1}, {NLC_2}, {NLQ}; người tiến hành \
-tố tụng: {CHU_TOA}, {KSV}, {THU_KY}, {LUAT_SU}. Không dùng tên người thật, tên tổ chức thật hay địa danh thật.
-4. Nơi cư trú của từng người do hệ thống gán, không cần ghi. Địa điểm trong các sự việc chỉ dùng các địa danh giả \
-định được cho (có thể kèm mô tả chung như "một quán cà phê tại phường A, tỉnh X"); không dùng địa danh thật.
-5. measure_value là con số quyết định khoản (giá trị tài sản bằng đồng, hoặc tỷ lệ tổn thương cơ thể %). Phải có \
-một chứng cứ kết luận định giá (type=dinh_gia, value_vnd) hoặc kết luận giám định (type=giam_dinh, injury_percent) \
-bằng đúng con số đó. Mọi số tiền và tỷ lệ % viết trong bất kỳ trường văn bản nào phải trùng với một giá trị đã khai \
-trong evidence, measure_value hoặc civil_claim; viết số tiền dạng 12.500.000 đồng.
-6. Tình tiết giảm nhẹ (Điều 51) và tăng nặng (Điều 52 Bộ luật Hình sự) chỉ dùng khoản, điểm có thật, và phải trỏ \
-tới fact_ids có thật. Có thể không có tình tiết tăng nặng.
-7. Lời khai giai đoạn điều tra (pretrial_statements) cho mỗi người tham gia; nên có 1-2 điểm mâu thuẫn nhỏ, hợp lý \
-để xét hỏi làm rõ. Thẻ nhân vật: stance (lập trường), knowledge (những gì người đó biết), demeanor (thái độ).
-8. indictment_text là bản cáo trạng do Viện kiểm sát ban hành, viết đầy đủ, văn phong cáo trạng, kết luận truy tố bị \
-cáo theo đúng điểm, khoản, điều đã giao. BỐ CỤC BẮT BUỘC (một chuỗi văn bản, không markdown, các đoạn cách nhau một \
-dòng trống): phần đầu gồm tên Viện kiểm sát giả định, số cáo trạng giả định, ngày ban hành, mỗi thông tin một dòng \
-riêng; sau đó bốn mục, mỗi tiêu đề đứng một dòng riêng, viết đúng: "I. Nội dung vụ án", "II. Hành vi phạm tội và \
-chứng cứ", "III. Nhân thân và tình tiết", "IV. Kết luận và truy tố"; trong mục II liệt kê chứng cứ bằng gạch đầu dòng \
-("- " ở đầu dòng), mỗi chứng cứ một dòng. Mọi viện dẫn ghi đủ tên luật ("Bộ luật Hình sự", \
-"Bộ luật Tố tụng hình sự") và CHỈ viện dẫn những Điều có trong mục VĂN BẢN LUẬT ĐƯỢC CUNG CẤP; không viện dẫn Điều \
-nào khác, kể cả khi cáo trạng thật thường viện dẫn.
-9. Yêu cầu tối thiểu: ít nhất 4 chứng cứ (vật chứng, kết luận định giá hoặc giám định, tài liệu, biên bản...); \
-cáo trạng (indictment_text) dài ít nhất 350 từ, có đủ bốn mục theo bố cục ở quy tắc 8; mỗi người tham gia có ĐÚNG MỘT lời khai giai đoạn điều tra, ít nhất 40 từ, nội dung riêng theo góc nhìn \
-của người đó (không lặp lại lời khai của người khác).
-10. Khoản tiền phụ: mọi số tiền khác ngoài measure_value, giá trị trong evidence, civil_claim và compensation_vnd \
-phải khai trong extra_amounts (label, amount_vnd, evidence_id nếu có). Gồm cả: giá bán lại tài sản, tiền bị cáo đã \
-tiêu, từng phần khi tài sản gồm nhiều món (điện thoại và tiền mặt...). Riêng số tiền mà một người khai KHÁC với hồ sơ \
-thì đặt trong một mục inconsistencies và ghi số đó vào claimed_amount_vnd của mục ấy (không cần khai lại ở chỗ khác). \
-Không viết ngưỡng tiền của điều luật trong các trường văn bản.
-11. Mỗi chứng cứ ghi fact_id là id của sự việc (F1, F2...) mà chứng cứ đó chứng minh. fact_ids của tình tiết giảm \
-nhẹ, tăng nặng là id SỰ VIỆC, không phải id chứng cứ.
-12. Các trường mã (id, person_id, claimant_id, fact_ids, charge.dieu, khoan, diem) viết trần, KHÔNG có ngoặc nhọn và \
-không có chữ "Điều/khoản/điểm": id người BI_CAO, BI_HAI, NLC_1...; sự việc F1, F2...; chứng cứ E1, E2...; dieu "173"; \
-khoan "1"; diem "c". Ngoặc nhọn chỉ dùng khi nhắc tới người BÊN TRONG văn bản, ví dụ "{BI_CAO} khai...".
+1. Mọi người tham gia đều từ 18 tuổi trở lên. Không có người dưới 18 tuổi ở bất kỳ vai trò hay tình tiết nào.
+2. KHÔNG đặt tên người. Trong văn bản, gọi người bằng placeholder có trong danh sách người tham gia, ví dụ {BI_CAO}, \
+{BI_HAI}, {NLC_1}; người tiến hành tố tụng: {CHU_TOA}, {KSV}, {THU_KY}, {LUAT_SU}. Không dùng tên người, tên tổ chức \
+hay địa danh thật.
+3. Nơi cư trú do hệ thống gán. Địa điểm trong các sự việc chỉ dùng các địa danh giả định được cho (có thể kèm mô tả \
+chung như "một quán cà phê tại phường A, tỉnh X").
+4. Số liệu: mọi số tiền và tỷ lệ % viết trong bất kỳ trường văn bản nào phải là hằng số đã cho, giá trị trong \
+evidence, civil_claim, hoặc đã khai trong extra_amounts; viết số tiền dạng 12.500.000 đồng. Phải có một chứng cứ \
+kết luận định giá (type=dinh_gia) hoặc kết luận giám định (type=giam_dinh) mang đúng con số trong hằng số. Không \
+viết ngưỡng tiền của điều luật trong văn bản.
+5. Khoản tiền phụ: mọi số tiền khác (giá bán lại, tiền bị cáo đã tiêu, từng món khi tài sản gồm nhiều món...) phải \
+khai trong extra_amounts. Riêng số tiền mà một người khai KHÁC với hồ sơ thì đặt trong inconsistencies của lời khai \
+người đó và ghi số đó vào claimed_amount_vnd.
+6. Lời khai giai đoạn điều tra: mỗi người có pretrial_statement.sentences gồm 4-6 câu hoàn chỉnh, tổng cộng ít nhất \
+45 từ, theo góc nhìn và lập trường riêng của người đó, không lặp lời khai của người khác; inconsistencies 0-2 điểm \
+mâu thuẫn nhỏ, hợp lý để xét hỏi. Thẻ nhân vật: stance (lập trường), knowledge (những gì người đó biết), demeanor \
+(thái độ).
+7. Tình tiết: mitigating_facts và aggravating_facts có đúng các điểm đã cho làm khóa; giá trị là danh sách id SỰ \
+VIỆC (F1, F2...) làm căn cứ cho điểm đó (không phải id chứng cứ). Có thể thêm tình tiết giảm nhẹ khoản 2 Điều 51 \
+trong mitigating_khoan_2 nếu hợp lý.
+8. Mỗi chứng cứ ghi fact_id là id của sự việc mà chứng cứ đó chứng minh. Ít nhất 4 chứng cứ (vật chứng, kết luận \
+định giá hoặc giám định, tài liệu, biên bản...).
+9. indictment_text là bản cáo trạng do Viện kiểm sát ban hành, văn phong cáo trạng, dài ít nhất 350 từ, truy tố \
+đúng tội danh, điểm, khoản, điều trong hằng số. BỐ CỤC BẮT BUỘC (không markdown, các đoạn cách nhau một dòng trống): \
+phần đầu gồm tên Viện kiểm sát giả định, số cáo trạng giả định, ngày ban hành, mỗi thông tin một dòng riêng; sau đó \
+bốn mục, mỗi tiêu đề đứng một dòng riêng, viết đúng: "I. Nội dung vụ án", "II. Hành vi phạm tội và chứng cứ", "III. \
+Nhân thân và tình tiết", "IV. Kết luận và truy tố"; trong mục II liệt kê chứng cứ bằng gạch đầu dòng ("- " ở đầu \
+dòng). Mọi viện dẫn ghi đủ tên luật ("Bộ luật Hình sự", "Bộ luật Tố tụng hình sự") và CHỈ viện dẫn những Điều có \
+trong mục VĂN BẢN LUẬT ĐƯỢC CUNG CẤP.
+10. Các trường mã (id sự việc F1, F2...; id chứng cứ E1, E2...; fact_id, fact_ids, claimant_id, evidence_id) viết \
+trần, không có ngoặc nhọn. claimant_id là id người, ví dụ BI_HAI. Ngoặc nhọn chỉ dùng khi nhắc tới người BÊN TRONG văn bản.
+11. Viết TOÀN BỘ bằng tiếng Việt CÓ DẤU đầy đủ (ví dụ "Viện kiểm sát nhân dân", không viết "Vien kiem sat nhan dan"), \
+kể cả tiêu đề, phần đầu cáo trạng và lời khai. Bản không dấu bị loại.
 """
 
 
-def build_case_generation_prompt(*, crime_name: str, dieu: str, allowed_khoan: list[str], band_text: str,
-                                 person_ids: list[str], victim_present: bool, witness_count: int,
-                                 has_related_party: bool, places: list[str], incident_date: str,
+def build_case_generation_prompt(*, constants: str, victim_present: bool, places: list[str], incident_date: str,
                                  hearing_date: str, legal_text: str, retry_errors: list[str] | None,
-                                 constraints: str = "", previous_draft: str | None = None) -> str:
+                                 previous_draft: str | None = None) -> str:
     parts = [
-        "=== YÊU CẦU VỤ ÁN ===",
-        f"Tội danh: {crime_name} (Điều {dieu} Bộ luật Hình sự). Khoản được phép: {', '.join(allowed_khoan)}.",
-        f"Quy tắc chọn khoản theo measure_value: {band_text}",
-        f"Danh sách người tham gia (đúng thứ tự id): {', '.join(person_ids)}.",
-        "Bị hại " + ("CÓ MẶT tại phiên tòa." if victim_present else
-                     "VẮNG MẶT tại phiên tòa và đã có đơn xin xét xử vắng mặt; lời khai của bị hại ở giai đoạn "
-                     "điều tra vẫn phải đầy đủ để công bố tại phiên tòa."),
-        f"Số người làm chứng: {witness_count}.",
-        "Có một người có quyền lợi, nghĩa vụ liên quan (id NLQ)." if has_related_party
-        else "Không có người có quyền lợi, nghĩa vụ liên quan (related_party = null).",
-        f"Địa danh giả định được dùng: {'; '.join(places)}.",
-        f"Ngày xảy ra vụ việc: {incident_date}. Ngày mở phiên tòa: {hearing_date}.",
-        "",
-        "=== RÀNG BUỘC BẮT BUỘC CỦA VỤ ÁN NÀY ===",
-        constraints,
+        "=== HẰNG SỐ CỦA VỤ ÁN (chép nguyên văn) ===",
+        constants,
+        "- Bị hại " + ("CÓ MẶT tại phiên tòa." if victim_present else
+                       "VẮNG MẶT tại phiên tòa và đã có đơn xin xét xử vắng mặt; lời khai của bị hại ở giai đoạn "
+                       "điều tra vẫn phải đầy đủ để công bố tại phiên tòa."),
+        f"- Địa danh giả định được dùng: {'; '.join(places)}.",
+        f"- Ngày xảy ra vụ việc: {incident_date}. Ngày mở phiên tòa: {hearing_date}.",
         "",
         "=== VĂN BẢN LUẬT ĐƯỢC CUNG CẤP ===",
         legal_text,
@@ -117,7 +106,7 @@ def build_case_generation_prompt(*, crime_name: str, dieu: str, allowed_khoan: l
         parts += ["", "=== BẢN TRƯỚC BỊ TỪ CHỐI VÌ CÁC LỖI SAU — SỬA HẾT ===",
                   *[f"- {e}" for e in retry_errors],
                   "Chỉ sửa đúng những chỗ có lỗi. GIỮ NGUYÊN mọi phần khác của bản trước, kể cả độ dài cáo trạng "
-                  "(ít nhất 350 từ), độ dài từng lời khai (ít nhất 40 từ), số chứng cứ và các RÀNG BUỘC BẮT BUỘC."]
+                  "(ít nhất 350 từ), độ dài từng lời khai (ít nhất 45 từ) và số chứng cứ."]
     if retry_errors and previous_draft:
         parts += ["", "=== BẢN TRƯỚC (JSON) ===", previous_draft]
     return "\n".join(parts)

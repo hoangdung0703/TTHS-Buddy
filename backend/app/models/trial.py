@@ -182,9 +182,10 @@ class CaseFile(_Strict):
     draft: CaseDraft
 
 
-# --- Gemini responseSchema for CaseDraft -------------------------------------------------------
-# Written by hand in Gemini's OpenAPI subset (STRING/INTEGER/OBJECT/ARRAY, enum, nullable): the
-# shape mirrors CaseDraft exactly; Pydantic remains the authority and rejects anything off.
+# --- Gemini responseSchema helpers ---------------------------------------------------------------
+# Written by hand in Gemini's OpenAPI subset (STRING/INTEGER/OBJECT/ARRAY, enum, nullable). The
+# case-generation schema is built per case (trial_case_frame.fill_schema, chặng 3H); Pydantic
+# remains the authority and rejects anything off.
 
 def _obj(properties: dict, required: list[str] | None = None, nullable: bool = False) -> dict:
     schema: dict = {"type": "OBJECT", "properties": properties,
@@ -195,48 +196,7 @@ def _obj(properties: dict, required: list[str] | None = None, nullable: bool = F
 
 
 _STR = {"type": "STRING"}
-_INT = {"type": "INTEGER"}
 _STR_LIST = {"type": "ARRAY", "items": _STR}
-
-# residence_place is NOT asked of the model: code assigns it from ABSTRACT_PLACES
-# (trial_case_validator.normalise_draft_dict), the same way names are assigned.
-_PERSON_PROPS = {
-    "id": _STR, "gender": {"type": "STRING", "enum": ["nam", "nu"]}, "age": _INT,
-    "occupation": _STR, "stance": _STR, "statement_summary": _STR,
-    "knowledge": _STR_LIST, "demeanor": _STR,
-}
-
-CASE_DRAFT_RESPONSE_SCHEMA: dict = _obj({
-    "title": _STR,
-    "incident_summary": _STR,
-    "defendant": _obj({**_PERSON_PROPS, "education": _STR, "prior_record": _STR, "preventive_measure": _STR}),
-    "victim": _obj(_PERSON_PROPS),
-    "witnesses": {"type": "ARRAY", "items": _obj(_PERSON_PROPS)},
-    "related_party": _obj(_PERSON_PROPS, nullable=True),
-    "facts": {"type": "ARRAY", "items": _obj({"id": _STR, "time": _STR, "place": _STR, "description": _STR})},
-    "evidence": {"type": "ARRAY", "items": _obj(
-        {"id": _STR, "type": {"type": "STRING", "enum": ["vat_chung", "giam_dinh", "dinh_gia", "tai_lieu"]},
-         "description": _STR, "value_vnd": {"type": "INTEGER", "nullable": True},
-         "injury_percent": {"type": "INTEGER", "nullable": True},
-         "fact_id": {"type": "STRING", "nullable": True}},
-        required=["id", "type", "description"])},
-    "pretrial_statements": {"type": "ARRAY", "items": _obj(
-        {"person_id": _STR, "summary": _STR, "inconsistencies": {"type": "ARRAY", "items": _obj(
-            {"text": _STR, "claimed_amount_vnd": {"type": "INTEGER", "nullable": True}}, required=["text"])}})},
-    "charge": _obj({"dieu": _STR, "khoan": _STR, "diem": _STR_LIST, "crime_name": _STR}),
-    "measure_value": _INT,
-    "defendant_plea": {"type": "STRING", "enum": ["nhan_toan_bo", "nhan_mot_phan", "choi_toi"]},
-    "compensation_vnd": {"type": "INTEGER", "nullable": True},
-    "extra_amounts": {"type": "ARRAY", "items": _obj(
-        {"label": _STR, "amount_vnd": _INT, "evidence_id": {"type": "STRING", "nullable": True}},
-        required=["label", "amount_vnd"])},
-    "mitigating": {"type": "ARRAY", "items": _obj({"khoan": _STR, "diem": _STR, "fact_ids": _STR_LIST})},
-    "aggravating": {"type": "ARRAY", "items": _obj({"khoan": _STR, "diem": _STR, "fact_ids": _STR_LIST})},
-    "civil_claim": _obj({"claimant_id": _STR, "amount_vnd": _INT, "basis": _STR}, nullable=True),
-    "indictment_text": _STR,
-}, required=["title", "incident_summary", "defendant", "victim", "witnesses", "facts", "evidence",
-             "pretrial_statements", "charge", "measure_value", "defendant_plea", "extra_amounts", "mitigating",
-             "aggravating", "indictment_text"])
 
 
 # --- Nghị án decision (step 10), kept hidden from the student until tuyên án ------------------

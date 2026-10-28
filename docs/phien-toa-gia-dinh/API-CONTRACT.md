@@ -33,6 +33,7 @@ Code thay đổi thì sửa file này cùng commit. Thiết kế tổng thể: `
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `frontend/.env.local` (đã có) | Đăng nhập Supabase, lấy access token |
 | `TRIAL_ENABLED` | backend (`.env`, Render) | `true` mới bật tính năng. Mặc định tắt |
 | `TRIAL_COURT_NAME` | backend | Tên Tòa án in trên phiên tòa và biên bản. Chưa đặt thì hiện chỗ giữ chỗ "[tên Tòa án chờ nhóm luật xác nhận]" |
+| `TRIAL_CASE_MODEL` | backend | Tùy chọn: model riêng chỉ cho bước tạo vụ án. Chưa đặt thì dùng `GEMINI_CHAT_MODEL`. Frontend không cần biết |
 
 **Frontend không có biến cờ riêng.** Để biết tính năng có bật không, gọi `GET /api/trials`: nhận 404 thì ẩn mục "Phiên tòa giả định" khỏi sidebar và chặn truy cập các trang `/trial*`.
 
@@ -69,6 +70,10 @@ Lỗi xảy ra **sau khi** SSE đã bắt đầu thì không có mã HTTP: serve
 ---
 
 ## 3. Các route
+
+### 3.0 `HEAD /api/trials` — dò cờ tính năng
+
+Trả `204` (không có body) khi tính năng bật và token hợp lệ; `404` khi `TRIAL_ENABLED` tắt (giống route không tồn tại, có hay không có token); `401` khi tính năng bật nhưng thiếu hoặc sai token. Route này **không** chạy bước dọn phiên quá hạn và **không** đếm hạn mức, nên rẻ hơn `GET`. Dùng để quyết định có hiện mục "Phiên tòa giả định" trong sidebar.
 
 ### 3.1 `GET /api/trials` — danh sách phiên + cấu hình
 
@@ -270,6 +275,8 @@ Thứ tự hiển thị: dòng mô phỏng → `court_name` (trái) và `nationa
 | `content` | `"summary"`: hiển thị `summary` (văn bản theo quy ước 4.1, đã có tên đầy đủ), kèm nhãn nhỏ "Tóm tắt". `"verbatim"`: hiển thị `entries`. Không có trường này hoặc `null` thì coi là `"verbatim"` |
 | `summary_fallback` | `true` = đã thử tóm tắt nhưng không đạt kiểm tra, nên dùng nguyên văn. Chỉ để thông tin; không cần báo lỗi cho người dùng |
 | `appendix` | **Ngoài mẫu**: lời tuyên án nguyên văn. Hiển thị sau phần chữ ký, có tiêu đề rõ là phụ lục, tách khỏi thân biên bản |
+| Thứ tự trong **một mục** (`sections[]`, `subsections[]`) | `heading` → `fields` → nội dung (`summary` nếu `content = "summary"`, nếu không thì `entries`) → `subsections` → `notes`. Tức là **notes đứng SAU nội dung**, ví dụ các câu "Hội đồng xét xử vào phòng nghị án..." nằm sau mục 4 của phần IV |
+| Thứ tự trong **phụ lục** (`appendix[]`) | Ngoại lệ: `heading` → `notes` → `entries`. `notes` ở đây là câu giới thiệu phụ lục nên đứng **TRƯỚC** lời tuyên án |
 | `sections[].entries` | Lời trong phiên, nguyên văn, theo `seq`. Phần III = bước 1–2. Phần IV chia 4 mục: 1 = bước 3, 2 = bước 4–5, 3 = bước 6–8, 4 = bước 9. `text` theo quy ước văn bản ở 4.1 |
 | `sections[].notes` | Câu cố định của mẫu. Theo hướng dẫn (29) của mẫu, biên bản **không chép phần quyết định** của bản án; lời tuyên án vẫn có trong `utterances` bước 11 |
 | `signatures` | Tên đầy đủ của Thư ký và Chủ tọa |

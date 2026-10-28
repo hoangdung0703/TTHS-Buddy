@@ -14,6 +14,7 @@ import asyncio
 import hashlib
 import json
 import random
+import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -26,7 +27,6 @@ from app.core.config import Settings
 from app.core.logging import get_logger
 from app.models.chat import ChatStreamStatusEvent
 from app.models.trial import (
-    CASE_DRAFT_RESPONSE_SCHEMA,
     CaseDraft,
     CaseFile,
     CaseKnobs,
@@ -34,13 +34,18 @@ from app.models.trial import (
     CourtInfo,
 )
 from app.prompts.trial_prompts import CASE_GENERATION_SYSTEM_PROMPT, build_case_generation_prompt
-from app.services.trial_case_validator import expected_person_ids, normalise_draft_dict, validate_case_draft
+from app.services.trial_case_frame import CaseFrame, build_frame, fill_schema, fill_to_draft, frame_text
+from app.services.trial_case_validator import (
+    DIACRITIC_ERROR,
+    error_label,
+    normalise_draft_dict,
+    validate_case_draft,
+)
 from app.services.trial_config import (
     ABSTRACT_PLACES,
     BLHS_DOCUMENT,
     BLTTHS_DOCUMENT,
     DEFAULT_COURT_NAME,
-    PLEA_LABELS,
     THINKING_LEVEL_DECISION,
     CrimeConfig,
     get_crime,
@@ -52,7 +57,10 @@ from app.services.trial_names import COURT_ROLES, assign_names
 
 logger = get_logger(__name__)
 
-MAX_GENERATION_ATTEMPTS = 2  # first try + one retry with the validator's errors
+# First try plus one retry with the validator's errors; a third call only while the whole creation
+# is still under THIRD_ATTEMPT_MAX_ELAPSED seconds (chặng 3G/3H: target median <= 25 s).
+MAX_GENERATION_ATTEMPTS = 3
+THIRD_ATTEMPT_MAX_ELAPSED = 30.0
 CASE_TEMPERATURE = 0.8
 INCIDENT_DAYS_BEFORE_HEARING = (150, 300)
 
@@ -80,22 +88,6 @@ class CaseCreation:
     errors_per_attempt: list[list[str]] = field(default_factory=list)
 
 
-def _band_text(crime: CrimeConfig) -> str:
-    unit = "đồng" if crime.measure == "value_vnd" else "% tổn thương cơ thể"
-    pieces = []
-    for band in crime.bands:
-        upper = f"dưới {band.high:,}".replace(",", ".") if band.high is not None else "trở lên"
-        span = f"từ {band.low:,}".replace(",", ".") + f" {upper} {unit}"
-        if not band.allowed:
-            pieces.append(f"{span}: KHÔNG được dùng")
-        else:
-            rule = " hoặc ".join(f"khoản {k}" for k in band.required_khoan)
-            if band.required_diem:
-                rule += f" (phải có điểm {band.required_diem})"
-            pieces.append(f"{span}: {rule}")
-    return "; ".join(pieces)
-
-
 def case_hash(case: CaseFile) -> str:
     return hashlib.sha256(case.model_dump_json().encode("utf-8")).hexdigest()
 
@@ -109,24 +101,6 @@ async def load_pack_for_crime(crime: CrimeConfig, settings: Settings, qdrant_cli
         # Corpus check 2026-10-19 found none; a gap here means the collection changed.
         raise RuntimeError(f"Legal pack incomplete: {len(missing)} articles missing")
     return pack
-
-
-def knobs_text(knobs: CaseKnobs) -> str:
-    aggravating = (", ".join(f"điểm {p} khoản 1" for p in knobs.aggravating_points) + " Điều 52 Bộ luật Hình sự"
-                   if knobs.aggravating_points else "KHÔNG có tình tiết tăng nặng nào (aggravating = [])")
-    mitigating = ", ".join(f"điểm {p}" for p in knobs.mitigating_points)
-    return "\n".join([
-        f"- Khoản truy tố: khoản {knobs.khoan} (chọn measure_value và điểm cho đúng khoản này).",
-        f"- Lập trường bị cáo (defendant_plea = {knobs.plea}): {PLEA_LABELS[knobs.plea]}. Lời khai, thẻ nhân vật "
-        f"và thái độ của bị cáo phải thể hiện đúng lập trường này.",
-        "- Bồi thường trước khi xét xử: " + ("CÓ - bị cáo đã bồi thường một phần hoặc toàn bộ; compensation_vnd là "
-                                            "số tiền đã bồi thường, có sự việc (fact) ghi nhận việc này."
-                                            if knobs.has_compensation else "KHÔNG - compensation_vnd = null."),
-        f"- Tình tiết tăng nặng: {aggravating}. Phải có sự việc (fact) làm căn cứ.",
-        f"- Tình tiết giảm nhẹ khoản 1 Điều 51: đúng và chỉ các {mitigating}" if mitigating
-        else "- Không có tình tiết giảm nhẹ tại khoản 1 Điều 51.",
-        "- Có thể thêm tình tiết giảm nhẹ khoản 2 Điều 51 (diem để trống) nếu hợp lý.",
-    ])
 
 
 def _assemble_case(draft: CaseDraft, options: CaseOptions, knobs: CaseKnobs, settings: Settings, seed: int,
@@ -150,7 +124,7 @@ def _assemble_case(draft: CaseDraft, options: CaseOptions, knobs: CaseKnobs, set
 async def create_case(options: CaseOptions, settings: Settings, qdrant_client: QdrantClient,
                       recorder: TrialCallRecorder, *, pack: LegalPack | None = None,
                       seed: int | None = None, today: date | None = None,
-                      knobs: CaseKnobs | None = None) -> CaseCreation:
+                      knobs: CaseKnobs | None = None, frame: CaseFrame | None = None) -> CaseCreation:
     crime = get_crime(options.crime_key)
     pack = pack or await load_pack_for_crime(crime, settings, qdrant_client)
     seed = seed if seed is not None else uuid.uuid4().int & 0xFFFFFFFF
@@ -166,42 +140,49 @@ async def create_case(options: CaseOptions, settings: Settings, qdrant_client: Q
         pack.get(BLHS_DOCUMENT, crime.dieu), pack.get(BLHS_DOCUMENT, "51"), pack.get(BLHS_DOCUMENT, "52"),
         pack.get(BLTTHS_DOCUMENT, "243"),
     ) if a is not None)
+    frame = frame or build_frame(crime, options, knobs, rng)
+    schema = fill_schema(frame)
     errors_per_attempt: list[list[str]] = []
     retry_errors: list[str] | None = None
     previous_draft: str | None = None
+    started = time.monotonic()
     for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
+        if attempt == MAX_GENERATION_ATTEMPTS and time.monotonic() - started > THIRD_ATTEMPT_MAX_ELAPSED:
+            break
         prompt = build_case_generation_prompt(
-            crime_name=crime.crime_name, dieu=crime.dieu, allowed_khoan=list(crime.allowed_khoan),
-            band_text=_band_text(crime), person_ids=expected_person_ids(options),
-            victim_present=options.victim_present, witness_count=options.witness_count,
-            has_related_party=options.has_related_party, places=list(ABSTRACT_PLACES),
+            constants=frame_text(frame), victim_present=options.victim_present, places=list(ABSTRACT_PLACES),
             incident_date=incident.strftime("%d/%m/%Y"), hearing_date=hearing.strftime("%d/%m/%Y"),
-            legal_text=legal_text, retry_errors=retry_errors, constraints=knobs_text(knobs),
-            previous_draft=previous_draft,
+            legal_text=legal_text, retry_errors=retry_errors, previous_draft=previous_draft,
         )
         result, record = await recorder.call(
             settings, call_type="case_generation", slot="case", attempt=attempt,
-            system_prompt=CASE_GENERATION_SYSTEM_PROMPT, user_prompt=prompt,
-            response_schema=CASE_DRAFT_RESPONSE_SCHEMA, thinking_level=THINKING_LEVEL_DECISION,
-            temperature=CASE_TEMPERATURE,
+            system_prompt=CASE_GENERATION_SYSTEM_PROMPT, user_prompt=prompt, response_schema=schema,
+            thinking_level=THINKING_LEVEL_DECISION, temperature=CASE_TEMPERATURE,
+            model=getattr(settings, "trial_case_model", None),
         )
         try:
-            draft = CaseDraft.model_validate(normalise_draft_dict(json.loads(result.text)))
+            fill = json.loads(result.text)
+            draft = CaseDraft.model_validate(normalise_draft_dict(fill_to_draft(fill, frame)))
             errors = validate_case_draft(draft, options, crime, pack, knobs)
-        except (ValueError, ValidationError) as error:
-            draft, errors = None, [f"JSON không hợp lệ theo schema: {type(error).__name__}"]
+        except (ValueError, ValidationError, TypeError, AttributeError) as error:
+            fill, draft, errors = None, None, [f"JSON không hợp lệ theo schema: {type(error).__name__}"]
         errors_per_attempt.append(errors)
-        record.guard_violations = [e.split(":")[0] for e in errors]
+        record.guard_violations = [error_label(e) for e in errors]
         record.accepted = not errors
         if not errors and draft is not None:
             case = _assemble_case(draft, options, knobs, settings, seed, hearing, incident)
             return CaseCreation(case=case, pack=pack, case_hash=case_hash(case), attempts=attempt,
                                 errors_per_attempt=errors_per_attempt)
         logger.info("Trial case attempt %d rejected with %d validation errors", attempt, len(errors))
+        if any(DIACRITIC_ERROR in e for e in errors):
+            # Chặng 3F: a draft written without diacritics is not repaired but regenerated from
+            # scratch - asked to edit it, the model kept the unaccented style (seed 5006, chặng 3E).
+            retry_errors, previous_draft = None, None
+            continue
         retry_errors = errors
-        # A6 (chặng 2): the retry fixes the previous draft instead of writing a new one - in A5 run 1
+        # A6 (chặng 2): the retry fixes the previous fill instead of writing a new one - in A5 run 1
         # a from-scratch retry fixed the listed errors but broke requirements it had met before.
-        previous_draft = result.text if draft is not None else None
+        previous_draft = result.text if fill is not None else None
     raise CaseGenerationFailed(errors_per_attempt)
 
 

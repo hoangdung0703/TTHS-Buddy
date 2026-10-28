@@ -32,10 +32,10 @@ class TrialCallRecorder:
 
     async def call(self, settings: Settings, *, call_type: str, slot: str, attempt: int, system_prompt: str,
                    user_prompt: str, response_schema: dict, thinking_level: str | None,
-                   temperature: float) -> tuple[GeminiJsonResult, CallRecord]:
+                   temperature: float, model: str | None = None) -> tuple[GeminiJsonResult, CallRecord]:
         result = await asyncio.to_thread(
             generate_json_with_usage, system_prompt, user_prompt, settings, response_schema,
-            thinking_level=thinking_level, temperature=temperature,
+            thinking_level=thinking_level, temperature=temperature, model=model,
         )
         record = CallRecord(
             call_type=call_type, slot=slot, attempt=attempt, latency_seconds=round(result.latency_seconds, 3),
