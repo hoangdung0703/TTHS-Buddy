@@ -85,6 +85,8 @@ nhẹ, tăng nặng là id SỰ VIỆC, không phải id chứng cứ.
 12. Các trường mã (id, person_id, claimant_id, fact_ids, charge.dieu, khoan, diem) viết trần, KHÔNG có ngoặc nhọn và \
 không có chữ "Điều/khoản/điểm": id người BI_CAO, BI_HAI, NLC_1...; sự việc F1, F2...; chứng cứ E1, E2...; dieu "173"; \
 khoan "1"; diem "c". Ngoặc nhọn chỉ dùng khi nhắc tới người BÊN TRONG văn bản, ví dụ "{BI_CAO} khai...".
+13. Viết TOÀN BỘ bằng tiếng Việt CÓ DẤU đầy đủ (ví dụ "Viện kiểm sát nhân dân", không viết "Vien kiem sat nhan dan"), \
+kể cả tiêu đề, phần đầu cáo trạng và lời khai. Bản không dấu bị loại.
 """
 
 

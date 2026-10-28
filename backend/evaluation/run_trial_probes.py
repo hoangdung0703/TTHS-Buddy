@@ -202,10 +202,13 @@ def _slot_position(key: str) -> tuple[int, int]:
     return next((step.number, i) for step in STEPS for i, slot in enumerate(step.slots) if slot.key == key)
 
 
-async def _generate_cases(seed_offset: int, settings, qdrant, cap: int, recorders: list, out: Path,
+def _configs(seed_offset: int) -> list:
+    return [(seed + seed_offset, options, forced) for seed, options, forced in BIS_CONFIGS[:FORMAT_CASES]]
+
+
+async def _generate_cases(configs: list, settings, qdrant, cap: int, recorders: list, out: Path,
                           cases: list, case_rows: list) -> None:
-    for seed, options, forced in BIS_CONFIGS[:FORMAT_CASES]:
-        seed += seed_offset
+    for seed, options, forced in configs:
         if calls(recorders) + 2 > cap:
             raise Cap("cap reached before case generation")
         recorder = TrialCallRecorder()
@@ -218,7 +221,8 @@ async def _generate_cases(seed_offset: int, settings, qdrant, cap: int, recorder
         except CaseGenerationFailed as failure:
             case_rows.append({"seed": seed, "crime": options.crime_key, "ok": False,
                               "errors_per_attempt": failure.error_counts, "calls": len(recorder.records),
-                              "no_diacritics_caught": any(DIACRITIC_ERROR in e for es in failure.errors for e in es)})
+                              "no_diacritics_caught": any(DIACRITIC_ERROR in e for es in failure.errors for e in es),
+                              "no_diacritics_last_attempt": any(DIACRITIC_ERROR in e for e in failure.errors[-1])})
             continue
         sections = indictment_sections(creation.case.draft.indictment_text)
         case_rows.append({"seed": seed, "crime": options.crime_key, "ok": True, "attempts": creation.attempts,
@@ -284,7 +288,7 @@ async def summary_main(out: Path, cap: int) -> int:
     recorders: list[TrialCallRecorder] = []
     cases, case_rows, stopped, session = [], [], None, {}
     try:
-        await _generate_cases(SUMMARY_SEED_OFFSET, settings, qdrant, cap - SUMMARY_RESERVE, recorders, out, cases,
+        await _generate_cases(_configs(SUMMARY_SEED_OFFSET), settings, qdrant, cap - SUMMARY_RESERVE, recorders, out, cases,
                               case_rows)
         if cases:
             creation = cases[0]
@@ -329,6 +333,33 @@ async def summary_main(out: Path, cap: int) -> int:
     return 0
 
 
+# Chặng 3F: 5006 (no diacritics in chặng 3E) again, plus 6001-6006.
+DIACRITICS_CONFIGS = _configs(SUMMARY_SEED_OFFSET)[5:6] + _configs(4000)
+
+
+async def diacritics_main(out: Path, cap: int) -> int:
+    configure_logging("test")
+    settings = get_settings()
+    qdrant = create_qdrant_client(settings)
+    (out / "cases").mkdir(parents=True, exist_ok=True)
+    recorders: list[TrialCallRecorder] = []
+    cases, case_rows, stopped = [], [], None
+    try:
+        await _generate_cases(DIACRITICS_CONFIGS, settings, qdrant, cap, recorders, out, cases, case_rows)
+    except Cap as cap_hit:
+        stopped = str(cap_hit)
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code in (402, 429):
+            stopped = f"Gemini {error.response.status_code} - stopped"
+        else:
+            raise
+    report = {"gemini_calls": calls(recorders), "cap": cap, "stopped": stopped, "cases": _case_summary(case_rows),
+              "still_unaccented": sum(1 for r in case_rows if not r["ok"] and r["no_diacritics_last_attempt"])}
+    (out / "diacritics.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=1))
+    return 0
+
+
 async def format_main(out: Path, cap: int) -> int:
     configure_logging("test")
     settings = get_settings()
@@ -338,7 +369,7 @@ async def format_main(out: Path, cap: int) -> int:
     recorders: list[TrialCallRecorder] = []
     cases, case_rows, slot_rows, stopped = [], [], [], None
     try:
-        await _generate_cases(FORMAT_SEED_OFFSET, settings, qdrant, cap, recorders, out, cases, case_rows)
+        await _generate_cases(_configs(FORMAT_SEED_OFFSET), settings, qdrant, cap, recorders, out, cases, case_rows)
         for creation in cases[:FORMAT_SLOT_CASES]:
             case = creation.case
             for key, role in LONG_SLOTS:
@@ -410,6 +441,8 @@ if __name__ == "__main__":
     parser.add_argument("--hard-cap", type=int, default=30)
     parser.add_argument("--format", action="store_true", help="chặng 3D layout measurement")
     parser.add_argument("--summary", action="store_true", help="chặng 3E cases + full hearing + biên bản summary")
+    parser.add_argument("--diacritics", action="store_true", help="chặng 3F: seed 5006 + 6001-6006")
     args = parser.parse_args()
-    entry = format_main if args.format else summary_main if args.summary else main
+    entry = (format_main if args.format else summary_main if args.summary else
+             diacritics_main if args.diacritics else main)
     sys.exit(asyncio.run(entry(args.out, args.hard_cap)))

@@ -34,7 +34,12 @@ from app.models.trial import (
     CourtInfo,
 )
 from app.prompts.trial_prompts import CASE_GENERATION_SYSTEM_PROMPT, build_case_generation_prompt
-from app.services.trial_case_validator import expected_person_ids, normalise_draft_dict, validate_case_draft
+from app.services.trial_case_validator import (
+    DIACRITIC_ERROR,
+    expected_person_ids,
+    normalise_draft_dict,
+    validate_case_draft,
+)
 from app.services.trial_config import (
     ABSTRACT_PLACES,
     BLHS_DOCUMENT,
@@ -198,6 +203,11 @@ async def create_case(options: CaseOptions, settings: Settings, qdrant_client: Q
             return CaseCreation(case=case, pack=pack, case_hash=case_hash(case), attempts=attempt,
                                 errors_per_attempt=errors_per_attempt)
         logger.info("Trial case attempt %d rejected with %d validation errors", attempt, len(errors))
+        if any(DIACRITIC_ERROR in e for e in errors):
+            # Chặng 3F: a draft written without diacritics is not repaired but regenerated from
+            # scratch - asked to edit it, the model kept the unaccented style (seed 5006, chặng 3E).
+            retry_errors, previous_draft = None, None
+            continue
         retry_errors = errors
         # A6 (chặng 2): the retry fixes the previous draft instead of writing a new one - in A5 run 1
         # a from-scratch retry fixed the listed errors but broke requirements it had met before.

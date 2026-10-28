@@ -73,6 +73,11 @@ Migration: `backend/migrations/0012_mock_trials.sql`. Chạy tay, **chưa chạy
 - Đo 1 phiên KSV: 1 lời gọi, ~4,8K token vào, ~0,9K token ra, 3,3s; không guard nào kích hoạt; cả 2 mục được tóm tắt (~21% nguyên văn).
 - Seed 5001–5006: 5/6 vụ qua schema, 4/6 qua ngay lần đầu, trung vị 16,8s; 1 vụ bị bắt lỗi không dấu và lần sinh lại vẫn hỏng.
 
+## Chặng 3F — 28/10/2026
+
+- Prompt sinh vụ yêu cầu tiếng Việt có dấu đầy đủ. Lỗi "không dấu" thì sinh mới từ đầu, không sửa trên bản trước. Seed 5006 và 6001–6006: 5/7 vụ qua schema, 3/7 qua ngay lần đầu, 0 vụ còn không dấu, trung vị 18,3s. Hai vụ hỏng do các lỗi khác.
+- Vụ sinh thất bại không ghi gì vào DB và không tính vào hạn mức (đã có test). Thêm `HEAD /api/trials` để dò cờ.
+
 Chỉnh thiết kế sau khi có số đo: xem báo cáo chặng 1. Tóm tắt các điểm chính:
 - Thêm trường khai báo các khoản tiền phụ cho guard số tiền (vụ 171 có người có quyền lợi liên quan fail vì điểm này).
 - Prompt của bài phát biểu dài ~17K token, lớn hơn ước tính; nên tỉa Phần chung BLHS theo từng bài.

@@ -1,21 +1,34 @@
 """Unit tests: case schema + validator, names, verdict guard (design doc Mục 3.2, 5.2, 8.1)."""
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import random
+import unicodedata
 import unittest
+from types import SimpleNamespace
 
 from pydantic import ValidationError
 
 from app.models.trial import CASE_DRAFT_RESPONSE_SCHEMA, CaseDraft, CaseOptions, Verdict
-from app.services.trial_case_validator import normalise_draft_dict, validate_case_draft
+from app.prompts.trial_prompts import CASE_GENERATION_SYSTEM_PROMPT
+from app.services.trial_case_service import create_case
+from app.services.trial_case_validator import DIACRITIC_ERROR, normalise_draft_dict, validate_case_draft
 from app.services.trial_config import ABSTRACT_PLACES, AGGRAVATING_POOL, BLHS_DOCUMENT, CRIMES, get_crime
 from app.services.trial_knobs import choose_knobs
 from app.services.trial_legal_pack import Khoan
 from app.services.trial_names import assign_names, name_hash, render
 from app.services.trial_verdict_guard import check_verdict, parse_penalty_frame
-from tests.trial_fixtures import pack_for, valid_case_file, valid_draft_dict, valid_knobs, valid_options
+from tests.test_trial_turns import ScriptedRecorder
+from tests.trial_fixtures import (
+    STATEMENT_BI_HAI,
+    pack_for,
+    valid_case_file,
+    valid_draft_dict,
+    valid_knobs,
+    valid_options,
+)
 
 
 def errors_for(draft: dict, options: CaseOptions | None = None, crime_key: str = "blhs_173") -> list[str]:
@@ -358,6 +371,44 @@ class VerdictGuardTests(unittest.TestCase):
         self.assertEqual(self.check(guilty=False, penalty_type="khong", penalty_months=None).errors, [])
         self.assertTrue(self.check(mitigating=[{"khoan": "1", "diem": "s", "fact_ids": ["F9"]}]).errors)
         self.assertTrue(self.check(penalty_type="khong").errors)
+
+
+
+def _strip_diacritics(text: str) -> str:
+    text = unicodedata.normalize("NFD", text.replace("đ", "d").replace("Đ", "D"))
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
+class CaseRetryTests(unittest.TestCase):
+    """Chặng 3F: a draft without diacritics is regenerated from scratch, any other failure is
+    repaired on top of the previous draft (A6)."""
+
+    def create(self, first: dict) -> tuple[ScriptedRecorder, object]:
+        recorder = ScriptedRecorder(answers=[json.dumps(first, ensure_ascii=False),
+                                             json.dumps(valid_draft_dict(), ensure_ascii=False)])
+        creation = asyncio.run(create_case(valid_options(), SimpleNamespace(trial_court_name=None), None, recorder,
+                                           pack=pack_for("blhs_173"), seed=1, knobs=valid_knobs()))
+        return recorder, creation
+
+    def test_unaccented_draft_is_regenerated_from_scratch(self):
+        draft = valid_draft_dict()
+        draft["incident_summary"] = _strip_diacritics(draft["incident_summary"] + " " + STATEMENT_BI_HAI)
+        draft["indictment_text"] = _strip_diacritics(draft["indictment_text"])
+        recorder, creation = self.create(draft)
+        self.assertEqual(creation.attempts, 2)
+        self.assertTrue(any(DIACRITIC_ERROR in e for e in creation.errors_per_attempt[0]))
+        self.assertNotIn("BẢN TRƯỚC", recorder.prompts[1])
+        self.assertEqual(recorder.prompts[0], recorder.prompts[1])     # same fresh prompt
+
+    def test_other_errors_are_repaired_on_the_previous_draft(self):
+        draft = valid_draft_dict()
+        draft["evidence"] = draft["evidence"][:3]                       # below the evidence minimum
+        recorder, creation = self.create(draft)
+        self.assertEqual(creation.attempts, 2)
+        self.assertIn("=== BẢN TRƯỚC (JSON) ===", recorder.prompts[1])
+
+    def test_prompt_asks_for_diacritics(self):
+        self.assertIn("CÓ DẤU", CASE_GENERATION_SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":

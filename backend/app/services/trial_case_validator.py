@@ -336,6 +336,7 @@ def _similarity(a: str, b: str) -> float:
 # Vietnamese prose has roughly one letter in five carrying a diacritic. Chặng 3D seed 4002 came back
 # entirely without diacritics (summary, statements, indictment) and still passed every other check.
 MIN_DIACRITIC_SHARE = 0.05
+DIACRITIC_ERROR = "phải viết tiếng Việt có dấu đầy đủ"
 MIN_LETTERS_FOR_DIACRITIC_CHECK = 100
 
 
@@ -351,7 +352,7 @@ def _check_minimums(draft: CaseDraft, errors: list[str]) -> None:
     for field_name, text in (("incident_summary", draft.incident_summary), ("indictment_text", draft.indictment_text),
                              *((f"lời khai của {s.person_id}", s.summary) for s in draft.pretrial_statements)):
         if lacks_diacritics(text):
-            errors.append(f"{field_name} phải viết tiếng Việt có dấu đầy đủ")
+            errors.append(f"{field_name} {DIACRITIC_ERROR}")
     if len(draft.evidence) < MIN_EVIDENCE:
         errors.append(f"Phải có ít nhất {MIN_EVIDENCE} chứng cứ (evidence), hiện có {len(draft.evidence)}")
     words = len(_words(draft.indictment_text))
