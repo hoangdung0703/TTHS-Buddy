@@ -17,7 +17,14 @@ to --out for a human reader.
   - the 4 long slots (luận tội, bào chữa, đối đáp, tuyên án) on the first 2 cases, each run once on
     an empty transcript: share of outputs with at least 3 paragraphs.
 
-Usage (from backend/):  ../.venv/bin/python -m evaluation.run_trial_probes --out <dir> [--format]
+--summary (chặng 3E):
+  - cases on seeds 5001-5006: schema pass, first pass, cases caught by the no-diacritics check,
+    median generation time;
+  - one full hearing as KSV on the first valid case (2 questions, 1 debate line), then the biên bản
+    summary call: tokens, latency, guard labels, verbatim fallbacks. 2 calls are kept for the
+    summary under the cap.
+
+Usage (from backend/):  ../.venv/bin/python -m evaluation.run_trial_probes --out <dir> [--format|--summary]
 """
 from __future__ import annotations
 
@@ -46,8 +53,9 @@ from app.services.trial_rule9 import extract_citations
 from app.services.trial_session_service import shape_of
 from app.services.trial_state_machine import STEPS, UserAction, awaiting, current_slot, new_session
 from app.services.trial_text_format import INDICTMENT_SECTIONS, indictment_sections, paragraphs
+from app.services.trial_record_summary import section_sources, summarise_record
 from app.services.trial_turn_service import TrialContext, TrialGuardFailure, apply_student_action, run_ai_turn
-from evaluation.run_trial_spike import BIS_CONFIGS
+from evaluation.run_trial_spike import BIS_CONFIGS, scripted_lines
 
 FALSE_AMOUNT = "900.000.000"
 QUESTION_FALSE = f"Bị cáo đã chiếm đoạt tài sản trị giá {FALSE_AMOUNT} đồng đúng không?"
@@ -181,6 +189,7 @@ async def play(role: str, seed: int, settings, qdrant, cap: int, recorders: list
     return result
 
 
+DIACRITIC_ERROR = "tiếng Việt có dấu"
 FORMAT_SEED_OFFSET = 2000   # BIS_CONFIGS seeds 2001-2006 -> 4001-4006, never tuned against
 FORMAT_CASES = 6
 FORMAT_SLOT_CASES = 2
@@ -193,6 +202,133 @@ def _slot_position(key: str) -> tuple[int, int]:
     return next((step.number, i) for step in STEPS for i, slot in enumerate(step.slots) if slot.key == key)
 
 
+async def _generate_cases(seed_offset: int, settings, qdrant, cap: int, recorders: list, out: Path,
+                          cases: list, case_rows: list) -> None:
+    for seed, options, forced in BIS_CONFIGS[:FORMAT_CASES]:
+        seed += seed_offset
+        if calls(recorders) + 2 > cap:
+            raise Cap("cap reached before case generation")
+        recorder = TrialCallRecorder()
+        recorders.append(recorder)
+        started = time.monotonic()
+        pack = await load_pack_for_crime(get_crime(options.crime_key), settings, qdrant)
+        knobs = choose_knobs(get_crime(options.crime_key), pack, random.Random(seed), **forced) if forced else None
+        try:
+            creation = await create_case(options, settings, qdrant, recorder, pack=pack, seed=seed, knobs=knobs)
+        except CaseGenerationFailed as failure:
+            case_rows.append({"seed": seed, "crime": options.crime_key, "ok": False,
+                              "errors_per_attempt": failure.error_counts, "calls": len(recorder.records),
+                              "no_diacritics_caught": any(DIACRITIC_ERROR in e for es in failure.errors for e in es)})
+            continue
+        sections = indictment_sections(creation.case.draft.indictment_text)
+        case_rows.append({"seed": seed, "crime": options.crime_key, "ok": True, "attempts": creation.attempts,
+                          "errors_per_attempt": [len(e) for e in creation.errors_per_attempt],
+                          "no_diacritics_caught": any(DIACRITIC_ERROR in e for es in creation.errors_per_attempt
+                                                      for e in es),
+                          "sections": len(sections), "all_sections": len(sections) == len(INDICTMENT_SECTIONS),
+                          "indictment_paragraphs": len(paragraphs(creation.case.draft.indictment_text)),
+                          "seconds": round(time.monotonic() - started, 1), "calls": len(recorder.records)})
+        cases.append(creation)
+        (out / "cases" / f"case_{seed}.json").write_text(creation.case.model_dump_json(indent=1), encoding="utf-8")
+
+
+def _case_summary(case_rows: list) -> dict:
+    ok = [r for r in case_rows if r["ok"]]
+    return {"total": len(case_rows), "schema_ok": len(ok), "first_pass": sum(1 for r in ok if r["attempts"] == 1),
+            "no_diacritics_caught": sum(1 for r in case_rows if r["no_diacritics_caught"]),
+            "all_four_sections": sum(1 for r in ok if r["all_sections"]),
+            "median_seconds": statistics.median(r["seconds"] for r in ok) if ok else None, "rows": case_rows}
+
+
+SUMMARY_SEED_OFFSET = 3000   # 5001-5006
+SUMMARY_RESERVE = 2          # the biên bản summary: attempt + one regeneration
+
+
+async def _play_short_ksv(ctx: TrialContext, recorders: list, cap: int, events: list) -> None:
+    """Full hearing as KSV with the spike's scripted lines, trimmed to 2 questions and 1 debate line."""
+    lines = scripted_lines(ctx)
+    questions = [q for q in lines["questions"] if "tuyên án" not in q[1]][:2]
+    debate = lines["debate"][1:2]          # without the spike's fabricated-citation probe
+    while ctx.state.status == "active":
+        await ai_until_user(ctx, recorders, cap, events)
+        if ctx.state.status != "active":
+            break
+        slot = current_slot(ctx.state)
+        if slot is None:
+            student(ctx, "advance", target_step=ctx.state.current_step + 1)
+        elif slot.key == "y_kien_ksv_thay_doi":
+            student(ctx, "speak", text=lines["objection"])
+        elif slot.key == "cong_bo_cao_trang":
+            student(ctx, "speak", text=lines["indictment"])
+        elif slot.key == "ksv_hoi":
+            if questions:
+                addressee, text = questions.pop(0)
+                student(ctx, "speak", text=text, addressee=addressee)
+            else:
+                student(ctx, "end_slot")
+        elif slot.key == "luan_toi":
+            student(ctx, "speak", text=lines["luan_toi"])
+        elif slot.key == "doi_dap" and debate:
+            student(ctx, "speak", text=debate.pop(0))
+        elif slot.key == "doi_dap":
+            student(ctx, "end_slot")
+        else:
+            raise Cap(f"unscripted slot {slot.key}")
+
+
+async def summary_main(out: Path, cap: int) -> int:
+    configure_logging("test")
+    settings = get_settings()
+    qdrant = create_qdrant_client(settings)
+    (out / "cases").mkdir(parents=True, exist_ok=True)
+    recorders: list[TrialCallRecorder] = []
+    cases, case_rows, stopped, session = [], [], None, {}
+    try:
+        await _generate_cases(SUMMARY_SEED_OFFSET, settings, qdrant, cap - SUMMARY_RESERVE, recorders, out, cases,
+                              case_rows)
+        if cases:
+            creation = cases[0]
+            recorder = TrialCallRecorder()
+            recorders.append(recorder)
+            ctx = TrialContext(case=creation.case, pack=creation.pack,
+                               state=new_session("ksv", shape_of(creation.case)), settings=settings, recorder=recorder)
+            events: list = []
+            try:
+                await _play_short_ksv(ctx, recorders, cap - SUMMARY_RESERVE, events)
+            except Cap as cap_hit:
+                session["stopped"] = str(cap_hit)
+            session.update({"crime": creation.case.crime_key, "status": ctx.state.status,
+                            "hearing_calls": len(recorder.records), "guard_pauses": events})
+            if ctx.state.status == "completed":
+                result = await summarise_record(ctx)
+                summary_calls = [r for r in recorder.records if r.call_type == "record_summary"]
+                session["summary"] = {
+                    "calls": len(summary_calls),
+                    "prompt_tokens": [r.prompt_tokens for r in summary_calls],
+                    "output_tokens": [r.output_tokens for r in summary_calls],
+                    "latency_s": [round(r.latency_seconds, 2) for r in summary_calls],
+                    "guard_labels": [r.guard_violations for r in summary_calls],
+                    "sections_summarised": [k for k in ("iv2", "iv3") if result[k]],
+                    "verbatim_fallback": [k for k in ("iv2", "iv3") if not result[k]],
+                    "flags": result["flags"],
+                    "source_chars": {k: len(v) for k, v in section_sources(ctx).items()},
+                    "summary_chars": {k: len(result[k] or "") for k in ("iv2", "iv3")},
+                }
+                (out / "summary.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Cap as cap_hit:
+        stopped = str(cap_hit)
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code in (402, 429):
+            stopped = f"Gemini {error.response.status_code} - stopped"
+        else:
+            raise
+    report = {"gemini_calls": calls(recorders), "cap": cap, "stopped": stopped,
+              "cases": _case_summary(case_rows), "session": session}
+    (out / "summary_run.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=1))
+    return 0
+
+
 async def format_main(out: Path, cap: int) -> int:
     configure_logging("test")
     settings = get_settings()
@@ -202,29 +338,7 @@ async def format_main(out: Path, cap: int) -> int:
     recorders: list[TrialCallRecorder] = []
     cases, case_rows, slot_rows, stopped = [], [], [], None
     try:
-        for seed, options, forced in BIS_CONFIGS[:FORMAT_CASES]:
-            seed += FORMAT_SEED_OFFSET
-            if calls(recorders) + 2 > cap:
-                raise Cap("cap reached before case generation")
-            recorder = TrialCallRecorder()
-            recorders.append(recorder)
-            started = time.monotonic()
-            pack = await load_pack_for_crime(get_crime(options.crime_key), settings, qdrant)
-            knobs = choose_knobs(get_crime(options.crime_key), pack, random.Random(seed), **forced) if forced else None
-            try:
-                creation = await create_case(options, settings, qdrant, recorder, pack=pack, seed=seed, knobs=knobs)
-            except CaseGenerationFailed as failure:
-                case_rows.append({"seed": seed, "crime": options.crime_key, "ok": False,
-                                  "errors_per_attempt": failure.error_counts, "calls": len(recorder.records)})
-                continue
-            sections = indictment_sections(creation.case.draft.indictment_text)
-            case_rows.append({"seed": seed, "crime": options.crime_key, "ok": True, "attempts": creation.attempts,
-                              "sections": len(sections), "all_sections": len(sections) == len(INDICTMENT_SECTIONS),
-                              "indictment_paragraphs": len(paragraphs(creation.case.draft.indictment_text)),
-                              "seconds": round(time.monotonic() - started, 1), "calls": len(recorder.records)})
-            cases.append(creation)
-            (out / "cases" / f"case_{seed}.json").write_text(creation.case.model_dump_json(indent=1), encoding="utf-8")
-
+        await _generate_cases(FORMAT_SEED_OFFSET, settings, qdrant, cap, recorders, out, cases, case_rows)
         for creation in cases[:FORMAT_SLOT_CASES]:
             case = creation.case
             for key, role in LONG_SLOTS:
@@ -258,14 +372,10 @@ async def format_main(out: Path, cap: int) -> int:
         else:
             raise
 
-    ok = [r for r in case_rows if r["ok"]]
     measured = [r for r in slot_rows if "paragraphs" in r]
     summary = {
         "gemini_calls": calls(recorders), "cap": cap, "stopped": stopped,
-        "cases": {"total": len(case_rows), "schema_ok": len(ok),
-                  "first_pass": sum(1 for r in ok if r["attempts"] == 1),
-                  "all_four_sections": sum(1 for r in ok if r["all_sections"]),
-                  "median_seconds": statistics.median(r["seconds"] for r in ok) if ok else None, "rows": case_rows},
+        "cases": _case_summary(case_rows),
         "long_slots": {"measured": len(measured), "with_3_plus_paragraphs": sum(r["paragraphs"] >= 3 for r in measured),
                        "rows": slot_rows},
     }
@@ -299,5 +409,7 @@ if __name__ == "__main__":
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--hard-cap", type=int, default=30)
     parser.add_argument("--format", action="store_true", help="chặng 3D layout measurement")
+    parser.add_argument("--summary", action="store_true", help="chặng 3E cases + full hearing + biên bản summary")
     args = parser.parse_args()
-    sys.exit(asyncio.run((format_main if args.format else main)(args.out, args.hard_cap)))
+    entry = format_main if args.format else summary_main if args.summary else main
+    sys.exit(asyncio.run(entry(args.out, args.hard_cap)))

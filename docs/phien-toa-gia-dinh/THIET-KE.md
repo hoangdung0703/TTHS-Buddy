@@ -67,6 +67,12 @@ Migration: `backend/migrations/0012_mock_trials.sql`. Chạy tay, **chưa chạy
 - Cáo trạng có phần đầu và 4 mục có tiêu đề. Đo trên seed 4001–4006: 4/6 vụ qua schema; trong 4 vụ qua, 3 vụ có đủ 4 tiêu đề. Vụ còn lại cũng có đủ 4 tiêu đề, nhưng toàn bộ hồ sơ viết không dấu và vẫn lọt qua mọi kiểm tra cũ. Đã thêm lỗi cứng "văn bản không dấu" vào validator.
 - Biên bản theo Mẫu 22-HS (NQ 05/2017/NQ-HĐTP), không thêm lời gọi LLM. Phần tranh luận ghi nguyên văn chứ không tóm tắt; phần tuyên án ghi câu cố định theo hướng dẫn (29) của mẫu.
 
+## Chặng 3E — tóm tắt biên bản, 28/10/2026
+
+- IV.2 và IV.3 của biên bản do Thư ký AI tóm tắt: 1 lời gọi flash-lite mỗi phiên, ngay sau tuyên án, trong luồng SSE của lượt cuối. Code kiểm tra số, Điều, người, markdown và độ dài. Mục nào sai thì sinh lại 1 lần, vẫn sai thì dùng nguyên văn. Kết quả lưu trong `verdict_json.record_summary`, không cần migration. Lời tuyên án nguyên văn nằm ở phụ lục ngoài mẫu.
+- Đo 1 phiên KSV: 1 lời gọi, ~4,8K token vào, ~0,9K token ra, 3,3s; không guard nào kích hoạt; cả 2 mục được tóm tắt (~21% nguyên văn).
+- Seed 5001–5006: 5/6 vụ qua schema, 4/6 qua ngay lần đầu, trung vị 16,8s; 1 vụ bị bắt lỗi không dấu và lần sinh lại vẫn hỏng.
+
 Chỉnh thiết kế sau khi có số đo: xem báo cáo chặng 1. Tóm tắt các điểm chính:
 - Thêm trường khai báo các khoản tiền phụ cho guard số tiền (vụ 171 có người có quyền lợi liên quan fail vì điểm này).
 - Prompt của bài phát biểu dài ~17K token, lớn hơn ước tính; nên tỉa Phần chung BLHS theo từng bài.

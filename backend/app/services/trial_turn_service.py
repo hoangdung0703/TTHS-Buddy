@@ -121,6 +121,8 @@ class TrialContext:
     fact_ledger: list[dict[str, str]] = field(default_factory=list)
     verdict: Verdict | None = None
     verdict_flags: list[str] = field(default_factory=list)
+    # Biên bản summaries (trial_record_summary), stored inside verdict_json once computed.
+    record_summary: dict | None = None
 
     @property
     def student_id(self) -> str:

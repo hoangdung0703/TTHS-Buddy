@@ -256,7 +256,10 @@ class RecordTests(unittest.TestCase):
 
     def test_notices_and_judgment_text_excluded_full_names_kept(self):
         self.assertNotIn("giữ trật tự, chưa chuyển bước", self.text)
-        self.assertNotIn("NHÂN DANH", self.text)
+        # The judgment is only in the appendix, after the signatures (form guidance 29).
+        self.assertGreater(self.text.index("NHÂN DANH"), self.text.index("THẨM PHÁN - CHỦ TỌA PHIÊN TÒA"))
+        self.assertEqual([e.step for e in self.record.appendix[0].entries], [11])
+        self.assertIn("PHỤ LỤC", self.record.appendix[0].heading)
         self.assertIn("Hội đồng xét xử tuyên án theo bản án đã được Hội đồng xét xử thông qua", self.text)
         self.assertIn(self.case.participants["BI_CAO"].name, self.text)
         self.assertNotIn("{BI_CAO}", self.text)

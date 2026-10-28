@@ -8,6 +8,7 @@ Tài liệu cho agent làm frontend ở session mới. Đọc file này là đ�
 - `backend/app/services/trial_record.py`
 - `backend/app/services/trial_anonymise.py` (ẩn danh panel)
 - `backend/app/services/trial_text_format.py` (quy ước văn bản)
+- `backend/app/services/trial_record_summary.py` (tóm tắt IV.2, IV.3 của biên bản)
 
 Code thay đổi thì sửa file này cùng commit. Thiết kế tổng thể: `THIET-KE.md` (cùng thư mục). File này là chuẩn khi hai file mâu thuẫn.
 
@@ -220,7 +221,9 @@ Xóa cứng phiên, hồ sơ vụ án và toàn bộ lời thoại. Thành công
 
 Chỉ khi `status = completed`; nếu chưa xong thì 409 `trial_not_completed`.
 
-Biên bản dựng bằng code theo bố cục **Mẫu số 22-HS** (Nghị quyết 05/2017/NQ-HĐTP), nội dung theo Điều 258 BLTTHS. Không có lời gọi LLM: chỉ dùng hồ sơ vụ án, thành phần, lời thoại và thời điểm của phiên. Dùng **tên đầy đủ** (không ẩn danh). Notice không vào biên bản.
+Biên bản dựng bằng code theo bố cục **Mẫu số 22-HS** (Nghị quyết 05/2017/NQ-HĐTP), nội dung theo Điều 258 BLTTHS, từ hồ sơ vụ án, thành phần, lời thoại và thời điểm của phiên. Dùng **tên đầy đủ** (không ẩn danh). Notice không vào biên bản. Route này **không** gọi LLM.
+
+Mục IV.2 (hỏi và trả lời) và IV.3 (tranh luận) có thể là **bản tóm tắt** do Thư ký AI ghi. Bản tóm tắt được tạo đúng một lần mỗi phiên, ngay sau lời tuyên án, trong luồng SSE của lượt cuối (xem sự kiện `status` "Đang lập biên bản..." ở Mục 4). Code kiểm tra: không có số, Điều hay người nào ngoài nguồn; không markdown; tối đa 40% độ dài nguyên văn và 2500 ký tự. Nếu sai, lỗi hoặc quá hạn thì mục đó dùng nguyên văn. IV.1 (cáo trạng) và IV.4 (lời nói sau cùng) luôn là nguyên văn.
 
 ```json
 {
@@ -240,28 +243,38 @@ Biên bản dựng bằng code theo bố cục **Mẫu số 22-HS** (Nghị quy�
       { "heading": "II. Những người tham gia tố tụng", "fields": [ "..." ] },
       { "heading": "III. Phần thủ tục bắt đầu phiên tòa", "entries": [ { "seq": 1, "step": 1, "speaker_role": "Thư ký", "speaker_name": "<tên>", "text": "<lời>" } ] },
       { "heading": "IV. Phần tranh tụng tại phiên tòa",
-        "subsections": [ { "heading": "1. Kiểm sát viên công bố bản cáo trạng ...", "entries": [ "..." ] } ],
+        "subsections": [
+          { "heading": "1. Kiểm sát viên công bố bản cáo trạng ...", "content": "verbatim", "entries": [ "..." ] },
+          { "heading": "2. Hỏi và trả lời tại phiên tòa", "content": "summary", "summary": "<1-3 đoạn>", "entries": [] },
+          { "heading": "3. Tranh luận tại phiên tòa", "content": "verbatim", "summary_fallback": true, "entries": [ "..." ] },
+          { "heading": "4. Lời nói sau cùng của bị cáo", "content": "verbatim", "entries": [ "..." ] } ],
         "notes": ["Hội đồng xét xử vào phòng nghị án để nghị án.", "..."] }
     ],
     "closing": [ { "label": "Những sửa đổi, bổ sung ...", "value": null }, { "label": "Phiên tòa kết thúc vào hồi", "value": "...", "simulated": true } ],
     "signatures": [ { "title": "THƯ KÝ GHI BIÊN BẢN PHIÊN TÒA", "note": "(Ký tên, ghi rõ họ tên)", "name": "<tên>" },
-                    { "title": "THẨM PHÁN - CHỦ TỌA PHIÊN TÒA", "note": "(Ký tên, ghi rõ họ tên, đóng dấu)", "name": "<tên>" } ]
+                    { "title": "THẨM PHÁN - CHỦ TỌA PHIÊN TÒA", "note": "(Ký tên, ghi rõ họ tên, đóng dấu)", "name": "<tên>" } ],
+    "appendix": [ { "heading": "PHỤ LỤC (ngoài Mẫu số 22-HS): Lời tuyên án",
+                    "notes": ["Phụ lục do hệ thống mô phỏng đính kèm, chép nguyên văn lời tuyên án tại phiên tòa."],
+                    "entries": [ { "seq": 80, "step": 11, "speaker_role": "Chủ tọa", "speaker_name": "<tên>", "text": "<lời tuyên án>" } ] } ]
   }
 }
 ```
 
-Thứ tự hiển thị: dòng mô phỏng → `court_name` (trái) và `national_header` (phải) → `title`, `subtitle` (giữa) → `opening` → `sections` theo thứ tự → `closing` → `signatures` (hai cột) → dòng mô phỏng.
+Thứ tự hiển thị: dòng mô phỏng → `court_name` (trái) và `national_header` (phải) → `title`, `subtitle` (giữa) → `opening` → `sections` theo thứ tự → `closing` → `signatures` (hai cột) → `appendix` → dòng mô phỏng.
 
 | Thành phần | Ý nghĩa |
 |---|---|
 | `fields[].value = null` | Không có dữ liệu. Hiển thị **dòng chấm trống** như mẫu (`......`), không tự điền |
 | `fields[].simulated = true` | Giá trị do code gán cho mô phỏng (ngày giờ, nơi xét xử, tên Viện kiểm sát khi chưa cấu hình, "công khai"). Có thể in nghiêng hoặc thêm chú thích "giả định" |
 | Dấu `......` bên trong `value` | Phần của mẫu không có dữ liệu (ví dụ "dân tộc", "con ông ... và bà ...", Văn phòng luật sư) |
+| `content` | `"summary"`: hiển thị `summary` (văn bản theo quy ước 4.1, đã có tên đầy đủ), kèm nhãn nhỏ "Tóm tắt". `"verbatim"`: hiển thị `entries`. Không có trường này hoặc `null` thì coi là `"verbatim"` |
+| `summary_fallback` | `true` = đã thử tóm tắt nhưng không đạt kiểm tra, nên dùng nguyên văn. Chỉ để thông tin; không cần báo lỗi cho người dùng |
+| `appendix` | **Ngoài mẫu**: lời tuyên án nguyên văn. Hiển thị sau phần chữ ký, có tiêu đề rõ là phụ lục, tách khỏi thân biên bản |
 | `sections[].entries` | Lời trong phiên, nguyên văn, theo `seq`. Phần III = bước 1–2. Phần IV chia 4 mục: 1 = bước 3, 2 = bước 4–5, 3 = bước 6–8, 4 = bước 9. `text` theo quy ước văn bản ở 4.1 |
 | `sections[].notes` | Câu cố định của mẫu. Theo hướng dẫn (29) của mẫu, biên bản **không chép phần quyết định** của bản án; lời tuyên án vẫn có trong `utterances` bước 11 |
 | `signatures` | Tên đầy đủ của Thư ký và Chủ tọa |
 
-`text` là bản thuần của chính `record`: dòng mô phỏng ở đầu và cuối; tiêu đề phần (I–IV) in hoa trên một dòng riêng; mỗi trường một dòng `"<nhãn>: <giá trị>"` (trống thì `......`); mỗi lời một dòng `"<Vai> <Tên>: <lời>"`. Frontend nên render từ `record`; `text` dùng cho nút sao chép và cho bản in dự phòng. Có nút "In / lưu PDF" dùng chức năng in của trình duyệt. **Không** sửa, không cắt, không bỏ hai dòng mô phỏng.
+`text` là bản thuần của chính `record` (mục tóm tắt là đoạn tóm tắt; phụ lục nằm sau chữ ký): dòng mô phỏng ở đầu và cuối; tiêu đề phần (I–IV) in hoa trên một dòng riêng; mỗi trường một dòng `"<nhãn>: <giá trị>"` (trống thì `......`); mỗi lời một dòng `"<Vai> <Tên>: <lời>"`. Frontend nên render từ `record`; `text` dùng cho nút sao chép và cho bản in dự phòng. Có nút "In / lưu PDF" dùng chức năng in của trình duyệt. **Không** sửa, không cắt, không bỏ hai dòng mô phỏng.
 
 ---
 
@@ -271,7 +284,7 @@ Mỗi khối có dạng `event: <tên>\ndata: <JSON>\n\n`. Header của response
 
 | Sự kiện | Payload | Ghi chú |
 |---|---|---|
-| `status` | `{ "message": "Đang dựng hồ sơ vụ án giả định..." }` | Câu báo tiến trình. Hiện ở dòng chờ (3 chấm + câu); không lưu vào diễn biến |
+| `status` | `{ "message": "Đang dựng hồ sơ vụ án giả định..." }` | Câu báo tiến trình. Hiện ở dòng chờ (3 chấm + câu); không lưu vào diễn biến. Ở lượt cuối, sau `utterance` tuyên án sẽ có `status` "Đang lập biên bản..." (tối đa ~60 giây), rồi mới tới `state` (completed) và `done`. Phiên đã lưu là completed **trước** bước này: nếu stream đứt ở đây thì chỉ cần `GET /{id}`; biên bản vẫn mở được (có thể là nguyên văn) |
 | `session` | `{ "session_id": "uuid", "title": "<tên vụ án>" }` | Chỉ ở `POST /api/trials`. Nhận được thì chuyển sang URL `/trial/<session_id>` |
 | `utterance` | xem dưới | Một lời trong phiên tòa |
 | `state` | object state (Mục 5) | Luôn là state mới nhất; thay toàn bộ state ở client |

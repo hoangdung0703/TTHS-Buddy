@@ -136,6 +136,11 @@ class TrialRecordEntry(BaseModel):
 
 class TrialRecordSection(BaseModel):
     heading: str
+    # "summary": show `summary` (clerk's summary, chặng 3E) instead of `entries`; "verbatim": show
+    # `entries`. `summary_fallback` = a summary was attempted but failed its checks.
+    content: Literal["verbatim", "summary"] = "verbatim"
+    summary: str | None = None
+    summary_fallback: bool = False
     fields: list[TrialRecordField] = []
     entries: list[TrialRecordEntry] = []
     # Fixed sentences of the form, e.g. "Hội đồng xét xử vào phòng nghị án để nghị án."
@@ -161,6 +166,8 @@ class TrialRecordOut(BaseModel):
     sections: list[TrialRecordSection]
     closing: list[TrialRecordField]
     signatures: list[TrialRecordSignature]
+    # Outside Mẫu 22-HS: the judgment as pronounced, verbatim from the transcript.
+    appendix: list[TrialRecordSection] = []
 
 
 class TrialRecordResponse(BaseModel):

@@ -26,6 +26,9 @@ from app.services.trial_state_machine import (
 from app.services.trial_turn_service import TrialContext, Utterance, role_of
 
 
+RECORD_SUMMARY_KEY = "record_summary"
+
+
 def shape_of(case: CaseFile) -> CaseShape:
     return CaseShape(case.options.victim_present, case.options.witness_count, case.options.has_related_party)
 
@@ -41,11 +44,22 @@ def state_fields(ctx: TrialContext) -> dict[str, Any]:
     fields = {"current_step": state.current_step, "slot_index": state.slot_index,
               "slot_user_turns": state.slot_user_turns, "pending_ai": state.pending_ai, "status": state.status,
               "version": state.version, "fact_ledger": ctx.fact_ledger,
-              "verdict_json": ctx.verdict.model_dump() if ctx.verdict else None,
+              "verdict_json": verdict_json(ctx),
               "verdict_flags": ctx.verdict_flags}
     if state.status == "completed":
         fields["completed_at"] = utc_now().isoformat()
     return fields
+
+
+def verdict_json(ctx: TrialContext) -> dict[str, Any] | None:
+    """The verdict plus, once computed, the biên bản summaries - kept in the same jsonb column so
+    chặng 3E needs no migration. Never returned to the client."""
+    if ctx.verdict is None:
+        return None
+    data = ctx.verdict.model_dump()
+    if ctx.record_summary is not None:
+        data[RECORD_SUMMARY_KEY] = ctx.record_summary
+    return data
 
 
 def utterance_from_row(row: dict[str, Any]) -> Utterance:
@@ -63,12 +77,14 @@ def utterance_rows(utterances: list[Utterance], session_id: str, user_id: str) -
 def build_context(case_row: dict[str, Any], session_row: dict[str, Any], utterance_rows_: list[dict[str, Any]],
                   settings: Settings, recorder: TrialCallRecorder) -> TrialContext:
     case = CaseFile.model_validate(case_row["case_json"])
-    verdict = Verdict.model_validate(session_row["verdict_json"]) if session_row.get("verdict_json") else None
+    stored = dict(session_row.get("verdict_json") or {})
+    record_summary = stored.pop(RECORD_SUMMARY_KEY, None)
+    verdict = Verdict.model_validate(stored) if stored else None
     return TrialContext(
         case=case, pack=build_pack(case_row["legal_pack"]), state=state_from_row(session_row, case),
         settings=settings, recorder=recorder, transcript=[utterance_from_row(r) for r in utterance_rows_],
         fact_ledger=list(session_row.get("fact_ledger") or []), verdict=verdict,
-        verdict_flags=list(session_row.get("verdict_flags") or []),
+        verdict_flags=list(session_row.get("verdict_flags") or []), record_summary=record_summary,
     )
 
 
