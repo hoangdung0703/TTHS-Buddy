@@ -98,8 +98,31 @@ class DefendantSlotTests(unittest.TestCase):
 
     def test_question_caps_follow_decision_13(self):
         caps = {s.key: (s.max_questions, s.decline) for step in STEPS for s in step.slots if s.max_questions}
-        self.assertEqual(caps, {"khai_mac": (2, False), "hdxx_hoi_bi_cao": (6, True), "ksv_hoi": (4, True),
-                                "ls_hoi": (4, True), "loi_sau_cung": (1, False)})
+        self.assertEqual(caps, {"khai_mac": (2, False), "hdxx_hoi_bi_cao": (4, True), "ksv_hoi": (3, True),
+                                "ls_hoi": (3, True), "loi_sau_cung": (1, False)})
+        questioning = sum(caps[k][0] for k in ("hdxx_hoi_bi_cao", "ksv_hoi", "ls_hoi"))
+        self.assertEqual(questioning, 10)
+
+    def test_minimum_never_exceeds_the_cap(self):
+        for step in STEPS:
+            for slot in step.slots:
+                self.assertLessEqual(slot.min_questions, slot.max_questions, slot.key)
+                self.assertGreaterEqual(slot.max_questions, 0, slot.key)
+        unchanged = {s.key: (s.min_user_turns, s.max_user_turns) for step in STEPS for s in step.slots
+                     if s.key in ("ksv_hoi", "ls_hoi", "doi_dap")}
+        self.assertEqual(unchanged, {"ksv_hoi": (1, 8), "ls_hoi": (1, 8), "doi_dap": (1, 3)})
+
+    def test_questioning_ends_at_the_new_cap_and_the_hearing_moves_on(self):
+        for key, cap, after in (("hdxx_hoi_bi_cao", 4, "hdxx_hoi_nguoi_khac"), ("ksv_hoi", 3, "ls_hoi"),
+                                ("ls_hoi", 3, "ket_thuc_xet_hoi")):
+            ctx = at(_ctx("bi_cao"), key)
+            for _ in range(cap):
+                ctx.state = complete_ai_turn(ctx.state, asked_student=True)
+                self.assertEqual(awaiting(ctx.state), "user", key)
+                act(ctx, "speak", text="Dạ.")
+            self.assertEqual(ctx.state.slot_user_turns, cap)
+            ctx.state = complete_ai_turn(ctx.state, asked_student=True)   # a question past the cap is dropped
+            self.assertEqual(current_slot(ctx.state).key, after, key)
 
     def test_khai_mac_runs_two_questions_then_closes(self):
         state = replace(new_session("bi_cao", SHAPE), current_step=2)
@@ -232,7 +255,7 @@ class InterleavedTurnTests(unittest.TestCase):
 
     def test_cap_reached_no_question_is_kept(self):
         ctx = at(_ctx("bi_cao", answers=[seg([("CHU_TOA", "Hội đồng xét xử đã hỏi xong bị cáo.")],
-                                              ("CHU_TOA", "Bị cáo còn gì nữa không?"))]), "hdxx_hoi_bi_cao", turns=6)
+                                              ("CHU_TOA", "Bị cáo còn gì nữa không?"))]), "hdxx_hoi_bi_cao", turns=4)
         produced = asyncio.run(run_ai_turn(ctx))
         self.assertEqual([u.guard_flags for u in produced], [[]])
         self.assertNotIn("cau_hoi_cho_nguoi_hoc", ctx.recorder.prompts[0])

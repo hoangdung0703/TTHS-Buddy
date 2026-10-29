@@ -90,6 +90,8 @@ class SlotSpec:
     # questions are put to the student, the AI is held to ask at least `min_questions` (code asks
     # a fixed question otherwise), `decline` allows "Từ chối trả lời", and `close_on_cap` ends the
     # slot on the last answer with no further AI call (lời sau cùng: no question after it).
+    # Questioning caps (decision 13, lowered 2026-10-30): HĐXX 4, KSV 3, luật sư 3 = 10 questions;
+    # khai mạc (2) and lời sau cùng (1) are procedural turns outside that total.
     max_questions: int = 0
     min_questions: int = 0
     decline: bool = False
@@ -123,13 +125,13 @@ STEPS: tuple[StepSpec, ...] = (
     )),
     StepSpec(4, "Hội đồng xét xử xét hỏi", ("307", "308", "309", "310", "311", "312"), (
         SlotSpec("hdxx_hoi_bi_cao", "chu_toa", "segment", speakers=("chu_toa", "hoi_tham", "bi_cao"),
-                 max_questions=6, min_questions=1, decline=True),
+                 max_questions=4, min_questions=1, decline=True),
         SlotSpec("hdxx_hoi_nguoi_khac", "chu_toa", "segment",
                  speakers=("chu_toa", "hoi_tham", "bi_hai", "nguoi_lam_chung", "nguoi_lq")),
     )),
     StepSpec(5, "Kiểm sát viên và luật sư xét hỏi", ("307", "309", "310", "311", "317", "318"), (
-        SlotSpec("ksv_hoi", "ksv", "qa_loop", min_user_turns=1, max_user_turns=8, max_questions=4, decline=True),
-        SlotSpec("ls_hoi", "luat_su", "qa_loop", min_user_turns=1, max_user_turns=8, max_questions=4, decline=True),
+        SlotSpec("ksv_hoi", "ksv", "qa_loop", min_user_turns=1, max_user_turns=8, max_questions=3, decline=True),
+        SlotSpec("ls_hoi", "luat_su", "qa_loop", min_user_turns=1, max_user_turns=8, max_questions=3, decline=True),
         SlotSpec("ket_thuc_xet_hoi", "chu_toa", "template"),
     )),
     StepSpec(6, "Kiểm sát viên luận tội", ("319", "320", "321"), (

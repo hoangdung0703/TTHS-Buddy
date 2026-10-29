@@ -58,7 +58,7 @@ class DefendantRouteTests(unittest.TestCase):
         # every AI utterance comes from someone else: the student's id is never an AI speaker
         self.assertEqual([r for r in rows if r["speaker_id"] == "BI_CAO" and not r["is_user"]], [])
         questions = [r for r in rows if "student_question" in r["guard_flags"]]
-        self.assertEqual(len(questions), 2 + 6 + 4 + 4 + 1)            # every cap, the fake always asks
+        self.assertEqual(len(questions), 2 + 4 + 3 + 3 + 1)            # every cap, the fake always asks
         self.assertEqual(self.fake.calls.count("record_summary"), 1)    # IV.2/IV.3 summarised as for KSV
         record = self.client.get(f"/api/trials/{sid}/record").json()
         last_words = record["record"]["sections"][3]["subsections"][3]

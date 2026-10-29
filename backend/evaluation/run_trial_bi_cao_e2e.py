@@ -10,9 +10,12 @@ Reported (console: labels and counts only, never any text of the hearing): Gemin
 slot, latency median/p90, guard pauses and rejected attempts with their labels, questions put to the
 student per slot (and how many code had to ask itself), declines, measure-only flags
 (speaks_for_student, question_trimmed, user_amount_off_file), record completeness. Records go to
---out for a human reader.
+--out for a human reader, and so does flags_<seed>.json: every AI line flagged speaks_for_student,
+verbatim, with the two utterances before it, for a person to classify (true or false positive).
+--out must lie OUTSIDE the repository: these files hold hearing text and are never committed or
+printed.
 
-HARD cap on Gemini calls (--hard-cap, default 78, never above 80), checked before every AI turn with
+HARD cap on Gemini calls (--hard-cap, default 50, never above 80), checked before every AI turn with
 room for its worst case; stops at once on a Gemini 402/429 and after 3 guard pauses on one slot.
 
 Usage (from backend/):  ../.venv/bin/python -m evaluation.run_trial_bi_cao_e2e --out <dir>
@@ -34,11 +37,12 @@ from app.core.logging import configure_logging
 from app.models.trial import CaseOptions
 from app.services.trial_case_service import CaseGenerationFailed, create_case
 from app.services.trial_metrics import TrialCallRecorder
+from app.services.trial_names import render
 from app.services.trial_record import build_record, render_record_text
 from app.services.trial_record_summary import summarise_record
 from app.services.trial_session_service import shape_of, state_out
-from app.services.trial_state_machine import current_slot, new_session
-from app.services.trial_turn_service import STUDENT_QUESTION_FLAG, TrialContext
+from app.services.trial_state_machine import ROLE_LABELS, current_slot, new_session
+from app.services.trial_turn_service import STUDENT_QUESTION_FLAG, TrialContext, role_of
 from evaluation.run_trial_probes import Cap, _p90, _record_complete, ai_until_user, calls, student
 
 CONFIGS = (
@@ -63,6 +67,25 @@ ARGUE = ("Tôi không đồng ý với mức hình phạt Kiểm sát viên đ�
 LAST_WORDS = "Tôi biết mình đã sai. Kính mong Hội đồng xét xử khoan hồng để tôi sớm trở về lo cho gia đình."
 
 
+FLAG_CONTEXT = 2
+
+
+def save_flagged(ctx: TrialContext, path: Path) -> int:
+    """Writes each AI line flagged speaks_for_student, verbatim with the FLAG_CONTEXT utterances before
+    it, for manual classification. Hearing text: the file stays outside the repository, unprinted."""
+    def shown(u) -> dict:
+        return {"seq": u.seq, "step": u.step, "speaker": ROLE_LABELS.get(role_of(u.speaker_id), u.speaker_id),
+                "is_user": u.is_user, "kind": u.kind, "flags": u.guard_flags,
+                "text": u.text if u.is_user else render(u.text, ctx.case.participants)}
+    items = []
+    for i, u in enumerate(ctx.transcript):
+        if not u.is_user and "speaks_for_student" in u.guard_flags:
+            items.append({"flagged": shown(u),
+                          "before": [shown(b) for b in ctx.transcript[max(0, i - FLAG_CONTEXT):i]]})
+    path.write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
+    return len(items)
+
+
 async def play(seed: int, options: CaseOptions, optional: bool, settings, qdrant, cap: int, recorders: list,
                out: Path) -> dict:
     case_recorder, recorder = TrialCallRecorder(), TrialCallRecorder()
@@ -76,35 +99,41 @@ async def play(seed: int, options: CaseOptions, optional: bool, settings, qdrant
     answered: dict[str, int] = {}
     declines = 0
     started = time.monotonic()
-    while ctx.state.status == "active":
-        await ai_until_user(ctx, recorders, cap, events)
-        if ctx.state.status != "active":
-            break
-        view = state_out(SESSION_ID, ctx.state, case=ctx.case, transcript=ctx.transcript)
-        actions, question = view.allowed_actions, view.pending_question
-        if question is not None:
-            key = current_slot(ctx.state).key
-            answered[key] = answered.get(key, 0) + 1
-            if key == "loi_sau_cung":
-                student(ctx, "speak", text=LAST_WORDS)
-            elif "decline" in actions and optional and declines == 0:
-                student(ctx, "decline")
-                declines += 1
-            else:
-                student(ctx, "speak", text=question.prefill or ANSWERS[sum(answered.values()) % len(ANSWERS)])
-        elif actions and actions[0].startswith("advance:"):
-            student(ctx, "advance", target_step=ctx.state.current_step + 1)
-        elif "end_slot" in actions and not optional:
-            student(ctx, "end_slot")
-        else:   # the optional turns of steps 7 and 8
-            student(ctx, "speak", text=ADD_DEFENCE if ctx.state.current_step == 7 else ARGUE)
+    cap_stop = None
+    try:   # a cap hit mid-hearing still reports and saves what was played
+        while ctx.state.status == "active":
+            await ai_until_user(ctx, recorders, cap, events)
+            if ctx.state.status != "active":
+                break
+            view = state_out(SESSION_ID, ctx.state, case=ctx.case, transcript=ctx.transcript)
+            actions, question = view.allowed_actions, view.pending_question
+            if question is not None:
+                key = current_slot(ctx.state).key
+                answered[key] = answered.get(key, 0) + 1
+                if key == "loi_sau_cung":
+                    student(ctx, "speak", text=LAST_WORDS)
+                elif "decline" in actions and optional and declines == 0:
+                    student(ctx, "decline")
+                    declines += 1
+                else:
+                    student(ctx, "speak", text=question.prefill or ANSWERS[sum(answered.values()) % len(ANSWERS)])
+            elif actions and actions[0].startswith("advance:"):
+                student(ctx, "advance", target_step=ctx.state.current_step + 1)
+            elif "end_slot" in actions and not optional:
+                student(ctx, "end_slot")
+            else:   # the optional turns of steps 7 and 8
+                student(ctx, "speak", text=ADD_DEFENCE if ctx.state.current_step == 7 else ARGUE)
+    except Cap as stop:
+        cap_stop = str(stop)
     hearing_seconds = round(time.monotonic() - started, 1)
     if ctx.state.status == "completed":
         if calls(recorders) + SUMMARY_WORST_CASE > cap:
-            raise Cap("cap reached before the record summary")
-        ctx.record_summary = await summarise_record(ctx)
+            cap_stop = "cap reached before the record summary"
+        else:
+            ctx.record_summary = await summarise_record(ctx)
     record = build_record(ctx.case, ctx.transcript, None, None, summary=ctx.record_summary)
     (out / f"record_{seed}.txt").write_text(render_record_text(record), encoding="utf-8")
+    flagged = save_flagged(ctx, out / f"flags_{seed}.json")
 
     flags: dict[str, int] = {}
     for u in ctx.transcript:
@@ -116,7 +145,8 @@ async def play(seed: int, options: CaseOptions, optional: bool, settings, qdrant
             for label in {v.split(":")[0] for v in r.guard_violations}:
                 rejected[label] = rejected.get(label, 0) + 1
     return {
-        "seed": seed, "crime": options.crime_key, "case_attempts": creation.attempts,
+        "seed": seed, "crime": options.crime_key, "case_attempts": creation.attempts, "stopped": cap_stop,
+        "last_step": ctx.state.current_step,
         "completed": ctx.state.status == "completed", "hearing_seconds": hearing_seconds,
         "case_calls": len(case_recorder.records), "hearing_calls": len(recorder.records),
         "calls_by_type": {t: sum(1 for r in recorder.records if r.call_type == t)
@@ -129,7 +159,7 @@ async def play(seed: int, options: CaseOptions, optional: bool, settings, qdrant
         "questions_by_code": sum("question_fallback" in u.guard_flags for u in ctx.transcript),
         "student_utterances": sum(u.is_user for u in ctx.transcript), "declines": declines,
         "ai_utterances_as_student": sum(u.speaker_id == "BI_CAO" and not u.is_user for u in ctx.transcript),
-        "flags": flags,
+        "flags": flags, "speaks_for_student_saved": flagged,
         "student_question_flags": sum(STUDENT_QUESTION_FLAG in u.guard_flags for u in ctx.transcript),
         "verdict_guilty": ctx.verdict.guilty if ctx.verdict else None,
         "record": _record_complete(record),
@@ -148,6 +178,9 @@ async def main(out: Path, cap: int) -> int:
     for seed, options, optional in CONFIGS:
         try:
             rows.append(await play(seed, options, optional, settings, qdrant, cap, recorders, out))
+            if rows[-1]["stopped"]:
+                stopped = rows[-1]["stopped"]
+                break
         except (Cap, CaseGenerationFailed) as stop:
             rows.append({"seed": seed, "crime": options.crime_key, "stopped": type(stop).__name__})
             if isinstance(stop, Cap):
@@ -178,6 +211,6 @@ async def main(out: Path, cap: int) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--hard-cap", type=int, default=78)
+    parser.add_argument("--hard-cap", type=int, default=50)
     args = parser.parse_args()
     sys.exit(asyncio.run(main(args.out, args.hard_cap)))

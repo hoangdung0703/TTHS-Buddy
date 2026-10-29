@@ -602,13 +602,13 @@ Người dùng là bị cáo (THIET-KE 11.2). AI đóng Hội đồng xét xử,
 |---|---|---|---|---|---|
 | 1, 3, 6, 10, 11 | — | không có | — | `advance:N` / `continue` | `null` |
 | 2 | Khai mạc (đoạn xen) | trả lời câu hỏi lý lịch (điền sẵn `pending_question.prefill`), rồi câu hỏi có đề nghị thay đổi người tiến hành tố tụng không | 2 | `["speak"]` | 1–1500 |
-| 4 | Hội đồng xét xử hỏi bị cáo (đoạn xen) | trả lời câu hỏi của Chủ tọa, Hội thẩm | 6 | `["speak", "decline"]` | 1–1500 |
-| 5 | KSV hỏi, rồi luật sư hỏi (đoạn xen, từng bên) | trả lời; câu hỏi cho bị hại, người làm chứng do AI trả lời luôn | 4 mỗi bên | `["speak", "decline"]` | 1–1500 |
+| 4 | Hội đồng xét xử hỏi bị cáo (đoạn xen) | trả lời câu hỏi của Chủ tọa, Hội thẩm | 4 | `["speak", "decline"]` | 1–1500 |
+| 5 | KSV hỏi, rồi luật sư hỏi (đoạn xen, từng bên) | trả lời; câu hỏi cho bị hại, người làm chứng do AI trả lời luôn | 3 mỗi bên | `["speak", "decline"]` | 1–1500 |
 | 7 | Bổ sung ý kiến bào chữa (Điều 320 khoản 2 BLTTHS), sau bài bào chữa | không bắt buộc, một lượt; Chủ tọa hỏi bằng câu thủ tục | — | `["speak", "end_slot"]` | 1–3000 |
 | 8 | Tranh luận (Điều 322 BLTTHS), sau vòng đối đáp KSV–luật sư | không bắt buộc, một lượt; nói thì AI KSV đáp lại một bài | — | `["speak", "end_slot"]` | 1–3000 |
 | 9 | Lời nói sau cùng (đoạn xen) | bắt buộc; nói xong phần kết thúc ngay, không ai hỏi thêm (Điều 324 khoản 2) | 1 | `["speak"]` | 1–3000 |
 
-- Trần câu hỏi là trần **tối đa**: AI có thể kết thúc phần hỏi sớm hơn (khi đó stream chạy tiếp sang phần kế tiếp). Ở bước 2, 4, 9 nếu AI kết thúc mà chưa hỏi đủ tối thiểu (bước 2: 2 câu; bước 4: 1 câu; bước 9: lời mời) thì Chủ tọa hỏi bằng câu cố định của server; frontend không phân biệt.
+- Trần xét hỏi (bước 4–5) tổng cộng **10 câu**: Hội đồng xét xử 4, KSV 3, luật sư 3; cộng 2 câu thủ tục ở khai mạc và lời sau cùng, nên một phiên có tối đa 13 câu hỏi chờ người dùng (cộng 2 lượt không bắt buộc ở bước 7–8). Trần câu hỏi là trần **tối đa**: AI có thể kết thúc phần hỏi sớm hơn (khi đó stream chạy tiếp sang phần kế tiếp). Ở bước 2, 4, 9 nếu AI kết thúc mà chưa hỏi đủ tối thiểu (bước 2: 2 câu; bước 4: 1 câu; bước 9: lời mời) thì Chủ tọa hỏi bằng câu cố định của server; frontend không phân biệt.
 - Gợi ý nút: bước 7 `end_slot` = "Không bổ sung"; bước 8 `end_slot` = "Không có ý kiến". Bấm thì server ghi câu thủ tục tương ứng (Mục 4, `is_user`).
 - Bước 4–5 trong lúc chờ trả lời, `end_slot` và `advance` nhận 409 (`trial_action_not_allowed`, `trial_slot_not_finished`); câu hỏi không bỏ qua được. `decline` ở bước 2, 9 hoặc ở vai khác: 409 `trial_action_not_allowed`.
 - Lời bị cáo được lưu và vào biên bản **nguyên văn**, kể cả khi khai khác hồ sơ (không bị chặn, không bị chú thích). AI đối chiếu theo hồ sơ: hỏi lại, công bố lời khai ở giai đoạn điều tra, đính chính số liệu sai bằng con số trong hồ sơ. Bộ phát hiện nhảy cóc vẫn áp dụng ("cho tôi nói lời sau cùng luôn" → Chủ tọa nhắc, không tính là câu trả lời, câu hỏi vẫn chờ).
