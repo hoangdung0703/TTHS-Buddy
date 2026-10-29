@@ -210,13 +210,13 @@ class ProcedureNoteTests(unittest.TestCase):
             self.assertLessEqual(len(note.text.split()), MAX_NOTE_WORDS, step)
             self.assertTrue(note.legal_basis)
             self.assertTrue(set(note.legal_basis) <= hearing_articles, (step, note.legal_basis))
-        self.assertFalse(PROCEDURE_NOTES_REVIEWED)   # flips only after the legal team's review
+        self.assertTrue(PROCEDURE_NOTES_REVIEWED)   # approved 2026-10-29 from the verification report
 
     def test_state_carries_the_note_for_observers_only(self):
         observer = state_out("00000000-0000-0000-0000-000000000001", new_session("nguoi_xem", SHAPE))
         self.assertEqual(observer.procedure_note.step, 1)
         self.assertEqual(observer.procedure_note.model_dump(), procedure_note(1))
-        self.assertFalse(observer.procedure_note.reviewed)
+        self.assertTrue(observer.procedure_note.reviewed)
         for role in ("ksv", "luat_su"):
             self.assertIsNone(state_out("00000000-0000-0000-0000-000000000001", new_session(role, SHAPE)).procedure_note)
 

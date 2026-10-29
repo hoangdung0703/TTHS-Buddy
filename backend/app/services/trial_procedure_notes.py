@@ -3,11 +3,12 @@
 One short note per hearing step: what the step does, who speaks, and the BLTTHS articles it rests
 on. Plain data, 0 LLM calls, the same text for every session.
 
-DRAFT written by the developer from the BLTTHS 2015 text in the corpus (amended 2021 and by Luật
-99/2025/QH15). Each claim was checked against the corpus article text on 2026-10-29 and the notes
-corrected accordingly, see docs/phien-toa-gia-dinh/procedure-notes-verification.md. Still NOT approved:
-PROCEDURE_NOTES_REVIEWED stays False, and the API sends that flag with every note, until a reviewer
-has read that report and signed off on all 11 notes.
+Written by the developer from the BLTTHS 2015 text in the corpus (amended 2021 and by Luật
+99/2025/QH15). Each claim was checked by the developer against the corpus article text on 2026-10-29
+and the notes corrected accordingly, see docs/phien-toa-gia-dinh/procedure-notes-verification.md; the
+project owner approved the result, so PROCEDURE_NOTES_REVIEWED is True and the draft label is gone.
+NOT appraised by the legal team, and not checked against the original text of Luật 99/2025/QH15
+(only the amendment footnotes in the corpus).
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from dataclasses import dataclass
 
 from app.services.trial_state_machine import STEP_BY_NUMBER, STEPS
 
-PROCEDURE_NOTES_REVIEWED = False
+PROCEDURE_NOTES_REVIEWED = True
 MAX_NOTE_WORDS = 80
 
 

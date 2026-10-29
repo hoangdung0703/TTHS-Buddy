@@ -501,7 +501,7 @@ class TrialRouteTests(unittest.TestCase):
         while state["status"] == "active":
             self.assertIsNone(state["text_limits"])
             self.assertEqual(state["procedure_note"]["step"], state["current_step"])
-            self.assertFalse(state["procedure_note"]["reviewed"])
+            self.assertTrue(state["procedure_note"]["reviewed"])
             self.assertEqual(state["allowed_actions"], [f"advance:{state['current_step'] + 1}"])
             seen_steps.append(state["current_step"])
             speak = self.turn(sid, state, "speak", text="Tôi muốn phát biểu.")
