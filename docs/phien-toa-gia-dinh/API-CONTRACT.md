@@ -567,7 +567,7 @@ Người dùng là Thư ký phiên tòa (THIET-KE 11.3). AI đóng mọi vai cò
 "clerk_prompt": { "step": 4, "text": "Ghi cho mục IV.2: ai hỏi, hỏi ai, nội dung chính của câu hỏi và câu trả lời; ...", "reviewed": false }
 ```
 
-`reviewed: false` = chưa được nhóm luật duyệt: hiện nhãn nhỏ "Bản nháp, đang chờ nhóm luật duyệt". Vai `thu_ky` có `procedure_note = null`.
+Frontend hiện câu nhắc ghi chép với nhãn trung tính "Gợi ý ghi chép", **không** hiện nhãn chờ duyệt. Trường `reviewed` vẫn được trả về (`false` = chưa được nhóm luật duyệt). Vai `thu_ky` có `procedure_note = null`.
 
 **Ghi chép** trong phiên: route 3.8. **Sau tuyên án**: phiên `completed` như mọi vai, nhưng **không** có lời gọi tóm tắt biên bản (không có `status` "Đang lập biên bản..."). Màn biên bản mở ở chế độ soạn: `GET /record` (3.7) trả bản nháp, người dùng viết IV.2 và IV.3 (3.9), xem `notices`, rồi chốt (3.10).
 
