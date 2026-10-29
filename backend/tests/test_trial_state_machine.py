@@ -147,7 +147,7 @@ class TransitionTests(unittest.TestCase):
 
 class SlotAssignmentTests(unittest.TestCase):
     def _user_slots(self, role: str, shape: CaseShape = SHAPE) -> list[str]:
-        return [s.key for step in STEPS for s in active_slots(step.number, shape) if is_user_slot(s, role)]
+        return [s.key for step in STEPS for s in active_slots(step.number, shape, role) if is_user_slot(s, role)]
 
     def test_same_script_serves_both_roles(self):
         self.assertEqual(self._user_slots("ksv"),

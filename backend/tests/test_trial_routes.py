@@ -85,8 +85,13 @@ class FakeModel:
             text = self.bad[kind].pop(0)
         elif kind == "dialogue":
             speakers = response_schema["properties"]["utterances"]["items"]["properties"]["speaker_id"]["enum"]
-            text = json.dumps({"utterances": [{"speaker_id": s, "text": "Dạ, xin trình bày theo đúng hồ sơ."}
-                                              for s in speakers[:3]], "new_facts": []}, ensure_ascii=False)
+            out = {"utterances": [{"speaker_id": s, "text": "Dạ, xin trình bày theo đúng hồ sơ."}
+                                  for s in speakers[:3]], "new_facts": []}
+            question = response_schema["properties"].get("cau_hoi_cho_nguoi_hoc")
+            if question is not None:   # đoạn xen (Bị cáo): always ask; code holds the cap
+                asker = question["properties"]["speaker_id"]["enum"][0]
+                out["cau_hoi_cho_nguoi_hoc"] = {"speaker_id": asker, "text": "Đề nghị bị cáo trình bày rõ ý kiến."}
+            text = json.dumps(out, ensure_ascii=False)
         elif kind == "verdict":
             text = json.dumps(GOOD_VERDICT)
         elif kind == "record_summary":
@@ -474,7 +479,7 @@ class TrialRouteTests(unittest.TestCase):
     def test_list_carries_config_and_remaining_quota(self):
         config = self.client.get("/api/trials").json()["config"]
         self.assertEqual({c["crime_key"] for c in config["crimes"]}, {"blhs_173", "blhs_174", "blhs_134", "blhs_171"})
-        self.assertEqual(config["user_roles"], ["ksv", "luat_su", "nguoi_xem", "thu_ky"])
+        self.assertEqual(config["user_roles"], ["bi_cao", "ksv", "luat_su", "nguoi_xem", "thu_ky"])
         self.assertEqual(config["limits"], {"max_cases_per_day": 5, "max_active_sessions": 3, "max_witnesses": 2,
                                             "abandon_after_days": 14})
         self.assertEqual(config["remaining"], {"cases_today": 5, "active_sessions": 3, "usage_available": True})
@@ -538,7 +543,7 @@ class TrialRouteTests(unittest.TestCase):
         self.assertIsNone(self.client.get(f"/api/trials/{ksv_sid}").json()["state"]["procedure_note"])
 
     def test_roles_of_later_stages_are_rejected(self):
-        for role in ("bi_cao", "chu_toa"):
+        for role in ("chu_toa",):
             response = self.client.post("/api/trials", json={"crime_key": "blhs_173", "user_role": role})
             self.assertEqual(response.status_code, 422, role)
 

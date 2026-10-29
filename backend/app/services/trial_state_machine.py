@@ -17,6 +17,12 @@ AI rounds (AI_DEBATE_ROUNDS), each speech a separate AI turn.
 Thư ký (chặng R2, design doc Mục 11.3) speaks once: the step-1 attendance report, which is a template
 slot for every other role. Every later slot is an AI slot, as for Người xem; the clerk's real work
 (notes, parts IV.2 and IV.3 of the biên bản) goes through trial_clerk, never through this machine.
+
+Bị cáo (chặng R3, design doc Mục 11.2) answers inside AI slots ("đoạn xen", Mục 11.0b): khai mạc,
+the HĐXX questioning, the KSV and luật sư questioning and lời sau cùng stop at each question put to
+the student, who answers ("speak") or, while being questioned, declines ("decline"); a per-slot cap
+(SlotSpec.max_questions) bounds the questions and so the calls. Two optional turns exist for this
+role only (SlotSpec.user_roles): bổ sung bào chữa (step 7) and tranh luận with a KSV reply (step 8).
 """
 from __future__ import annotations
 
@@ -49,11 +55,16 @@ ROLE_TO_IDS: dict[str, tuple[str, ...]] = {
 }
 LAY_IDS_PREFIXES = ("BI_CAO", "BI_HAI", "NLC_", "NLQ")
 # Roles whose stage is enabled: the API accepts no other (config.user_roles is built from this).
-ENABLED_USER_ROLES: frozenset[str] = frozenset({"ksv", "luat_su", "nguoi_xem", "thu_ky"})
+ENABLED_USER_ROLES: frozenset[str] = frozenset({"ksv", "luat_su", "nguoi_xem", "thu_ky", "bi_cao"})
 # Observes only: no participant id, never speaks, every slot is an AI slot.
 OBSERVER_ROLE = "nguoi_xem"
 # Speaks only the step-1 report, then writes parts IV.2 and IV.3 of the biên bản (trial_clerk).
 CLERK_ROLE = "thu_ky"
+# Answers inside AI slots (đoạn xen) and may decline a question (trial_defendant).
+DEFENDANT_ROLE = "bi_cao"
+_DEFENDANT_ONLY = frozenset({DEFENDANT_ROLE})
+# Who answers the questions of a qa_loop the AI asks.
+_QA_ANSWER_ROLES = ("bi_cao", "bi_hai", "nguoi_lam_chung", "nguoi_lq")
 # Đối đáp when neither side is the student: KSV then luật sư per round (decision 2026-10-29, item 3).
 AI_DEBATE_ROUNDS = 1
 
@@ -75,6 +86,14 @@ class SlotSpec:
     opponent: Role | None = None
     # The slot exists only when the student's role is in this set; None = every role (Mục 11.0a).
     user_roles: frozenset[str] | None = None
+    # Đoạn xen (Mục 11.0b), when the student's role answers in this AI slot: at most `max_questions`
+    # questions are put to the student, the AI is held to ask at least `min_questions` (code asks
+    # a fixed question otherwise), `decline` allows "Từ chối trả lời", and `close_on_cap` ends the
+    # slot on the last answer with no further AI call (lời sau cùng: no question after it).
+    max_questions: int = 0
+    min_questions: int = 0
+    decline: bool = False
+    close_on_cap: bool = False
 
 
 @dataclass(frozen=True)
@@ -92,7 +111,8 @@ STEPS: tuple[StepSpec, ...] = (
         SlotSpec("bao_cao_co_mat", "thu_ky", "template", min_user_turns=1, min_chars=100, max_chars=3000),
     )),
     StepSpec(2, "Khai mạc phiên tòa", ("301", "302", "303", "304", "305"), (
-        SlotSpec("khai_mac", "chu_toa", "segment", speakers=("chu_toa", "bi_cao")),
+        SlotSpec("khai_mac", "chu_toa", "segment", speakers=("chu_toa", "bi_cao"), max_questions=2,
+                 min_questions=2),
         SlotSpec("y_kien_ksv_thay_doi", "ksv", "speech", min_user_turns=0),
         SlotSpec("y_kien_ls_thay_doi", "luat_su", "speech", min_user_turns=0),
         SlotSpec("cam_doan_nlc", "chu_toa", "segment", speakers=("chu_toa", "nguoi_lam_chung"),
@@ -102,13 +122,14 @@ STEPS: tuple[StepSpec, ...] = (
         SlotSpec("cong_bo_cao_trang", "ksv", "indictment", min_user_turns=1, min_chars=100),
     )),
     StepSpec(4, "Hội đồng xét xử xét hỏi", ("307", "308", "309", "310", "311", "312"), (
-        SlotSpec("hdxx_hoi_bi_cao", "chu_toa", "segment", speakers=("chu_toa", "hoi_tham", "bi_cao")),
+        SlotSpec("hdxx_hoi_bi_cao", "chu_toa", "segment", speakers=("chu_toa", "hoi_tham", "bi_cao"),
+                 max_questions=6, min_questions=1, decline=True),
         SlotSpec("hdxx_hoi_nguoi_khac", "chu_toa", "segment",
                  speakers=("chu_toa", "hoi_tham", "bi_hai", "nguoi_lam_chung", "nguoi_lq")),
     )),
     StepSpec(5, "Kiểm sát viên và luật sư xét hỏi", ("307", "309", "310", "311", "317", "318"), (
-        SlotSpec("ksv_hoi", "ksv", "qa_loop", min_user_turns=1, max_user_turns=8),
-        SlotSpec("ls_hoi", "luat_su", "qa_loop", min_user_turns=1, max_user_turns=8),
+        SlotSpec("ksv_hoi", "ksv", "qa_loop", min_user_turns=1, max_user_turns=8, max_questions=4, decline=True),
+        SlotSpec("ls_hoi", "luat_su", "qa_loop", min_user_turns=1, max_user_turns=8, max_questions=4, decline=True),
         SlotSpec("ket_thuc_xet_hoi", "chu_toa", "template"),
     )),
     StepSpec(6, "Kiểm sát viên luận tội", ("319", "320", "321"), (
@@ -116,15 +137,23 @@ STEPS: tuple[StepSpec, ...] = (
     )),
     StepSpec(7, "Luật sư bào chữa", ("320", "322"), (
         SlotSpec("bao_chua", "luat_su", "long_speech", min_user_turns=1, min_chars=300),
+        # Điều 320 khoản 2 BLTTHS: the defendant may add to the defence. Optional ("end_slot").
+        SlotSpec("moi_bi_cao_bo_sung", "chu_toa", "template", user_roles=_DEFENDANT_ONLY),
+        SlotSpec("bi_cao_bo_sung_bao_chua", "bi_cao", "speech", max_chars=3000, user_roles=_DEFENDANT_ONLY),
         SlotSpec("bi_hai_trinh_bay", "chu_toa", "segment", speakers=("chu_toa", "bi_hai"),
                  requires="victim_present"),
     )),
     StepSpec(8, "Tranh luận, đối đáp", ("322",), (
         SlotSpec("doi_dap", "ksv", "debate", opponent="luat_su", min_user_turns=1, max_user_turns=3),
+        # Điều 322 BLTTHS: one optional turn of the defendant, answered by one KSV speech.
+        SlotSpec("moi_bi_cao_tranh_luan", "chu_toa", "template", user_roles=_DEFENDANT_ONLY),
+        SlotSpec("bi_cao_tranh_luan", "bi_cao", "debate", opponent="ksv", max_user_turns=1, max_chars=3000,
+                 user_roles=_DEFENDANT_ONLY),
         SlotSpec("ket_thuc_tranh_luan", "chu_toa", "template"),
     )),
     StepSpec(9, "Bị cáo nói lời sau cùng", ("324",), (
-        SlotSpec("loi_sau_cung", "chu_toa", "segment", speakers=("chu_toa", "bi_cao")),
+        SlotSpec("loi_sau_cung", "chu_toa", "segment", speakers=("chu_toa", "bi_cao"), max_questions=1,
+                 min_questions=1, close_on_cap=True, max_chars=3000),
     )),
     StepSpec(10, "Nghị án", ("326",), (
         SlotSpec("vao_nghi_an", "chu_toa", "template"),
@@ -207,6 +236,16 @@ def is_user_slot(slot: SlotSpec, user_role: str) -> bool:
     return slot.role == user_role
 
 
+def is_interleaved(slot: SlotSpec, user_role: str) -> bool:
+    """An AI slot that stops at each question put to the student (đoạn xen, Mục 11.0b): the student's
+    role answers in it - a speaker of a dialogue segment, or the person questioned in a qa_loop the
+    AI runs - and the slot has a question cap."""
+    if slot.max_questions <= 0 or is_user_slot(slot, user_role):
+        return False
+    answerers = slot.speakers if slot.kind == "segment" else _QA_ANSWER_ROLES if slot.kind == "qa_loop" else ()
+    return user_role in answerers
+
+
 def ai_speaker_ids(slot: SlotSpec, state: SessionState) -> tuple[str, ...]:
     """The enum of speaker ids an AI segment for this slot may use - never the student's role."""
     user_ids = set(ROLE_TO_IDS.get(state.user_role, ()))
@@ -264,7 +303,7 @@ def step_complete(state: SessionState) -> bool:
 
 @dataclass(frozen=True)
 class UserAction:
-    kind: Literal["speak", "end_slot", "advance"]
+    kind: Literal["speak", "end_slot", "advance", "decline"]
     expected_step: int
     expected_version: int
     text: str | None = None
@@ -288,6 +327,8 @@ def allowed_actions(state: SessionState) -> list[str]:
     if slot is None:
         return [f"advance:{state.current_step + 1}"]
     actions: list[str] = []
+    if is_interleaved(slot, state.user_role):   # a question is pending: answer it (or decline it)
+        return ["speak", "decline"] if slot.decline else ["speak"]
     if slot.kind == "qa_loop":
         actions.append("speak:" + "|".join(state.shape.lay_present_ids()))
         if state.slot_user_turns >= slot.min_user_turns:
@@ -347,6 +388,11 @@ def apply_user_action(state: SessionState, action: UserAction) -> ActionOutcome:
     if slot is None:
         raise TrialConflict("action_not_allowed", state)
 
+    if is_interleaved(slot, state.user_role):
+        return _answer_question(state, slot, action)
+    if action.kind == "decline":
+        raise TrialConflict("action_not_allowed", state)
+
     if action.kind == "end_slot":
         if slot.kind not in ("qa_loop", "debate", "speech") or state.slot_user_turns < slot.min_user_turns:
             raise TrialConflict("slot_not_finished", state)
@@ -380,12 +426,47 @@ def apply_user_action(state: SessionState, action: UserAction) -> ActionOutcome:
     return ActionOutcome(_next_slot(state), "accepted")
 
 
-def complete_ai_turn(state: SessionState) -> SessionState:
-    """Called once the AI output for the pending turn has passed its guards and been stored."""
+def _answer_question(state: SessionState, slot: SlotSpec, action: UserAction) -> ActionOutcome:
+    """The student's answer to (or refusal of) the question pending in a đoạn xen. Each counts as
+    one of the slot's questions; the AI goes on unless the slot closes on its last answer."""
+    if action.kind == "decline":
+        if not slot.decline:
+            raise TrialConflict("action_not_allowed", state)
+    elif action.kind == "speak":
+        text = (action.text or "").strip()
+        if not text:
+            raise TrialConflict("empty_text", state)
+        skip_target = detect_skip_request(text, state.current_step)
+        if skip_target is not None:
+            return ActionOutcome(replace(state, version=state.version + 1), "skip_refused", skip_target)
+        if len(text) < slot.min_chars:
+            raise TrialConflict("text_too_short", state)
+    else:   # a question cannot be skipped
+        raise TrialConflict("action_not_allowed", state)
+    answered = replace(state, slot_user_turns=state.slot_user_turns + 1, version=state.version + 1)
+    if slot.close_on_cap and answered.slot_user_turns >= slot.max_questions:
+        return ActionOutcome(_next_slot(answered), "accepted")
+    return ActionOutcome(replace(answered, pending_ai=True), "accepted")
+
+
+def questions_left(state: SessionState) -> int:
+    """Đoạn xen: questions the AI may still put to the student in the current slot."""
+    slot = current_slot(state)
+    return max(0, slot.max_questions - state.slot_user_turns) if slot else 0
+
+
+def complete_ai_turn(state: SessionState, asked_student: bool = False) -> SessionState:
+    """Called once the AI output for the pending turn has passed its guards and been stored.
+    `asked_student`: in a đoạn xen, the output ends with a question to the student, who answers
+    next; otherwise the slot is over."""
     if awaiting(state) != "ai":
         raise TrialConflict("not_ai_turn", state)
     slot = current_slot(state)
     assert slot is not None
+    if is_interleaved(slot, state.user_role):
+        if asked_student and questions_left(state) > 0:
+            return replace(state, pending_ai=False, version=state.version + 1)
+        return _next_slot(state)
     if slot.kind == "qa_loop" and is_user_slot(slot, state.user_role):
         turns = state.slot_user_turns + 1
         moved = replace(state, slot_user_turns=turns, pending_ai=False, version=state.version + 1)

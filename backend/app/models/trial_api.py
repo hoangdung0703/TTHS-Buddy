@@ -36,7 +36,7 @@ class TrialTurnRequest(_Strict):
     expected_version: int = Field(ge=0)
     # "continue" resumes an AI turn that was interrupted (client gone, guard pause); the rest map
     # onto trial_state_machine.UserAction.
-    action: Literal["speak", "end_slot", "advance", "continue"]
+    action: Literal["speak", "end_slot", "advance", "continue", "decline"]
     text: str | None = Field(default=None, max_length=6000)
     addressee: str | None = Field(default=None, max_length=16)
     target_step: int | None = Field(default=None, ge=1, le=11)
@@ -79,6 +79,37 @@ class TrialClerkReport(BaseModel):
     attendance: list[TrialAttendanceEntry]
 
 
+class TrialDeclineNote(BaseModel):
+    """Bị cáo only: why "Từ chối trả lời" exists, shown next to the button. `reviewed` stays false
+    until the legal team has approved the text."""
+    text: str
+    legal_basis: list[str]
+    reviewed: bool
+
+
+class TrialPendingQuestion(BaseModel):
+    """Bị cáo only: the question the student must answer now (đoạn xen), so the composer can quote it
+    after a reload. `seq` is that utterance in the transcript."""
+    seq: int
+    speaker_id: str
+    speaker_role: str
+    speaker_name: str
+    text: str
+    # The step-2 identity question only: the answer prefilled from the case file (editable).
+    prefill: str | None = None
+    # Present when "decline" is in allowed_actions.
+    decline_note: TrialDeclineNote | None = None
+
+
+class TrialRoleBrief(BaseModel):
+    """Bị cáo only ("Vai của bạn", decision 9): the defendant's own character card, as a role-play
+    hint. Never sent for any other role (the key is absent from GET /{id})."""
+    stance: str
+    knowledge: list[str]
+    demeanor: str
+    note: str
+
+
 class TrialStateOut(BaseModel):
     session_id: uuid.UUID
     current_step: int
@@ -95,6 +126,8 @@ class TrialStateOut(BaseModel):
     clerk_prompt: TrialClerkPrompt | None = None
     # Thư ký only, and only while the step-1 report is the student's turn; null otherwise.
     clerk_report: TrialClerkReport | None = None
+    # Bị cáo only, while a question put to the student is pending; null otherwise.
+    pending_question: TrialPendingQuestion | None = None
 
 
 class TrialUtteranceOut(BaseModel):
@@ -165,6 +198,8 @@ class TrialDetailResponse(BaseModel):
     case_file: dict
     steps: list[dict]
     utterances: list[TrialUtteranceOut]
+    # Bị cáo sessions only; the key is left out of the response for every other role.
+    role_brief: TrialRoleBrief | None = None
 
 
 class TrialRecordField(BaseModel):

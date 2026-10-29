@@ -7,9 +7,10 @@ from typing import Any
 
 from app.core.config import Settings
 from app.models.trial import CaseFile, Verdict
-from app.models.trial_api import TrialStateOut, TrialSummaryOut, TrialUtteranceOut
+from app.models.trial_api import TrialPendingQuestion, TrialStateOut, TrialSummaryOut, TrialUtteranceOut
 from app.services.trial_anonymise import anonymise_case_view
 from app.services.trial_clerk import attendance, clerk_prompt, report_prefill
+from app.services.trial_defendant import DECLINE_NOTE, IDENTITY_SLOT, identity_prefill
 from app.services.trial_legal_pack import build_pack
 from app.services.trial_metrics import TrialCallRecorder
 from app.services.trial_names import render
@@ -21,14 +22,16 @@ from app.services.trial_state_machine import (
     STEPS,
     OBSERVER_ROLE,
     CLERK_ROLE,
+    DEFENDANT_ROLE,
     CaseShape,
     SessionState,
     allowed_actions,
     awaiting,
     current_slot,
+    is_interleaved,
     text_limits,
 )
-from app.services.trial_turn_service import TrialContext, Utterance, role_of
+from app.services.trial_turn_service import STUDENT_QUESTION_FLAG, TrialContext, Utterance, role_of
 
 
 RECORD_SUMMARY_KEY = "record_summary"
@@ -97,8 +100,9 @@ REPORT_SLOT = "bao_cao_co_mat"
 
 
 def state_out(session_id: str, state: SessionState, guard_exhausted: bool = False,
-              case: CaseFile | None = None) -> TrialStateOut:
-    """`case` is needed only for the Thư ký's step-1 report (names in the prefill)."""
+              case: CaseFile | None = None, transcript: list[Utterance] | None = None) -> TrialStateOut:
+    """`case` is needed for the Thư ký's step-1 report (names in the prefill) and, with `transcript`,
+    for the Bị cáo's pending question."""
     actions = allowed_actions(state)
     if state.status == "active" and awaiting(state) == "ai":
         actions = [] if guard_exhausted else ["continue"]
@@ -115,7 +119,26 @@ def state_out(session_id: str, state: SessionState, guard_exhausted: bool = Fals
                          else None,
                          clerk_prompt=clerk_prompt(state.current_step) if clerk else None,
                          clerk_report={"prefill": report_prefill(case, state.shape),
-                                       "attendance": attendance(case, state.shape)} if report_due else None)
+                                       "attendance": attendance(case, state.shape)} if report_due else None,
+                         pending_question=_pending_question(state, case, transcript))
+
+
+def _pending_question(state: SessionState, case: CaseFile | None,
+                      transcript: list[Utterance] | None) -> TrialPendingQuestion | None:
+    """Bị cáo, while a đoạn xen waits for the student: the latest question put to them."""
+    slot = current_slot(state)
+    if (state.user_role != DEFENDANT_ROLE or case is None or not transcript or awaiting(state) != "user"
+            or slot is None or not is_interleaved(slot, state.user_role)):
+        return None
+    question = next((u for u in reversed(transcript) if STUDENT_QUESTION_FLAG in u.guard_flags), None)
+    if question is None:
+        return None
+    shown = utterance_out(question, case)
+    return TrialPendingQuestion(
+        seq=shown.seq, speaker_id=shown.speaker_id, speaker_role=shown.speaker_role,
+        speaker_name=shown.speaker_name, text=shown.text,
+        prefill=identity_prefill(case) if slot.key == IDENTITY_SLOT and state.slot_user_turns == 0 else None,
+        decline_note=DECLINE_NOTE if slot.decline else None)
 
 
 def utterance_out(u: Utterance, case: CaseFile) -> TrialUtteranceOut:

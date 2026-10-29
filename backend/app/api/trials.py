@@ -65,6 +65,7 @@ from app.services.trial_clerk import (
     with_finalized,
     with_notes,
 )
+from app.services.trial_defendant import role_brief
 from app.services.trial_config import (
     ABANDON_AFTER_DAYS,
     CRIMES,
@@ -92,6 +93,7 @@ from app.services.trial_session_service import (
 )
 from app.services.trial_state_machine import (
     CLERK_ROLE,
+    DEFENDANT_ROLE,
     ENABLED_USER_ROLES,
     OBSERVER_ROLE,
     STEP_BY_NUMBER,
@@ -191,7 +193,7 @@ def _stale_cutoff() -> datetime:
 
 def _state_of(session_id: str, ctx: TrialContext):
     return state_out(session_id, ctx.state, consecutive_guard_pauses(ctx) >= MAX_CONSECUTIVE_GUARD_PAUSES,
-                     case=ctx.case)
+                     case=ctx.case, transcript=ctx.transcript)
 
 
 def consecutive_guard_pauses(ctx: TrialContext) -> int:
@@ -459,13 +461,18 @@ async def get_trial(session_id: uuid.UUID, request: Request, current_user: AuthU
                     repo: TrialRepository = Depends(get_trial_repository)) -> TrialDetailResponse:
     session, ctx = await _load(repo, current_user.user_id, session_id, settings, TrialCallRecorder())
     case = ctx.case
-    return TrialDetailResponse(
+    detail = TrialDetailResponse(
         state=_state_of(str(session_id), ctx), title=case.draft.title, crime_key=case.crime_key,
         user_role=session["user_role"], disclaimer=case.disclaimer, court=case.court.model_dump(),
         participants={pid: p.model_dump() for pid, p in case.participants.items()},
         case_file=student_case_view(case), steps=steps_view(),
         utterances=[utterance_out(u, case) for u in ctx.transcript],
+        role_brief=role_brief(case) if session["user_role"] == DEFENDANT_ROLE else None,
     )
+    # Decision 9: the character card exists only in a Bị cáo session - every other role gets no
+    # role_brief key at all, not a null one.
+    exclude = None if detail.role_brief is not None else {"role_brief"}
+    return JSONResponse(content=detail.model_dump(mode="json", exclude=exclude))
 
 
 @router.post("/{session_id}/turn")

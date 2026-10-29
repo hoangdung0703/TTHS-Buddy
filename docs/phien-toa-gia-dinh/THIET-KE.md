@@ -1011,7 +1011,7 @@ Theo số câu hỏi ở 11.7:
 - `SlotSpec.user_roles` (11.0a) và `active_slots(step, shape, user_role)`. Chưa slot nào dùng; có test lọc theo vai.
 - Vai không id: `TrialContext.student_id = None`; enum người nói không loại ai; prompt hệ thống có biến thể "người học quan sát", bỏ câu "không viết lời thay {vai}". KSV và luật sư giữ nguyên câu chữ, chỉ thêm 1 dòng tên Tòa án và Viện kiểm sát.
 - Đối đáp AI–AI: slot `debate` mà không phía nào là người dùng chạy `AI_DEBATE_ROUNDS = 1` vòng, KSV rồi luật sư, mỗi bài một lượt AI `long_speech` riêng (lưu state sau mỗi bài, guard Rule 9 chạy từng bài). Đếm bằng `slot_user_turns`, không thêm trường.
-- Người xem chỉ có `advance`/`continue`; `speak`/`end_slot` luôn 409. `state.procedure_note` mang chú giải thủ tục của bước (11 đoạn tĩnh, ≤ 80 từ, `backend/app/services/trial_procedure_notes.py`). **Bản nháp, `reviewed: false`, chờ nhóm luật duyệt.**
+- Người xem chỉ có `advance`/`continue`; `speak`/`end_slot` luôn 409. `state.procedure_note` mang chú giải thủ tục của bước (11 đoạn tĩnh, ≤ 80 từ, `backend/app/services/trial_procedure_notes.py`). Ban đầu là bản nháp `reviewed: false`; **nay `reviewed: true`** (`PROCEDURE_NOTES_REVIEWED = True`): đã đối chiếu với văn bản BLTTHS, sửa và đánh dấu đã duyệt ở commit 6d3b4bc.
 - Biên bản phiên Người xem có dòng ngoài mẫu ở đầu: "Phiên tòa mô phỏng do hệ thống đóng mọi vai; người học quan sát."
 - API chỉ nhận vai trong `ENABLED_USER_ROLES = {ksv, luat_su, nguoi_xem}` (422 với vai khác); `config.user_roles` lấy từ đây.
 - Thẻ nhân vật: không trả cho vai nào (chưa có Bị cáo). Có test: phiên Người xem và KSV không có `role_brief`/`stance`/`knowledge`/`demeanor`, không có quyết định nghị án, kể cả khi đã nghị án xong.
@@ -1031,7 +1031,7 @@ Theo số câu hỏi ở 11.7:
 - Độ trùng từ vựng (Jaccard): đối đáp KSV so với luận tội 0,33–0,44; đối đáp luật sư so với bào chữa 0,37–0,40.
 - Biên bản: 3/3 đủ I–IV, IV.1–IV.4 có nội dung, chữ ký, phụ lục tuyên án, dòng Người xem; tóm tắt IV.2 chạy 3/3, IV.3 2/3 (1 lần về nguyên văn vì viện dẫn "Điều 65" không nêu luật: cơ chế dự phòng đúng thiết kế); 0 tên cơ quan sai, 0 chỗ giữ chỗ.
 
-**Còn chờ:** nhóm luật duyệt 11 đoạn chú giải (`PROCEDURE_NOTES_REVIEWED`), đọc 3 biên bản; xác nhận tên "khu vực 1, tỉnh X"; giao diện Người xem (chặng sau, theo 11.1.7 và API-CONTRACT 5.1).
+**Còn chờ:** ~~nhóm luật duyệt 11 đoạn chú giải~~ (đã xong, commit 6d3b4bc); đọc 3 biên bản; xác nhận tên "khu vực 1, tỉnh X"; giao diện Người xem (chặng sau, theo 11.1.7 và API-CONTRACT 5.1).
 
 ### 11.10 Chặng R1b — sổ hạn mức và tên luật trong tóm tắt biên bản, 29/10/2026
 
@@ -1077,3 +1077,38 @@ Theo số câu hỏi ở 11.7:
 **Đo (Gemini thật, 29 lời gọi, ước tính 32–40, trần 50; script `backend/evaluation/run_trial_thu_ky_e2e.py`, offline, không tài khoản test):** 2/2 phiên đủ 11 bước (seed 9301 Điều 173, 9302 Điều 134); mỗi phiên 1 lời gọi tạo vụ + 13–14 lời gọi trong phiên; 0 lời gọi tóm tắt biên bản; ~339K token vào, ~21K ra, ~10K thinking cho cả 2 phiên. Độ trễ một lời gọi trong phiên: trung vị 2,9s, p90 4,8s. 0 lần bị guard loại, 0 lần tạm nghỉ, 0 cờ đo `speaks_for_student`. Người dùng giả (script): báo cáo bước 1 dài 297/349 ký tự; IV.2 3.789/3.747, IV.3 1.489/806 ký tự (chép câu đầu mỗi lời); 0 lưu ý trên văn bản chép đúng (không có lưu ý oan). Biên bản 2/2 đủ I–IV, IV.2/IV.3 `content: "user"`.
 
 **Còn chờ:** nhóm luật duyệt 11 câu nhắc ghi chép và các câu "Lưu ý"; xác nhận giả định 1–2; giao diện Thư ký (chặng sau, theo 11.3.7 và API-CONTRACT 5.2, 3.8–3.10).
+
+### 11.13 Chặng R3 — vai Bị cáo (backend), 30/10/2026
+
+**Không cần migration mới:** check `user_role` của 0012 đã có `bi_cao`; không dùng cột mới.
+
+**Đã làm (backend, theo 11.2 và quyết định 9–14 ở 11.8):**
+- `bi_cao` vào `ENABLED_USER_ROLES`. Đoạn xen (11.0b) cho 5 phần: `khai_mac` (trần 2 câu hỏi), `hdxx_hoi_bi_cao` (6), `ksv_hoi` (4), `ls_hoi` (4), `loi_sau_cung` (1). `is_interleaved(slot, vai)`: vai người dùng là người trả lời của slot AI (người nói của `segment`, hoặc người bị hỏi của `qa_loop` do AI hỏi). Mỗi câu hỏi 1 lời gọi; schema có `cau_hoi_cho_nguoi_hoc: {speaker_id, text} | null` tách khỏi `utterances`, enum người nói và enum người hỏi đều không có `BI_CAO`. Chạm trần: lời gọi kế tiếp dùng schema không có trường câu hỏi; câu hỏi model vẫn trả thì bị bỏ.
+- Hai slot `user_roles={bi_cao}`: bước 7 `moi_bi_cao_bo_sung` (mẫu, Chủ tọa hỏi) + `bi_cao_bo_sung_bao_chua` (không bắt buộc, 1–3.000, 0 lời gọi); bước 8 `moi_bi_cao_tranh_luan` (mẫu) + `bi_cao_tranh_luan` (slot `debate` 1 lượt, không bắt buộc, AI KSV đáp 1 bài). Bỏ lượt thì ghi câu thủ tục "Bị cáo không bổ sung ý kiến bào chữa." / "Bị cáo không có ý kiến tranh luận.".
+- `decline` (chỉ bước 4–5): ghi "Bị cáo không trả lời câu hỏi này." (`kind: procedural`, `is_user`, vào biên bản), 0 lời gọi cho câu đó, tính là một câu hỏi; AI phản ứng qua chỉ dẫn lượt (ghi nhận, không ép, không coi là thừa nhận). Không phải vi phạm guard.
+- `state.pending_question` (seq, người hỏi, câu hỏi, `prefill` lý lịch ở câu hỏi đầu của khai mạc, `decline_note` có căn cứ). `GET /{id}` có `role_brief` (lập trường, hiểu biết, thái độ của chính bị cáo + câu "Đây là gợi ý nhập vai...") **chỉ** ở phiên Bị cáo; mọi vai khác không có khóa này.
+- Nhất quán với hồ sơ (11.2.3): chỉ dẫn lượt của mọi đoạn xen có quy tắc lời khai (không coi là đã chứng minh, đối chiếu, đính chính số, không nói bị cáo đã thừa nhận điều chưa nói). Số tiền/% trong lời người dùng không có trong hồ sơ: cờ đo `user_amount_off_file` (không hiện, không vào sổ dữ kiện). Prompt nghị án (chỉ phiên Bị cáo) thêm câu 11.2.4 và câu về điểm s khoản 1 Điều 51 BLHS, tình tiết tự khai thêm không dùng làm tăng nặng.
+- Guard "nói thay bị cáo": chặn cấu trúc (enum, trường câu hỏi riêng; câu trả lời gõ vào câu hỏi dạng "{BI_CAO}: ..." bị cắt, cờ `question_trimmed`). Mẫu nội dung `BI_CAO` ("bị cáo đã/vừa/cũng thừa nhận|nhận tội|khai rằng|xác nhận|đồng ý", "như bị cáo vừa khai") ở **mức đo** (`speaks_for_student`), không đếm khi lời người dùng gần nhất có từ nhận (bỏ dạng phủ định "không nhận", "chưa đúng" trước khi xét).
+- Giữ nguyên: Rule 9, guard quyết định, guard số tiền, tên, 409 `expected_step`/`expected_version`, cầu chì 3 lần, hạn mức, `TRIAL_ENABLED`/`TRIAL_ALLOWED_EMAILS`, tóm tắt IV.2/IV.3 sau tuyên án như KSV, `PROCEDURE_NOTES_REVIEWED = True`. Vai Bị cáo không có `procedure_note`.
+- API-CONTRACT: 3.3 (`role_brief`), 3.4 (`decline`, giới hạn), 4, 5 (`pending_question`), 5.3, 6, 9 (quy tắc 14).
+
+**Đối chiếu corpus** (`ingestion/chunks.json`, BLTTHS 2015 sửa 2021, BLHS hợp nhất 2025): Điều 61 BLTTHS (Bị cáo) khoản 2 điểm h "Trình bày lời khai, trình bày ý kiến, không buộc phải đưa ra lời khai chống lại chính mình hoặc buộc phải nhận mình có tội" (thiết kế dẫn Điều 61 đúng; điểm h khoản 2); Điều 308 khoản 2 điểm b (công bố lời khai khi người được xét hỏi "không khai tại phiên tòa"); Điều 320 khoản 2 ("bị cáo ... có quyền bổ sung ý kiến bào chữa"); Điều 322 khoản 1 (bị cáo đối đáp với Kiểm sát viên); Điều 324 khoản 2 ("Không được đặt câu hỏi khi bị cáo nói lời sau cùng"); Điều 301, 307, 309 khoản 2; BLHS Điều 51 khoản 1 điểm s ("thành khẩn khai báo, ăn năn hối cải").
+
+**Giả định khi thiết kế thiếu chi tiết** (chọn cách an toàn, không đổi quyết định đã chốt):
+1. Trần câu hỏi là trường mới `SlotSpec.max_questions`, không dùng lại `max_user_turns` như 11.0b viết: `ksv_hoi`/`ls_hoi` đã dùng `max_user_turns = 8` cho người dùng KSV/luật sư; dùng chung sẽ đổi hành vi hai vai đó.
+2. Model kết thúc phần trước khi hỏi đủ tối thiểu (khai mạc 2, HĐXX hỏi 1, lời sau cùng 1): Chủ tọa hỏi bằng câu cố định của code (`question_fallback`, 0 lời gọi), không tạm nghỉ.
+3. "Từ chối trả lời" chỉ ở bước 4–5 (theo bảng 11.2.1); không ở câu hỏi lý lịch, thay đổi người tiến hành tố tụng, lời sau cùng.
+4. Lượt bước 7 đặt sau bài bào chữa, trước bị hại trình bày (thứ tự khoản 2 rồi khoản 3 Điều 320); lượt bước 8 sau vòng đối đáp AI–AI, trước câu kết thúc tranh luận. Mỗi lượt có câu mời mẫu của Chủ tọa (0 lời gọi) để diễn biến và biên bản liền mạch.
+5. Lời sau cùng: nói xong là hết phần, không lời gọi thêm (Điều 324 khoản 2). Chưa làm "trở lại xét hỏi khi lời sau cùng có tình tiết mới quan trọng" (cùng khoản).
+6. `pending_question` có thêm `text`, người hỏi, `prefill`, `decline_note` (thiết kế chỉ nêu `{speaker_id, seq}`) để ô soạn không phải dò `utterances`.
+7. Lý lịch điền sẵn dùng tuổi (hồ sơ có tuổi, không có năm sinh) và bỏ ngày nhận cáo trạng (không có trong hồ sơ).
+8. Câu từ chối và câu bỏ lượt có `speaker_id = BI_CAO`, `is_user = true` (hành động của người dùng), `kind = procedural`.
+9. Cờ `user_amount_off_file` chỉ cho vai Bị cáo, để không đổi số đo của vai khác.
+10. Câu thêm vào prompt nghị án (11.2.4) và câu về điểm s là bản nháp của mình, chờ nhóm luật duyệt; `decline_note` cũng vậy (`reviewed: false`).
+
+**Code cũ cản thiết kế:** (a) nghĩa của `max_user_turns` ở `qa_loop` (giả định 1); (b) `response_model` của `GET /{id}` luôn in `role_brief: null`, nên route trả `JSONResponse` bỏ hẳn khóa với vai khác (quyết định 9 yêu cầu "không có trường"); (c) slot `debate` mới có `opponent = ksv` nên khi xét không theo vai thì bị coi là slot của KSV; mọi chỗ chạy đều lọc theo vai (`active_slots(..., user_role)`), test cũ được sửa cho đúng như vậy.
+
+**Đo (Gemini thật, 65 lời gọi, ước tính 55–70, trần 78; script `backend/evaluation/run_trial_bi_cao_e2e.py`, offline, không tài khoản test):** 2/2 phiên đủ 11 bước (seed 9401 Điều 173 có bị hại, có dùng "Từ chối trả lời", nói ở bước 7–8; seed 9402 Điều 134 bị hại vắng mặt, bỏ hai lượt tùy chọn). Mỗi phiên 1 lời gọi tạo vụ + 31–32 lời gọi trong phiên (gồm 1 tóm tắt biên bản), ~416K token vào, ~15,6K ra, ~5,3K thinking mỗi phiên (cao hơn ước tính 11.2: 320–380K vào). Độ trễ một lời gọi trong phiên: trung vị 2,0s, p90 3,2s; riêng đoạn xen trung vị 1,9s, p90 2,5s. AI hỏi **đủ trần** ở mọi phần (2/6/4/4/1 = 17 câu mỗi phiên), 0 câu do code hỏi thay. 0 lần tạm nghỉ; 1 lần bị loại rồi sinh lại qua (`citation`, tuyên án, phiên 9402). 0 lời AI mang `speaker_id = BI_CAO`; cờ đo `speaks_for_student` 0/1 (chưa phân loại oan hay đúng: script không lưu nguyên văn lời thoại). Từ chối trả lời: không tạm nghỉ, phiên chạy tiếp, tóm tắt IV.2 có ghi việc bị cáo không trả lời. Biên bản 2/2 đủ I–IV, IV.2/IV.3 là tóm tắt, IV.4 nguyên văn. Nghị án: có tội ở cả 2 phiên (người dùng giả nhận lỗi).
+
+**Còn chờ:** nhóm luật duyệt câu từ chối trả lời, `decline_note`, câu bổ sung prompt nghị án (điểm s khoản 1 Điều 51), câu mời bước 7–8 và giả định 2–5; quyết định có bật cứng mẫu nội dung "nói thay bị cáo" (cần số đo chặn oan trên nhiều phiên hơn, quyết định 14); cân nhắc giảm trần câu hỏi vì AI luôn hỏi đủ trần (~32 lời gọi/phiên); giao diện Bị cáo (chặng sau, theo 11.2.7 và API-CONTRACT 5.3).
+

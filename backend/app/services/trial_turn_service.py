@@ -14,6 +14,12 @@ pair guard; no invented names or unknown placeholders; numbers (money, percent) 
 file or the fact ledger (soft: flagged on the utterance, no regeneration). "Speaks for the student" is measured
 only (decision 2026-10-19); structurally the student's id is never in the speaker enum. A court or
 prosecutor office named other than the configured ones is flagged `office_name` (measured, chặng R1).
+
+Bị cáo (chặng R3): a đoạn xen makes one call per question put to the student; its schema carries the
+question in a separate field (cau_hoi_cho_nguoi_hoc) whose speaker enum holds the slot's askers
+only, so no output can contain the defendant's answer. Content patterns of "the AI speaks for the
+defendant" are measured only (decision 14), as are amounts in the student's own words that the case
+file does not hold (`user_amount_off_file`, Mục 11.2.3).
 """
 from __future__ import annotations
 
@@ -29,6 +35,11 @@ from app.core.logging import get_logger
 from app.models.trial import VERDICT_RESPONSE_SCHEMA, CaseFile, Verdict
 from app.prompts.trial_prompts import (
     AI_QA_GOALS,
+    DEFENDANT_SLOT_INSTRUCTIONS,
+    DEFENDANT_TESTIMONY_RULES,
+    DEFENDANT_TURN_ASK,
+    DEFENDANT_TURN_CLOSE,
+    DEFENDANT_VERDICT_NOTE,
     OBSERVER_ROLE_LINE,
     OBSERVER_RULE_ONE,
     OFFICES_LINE,
@@ -55,6 +66,12 @@ from app.services.trial_config import (
     get_crime,
     procuracy_name,
 )
+from app.services.trial_defendant import (
+    DECLINE_TEXT,
+    INVITATIONS,
+    OPT_OUT_TEXTS,
+    fallback_question,
+)
 from app.services.trial_legal_pack import LegalPack
 from app.services.trial_metrics import CallRecord, TrialCallRecorder
 from app.services.trial_names import NAME_LIKE_PATTERN, placeholders_in
@@ -65,6 +82,7 @@ from app.services.trial_rule9 import (
     mask_unverified_citations,
 )
 from app.services.trial_state_machine import (
+    DEFENDANT_ROLE,
     LAY_IDS_PREFIXES,
     ROLE_LABELS,
     ROLE_TO_IDS,
@@ -81,7 +99,9 @@ from app.services.trial_state_machine import (
     current_slot,
     debate_speaker_role,
     is_ai_debate,
+    is_interleaved,
     is_user_slot,
+    questions_left,
     skip_refusal_text,
     text_limits,
 )
@@ -107,6 +127,9 @@ STYLE_CARD_PATH = Path(__file__).resolve().parents[3] / "data" / "private" / "st
 
 _ID_TO_ROLE: dict[str, str] = {i: role for role, ids in ROLE_TO_IDS.items() if role != "hdxx" for i in ids}
 LEGAL_SPEAKER_IDS = frozenset({"CHU_TOA", "HOI_THAM_1", "HOI_THAM_2", "KSV", "LUAT_SU", "THU_KY"})
+# Guard flag of the utterance that holds a question put to the student in a đoạn xen; the state's
+# pending_question points at the latest one. `question_fallback`: asked by code, not the model.
+STUDENT_QUESTION_FLAG = "student_question"
 
 
 def role_of(speaker_id: str) -> str:
@@ -188,6 +211,16 @@ class _SegmentOut(BaseModel):
     new_facts: list[_NewFact] = []
 
 
+class _Question(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    speaker_id: str
+    text: str
+
+
+class _InterleavedOut(_SegmentOut):
+    cau_hoi_cho_nguoi_hoc: _Question | None = None
+
+
 class _SpeechOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str
@@ -207,6 +240,18 @@ def _segment_schema(speakers: tuple[str, ...]) -> dict:
         },
         "required": ["utterances", "new_facts"],
     }
+
+
+def _interleaved_schema(speakers: tuple[str, ...], askers: tuple[str, ...]) -> dict:
+    """Đoạn xen: the segment schema plus ONE optional question for the student, last by construction.
+    Neither enum holds the student's id."""
+    schema = _segment_schema(speakers)
+    schema["properties"]["cau_hoi_cho_nguoi_hoc"] = {
+        "type": "OBJECT", "nullable": True,
+        "properties": {"speaker_id": {"type": "STRING", "enum": list(askers)}, "text": {"type": "STRING"}},
+        "required": ["speaker_id", "text"]}
+    schema["required"] = [*schema["required"], "cau_hoi_cho_nguoi_hoc"]
+    return schema
 
 
 _SPEECH_SCHEMA = {"type": "OBJECT", "properties": {"text": {"type": "STRING"}}, "required": ["text"]}
@@ -337,7 +382,21 @@ _SPEAKS_FOR_STUDENT = {
     # reference to the report already made ("Thư ký đã báo cáo") is not matched.
     "THU_KY": re.compile(r"(?:\{THU_KY\}|thư ký(?: phiên tòa)?)\s+(?:xin\s+)?(?:báo cáo|thừa nhận|xác nhận)",
                          re.IGNORECASE),
+    # Bị cáo (Mục 11.2.6): another speaker stating what the defendant admitted or said.
+    "BI_CAO": re.compile(r"(?:\{BI_CAO\}|bị cáo)\s+(?:đã|vừa|cũng)\s+(?:thừa nhận|nhận tội|khai rằng|xác nhận|đồng ý)"
+                         r"|như\s+(?:\{BI_CAO\}|bị cáo)\s+vừa\s+khai", re.IGNORECASE),
 }
+# The defendant's latest words admit something: the BI_CAO pattern above is then not counted.
+# Negated forms ("không thừa nhận", "chưa đúng") are removed first, so they admit nothing.
+_ADMISSION = re.compile(r"thừa nhận|nhận tội|xác nhận|đồng ý|\bnhận\b|\bđúng\b", re.IGNORECASE)
+_NEGATED_ADMISSION = re.compile(r"\b(?:không|chưa)\s+(?:hề\s+)?(?:thừa nhận|nhận tội|xác nhận|đồng ý|nhận|đúng)",
+                                re.IGNORECASE)
+
+
+def _student_just_admitted(ctx: TrialContext) -> bool:
+    last = next((u for u in reversed(ctx.transcript) if u.is_user), None)
+    return (last is not None and last.kind == "speech"
+            and bool(_ADMISSION.search(_NEGATED_ADMISSION.sub(" ", last.text))))
 
 
 def _check_utterance(ctx: TrialContext, speaker_id: str, text: str, allowed: tuple[str, ...],
@@ -371,11 +430,25 @@ def _check_utterance(ctx: TrialContext, speaker_id: str, text: str, allowed: tup
     if any(int(m.group(1)) not in percents for m in PERCENT_PATTERN.finditer(text)):
         violations.append("unknown_percent")
     pattern = _SPEAKS_FOR_STUDENT.get(ctx.student_id or "")
-    if pattern and speaker_id != ctx.student_id and pattern.search(text):
+    if pattern and speaker_id != ctx.student_id and pattern.search(text) and not (
+            ctx.student_id == "BI_CAO" and _student_just_admitted(ctx)):
         flags.append("speaks_for_student")
     if office_name_mismatches(text, ctx.court):
         flags.append("office_name")
     return violations, flags
+
+
+def _trim_answer(question: str, student_id: str) -> tuple[str, bool]:
+    """Cuts a question at a line written as the student's answer ("{BI_CAO}: ..." or "Bị cáo: ..."):
+    the schema leaves no field for the answer, but the model can still type one into the question.
+    Returns the question and whether anything was cut (flagged `question_trimmed`)."""
+    if not student_id:
+        return question, False
+    label = re.escape(ROLE_LABELS[role_of(student_id)])
+    match = re.search(rf"(?:\{{{student_id}\}}\s*:|(?:^|\n)\s*{label}\s*:)", question, re.IGNORECASE)
+    if match is None or not question[:match.start()].strip():
+        return question, False
+    return question[:match.start()].rstrip(), True
 
 
 def _is_hard(violation: str) -> bool:
@@ -392,17 +465,22 @@ def _feedback(violations: list[str]) -> str:
 # --- Generation primitives ------------------------------------------------------------------------
 
 async def _generate_segment(ctx: TrialContext, slot_key: str, instruction: str,
-                            speakers: tuple[str, ...]) -> list[Utterance]:
+                            speakers: tuple[str, ...], askers: tuple[str, ...] | None = None) -> list[Utterance]:
+    """One dialogue call. `askers` is set in a đoạn xen: the output may end with one question to the
+    student by one of them, stored last and flagged STUDENT_QUESTION_FLAG; an empty tuple (the
+    question cap is reached) asks nothing, and any question the model still returns is dropped. A
+    đoạn xen may also return no line at all: the slot just ends."""
     feedback = ""
     last_violations: list[str] = []
+    schema = _interleaved_schema(speakers, askers) if askers else _segment_schema(speakers)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         result, record = await ctx.recorder.call(
             ctx.settings, call_type="dialogue", slot=slot_key, attempt=attempt,
             system_prompt=_system_prompt(ctx), user_prompt=_user_prompt(ctx, instruction, speakers, slot_key) + feedback,
-            response_schema=_segment_schema(speakers), thinking_level=None, temperature=DIALOGUE_TEMPERATURE,
+            response_schema=schema, thinking_level=None, temperature=DIALOGUE_TEMPERATURE,
         )
         try:
-            out = _SegmentOut.model_validate(json.loads(result.text))
+            out = _InterleavedOut.model_validate(json.loads(result.text))
         except (ValueError, ValidationError):
             record.guard_violations, record.accepted = ["schema"], False
             last_violations = ["schema"]
@@ -412,7 +490,13 @@ async def _generate_segment(ctx: TrialContext, slot_key: str, instruction: str,
         for utterance in out.utterances:  # layout by code, before the guards (content unchanged)
             utterance.text = format_utterance(utterance.text)
         checked = [(u, *_check_utterance(ctx, u.speaker_id, u.text, speakers, pack=pack)) for u in out.utterances]
-        violations = [v for _, vs, _ in checked for v in vs] or ([] if out.utterances else ["empty"])
+        question = out.cau_hoi_cho_nguoi_hoc if askers else None
+        if question is not None:
+            question.text, trimmed = _trim_answer(format_utterance(question.text), ctx.student_id or "")
+            vs, flags = _check_utterance(ctx, question.speaker_id, question.text, askers, pack=pack)
+            checked.append((question, vs, [*flags, *(["question_trimmed"] if trimmed else []),
+                                           STUDENT_QUESTION_FLAG]))
+        violations = [v for _, vs, _ in checked for v in vs] or ([] if checked or askers is not None else ["empty"])
         record.guard_violations = violations
         hard = [v for v in violations if _is_hard(v)]
         if hard and attempt < MAX_ATTEMPTS:
@@ -507,10 +591,11 @@ _TEMPLATES = {
 async def _deliberate(ctx: TrialContext) -> None:
     feedback = ""
     last: list[str] = []
+    base = VERDICT_SYSTEM_PROMPT + (DEFENDANT_VERDICT_NOTE if ctx.state.user_role == DEFENDANT_ROLE else "")
     for attempt in range(1, MAX_ATTEMPTS + 1):
         result, record = await ctx.recorder.call(
             ctx.settings, call_type="verdict", slot="nghi_an", attempt=attempt,
-            system_prompt=_system_prompt(ctx, VERDICT_SYSTEM_PROMPT),
+            system_prompt=_system_prompt(ctx, base),
             user_prompt=_user_prompt(ctx, "Hội đồng xét xử nghị án và trả về quyết định có cấu trúc.",
                                      ("CHU_TOA", "HOI_THAM_1", "HOI_THAM_2"), "nghi_an") + feedback,
             response_schema=VERDICT_RESPONSE_SCHEMA, thinking_level=THINKING_LEVEL_DECISION,
@@ -560,7 +645,8 @@ async def run_ai_turn(ctx: TrialContext) -> list[Utterance]:
     slot = current_slot(ctx.state)
     assert slot is not None and awaiting(ctx.state) == "ai"
     produced = await _dispatch(ctx, slot)
-    ctx.state = complete_ai_turn(ctx.state)
+    asked = bool(produced) and STUDENT_QUESTION_FLAG in produced[-1].guard_flags
+    ctx.state = complete_ai_turn(ctx.state, asked_student=asked)
     return produced
 
 
@@ -571,6 +657,10 @@ async def _dispatch(ctx: TrialContext, slot: SlotSpec) -> list[Utterance]:
     if slot.key in _TEMPLATES:
         speaker, text = _TEMPLATES[slot.key]
         return [ctx.add(speaker, text, kind="procedural")]
+    if slot.key in INVITATIONS:
+        return [ctx.add("CHU_TOA", INVITATIONS[slot.key], kind="procedural")]
+    if is_interleaved(slot, state.user_role):
+        return await _interleaved_turn(ctx, slot)
     if slot.kind == "indictment":  # AI is KSV: the indictment is read verbatim from the case file
         return [ctx.add("KSV", ctx.case.draft.indictment_text)]
     if slot.kind == "segment":
@@ -610,8 +700,8 @@ async def _dispatch(ctx: TrialContext, slot: SlotSpec) -> list[Utterance]:
         instruction = SLOT_INSTRUCTIONS["doi_dap"].format(
             speaker_id="{" + speaker + "}", opponent_label=ROLE_LABELS[other])
         return [await _generate_speech(ctx, slot.key, instruction, speaker, mode="lenient", thinking_level=None)]
-    if slot.kind == "debate":
-        speaker = "LUAT_SU" if state.user_role == "ksv" else "KSV"
+    if slot.kind == "debate":   # the student's side spoke (or opens): the other side answers
+        speaker = ROLE_TO_IDS[slot.opponent if state.user_role == slot.role else slot.role][0]
         instruction = SLOT_INSTRUCTIONS["doi_dap"].format(
             speaker_id="{" + speaker + "}", opponent_label=ROLE_LABELS[state.user_role])
         return [await _generate_speech(ctx, slot.key, instruction, speaker, mode="lenient", thinking_level=None)]
@@ -619,6 +709,35 @@ async def _dispatch(ctx: TrialContext, slot: SlotSpec) -> list[Utterance]:
         await _deliberate(ctx)
         return []
     raise ValueError(f"No handler for slot {slot.key}")
+
+
+async def _interleaved_turn(ctx: TrialContext, slot: SlotSpec) -> list[Utterance]:
+    """One call of a đoạn xen (Mục 11.0b): the AI lines up to the next question for the student, or
+    the close of the slot once the cap is reached. Below `min_questions`, a slot the model closed
+    without asking gets the fixed question from trial_defendant (0 extra calls)."""
+    state = ctx.state
+    student = ctx.student_id or ""
+    if slot.kind == "qa_loop":
+        asker = ROLE_TO_IDS[slot.role][0]
+        speakers = (asker, *(i for i in state.shape.lay_present_ids() if i != student))
+        askers: tuple[str, ...] = (asker,)
+        instruction = DEFENDANT_SLOT_INSTRUCTIONS[slot.key].format(goal=AI_QA_GOALS[asker])
+    else:
+        speakers = ai_speaker_ids(slot, state)
+        askers = tuple(i for i in speakers if not i.startswith(LAY_IDS_PREFIXES))
+        instruction = DEFENDANT_SLOT_INSTRUCTIONS[slot.key].format()
+    left = questions_left(state)
+    if left > 0:
+        turn = DEFENDANT_TURN_ASK.format(number=state.slot_user_turns + 1, cap=slot.max_questions)
+    else:
+        askers, turn = (), DEFENDANT_TURN_CLOSE.format()
+    instruction = "\n".join([instruction, DEFENDANT_TESTIMONY_RULES.format(), turn])
+    produced = await _generate_segment(ctx, slot.key, instruction, speakers, askers)
+    asked = bool(produced) and STUDENT_QUESTION_FLAG in produced[-1].guard_flags
+    if not asked and left > 0 and state.slot_user_turns < slot.min_questions:
+        produced.append(ctx.add("CHU_TOA", fallback_question(slot.key, state.slot_user_turns),
+                                flags=["question_fallback", STUDENT_QUESTION_FLAG]))
+    return produced
 
 
 async def _deliberate_if_needed(ctx: TrialContext) -> None:
@@ -633,16 +752,35 @@ async def run_until_user(ctx: TrialContext) -> list[Utterance]:
     return produced
 
 
+def _student_flags(ctx: TrialContext, text: str) -> list[str]:
+    """Measure-only flags on the student's own words, never shown to the client. Bị cáo: an amount or
+    percent the case file does not hold (Mục 11.2.3) - recorded verbatim, never added to the ledger."""
+    if ctx.state.user_role != DEFENDANT_ROLE:
+        return []
+    amounts, percents = _known_numbers(ctx)
+    if (any(parse_money(m.group(1)) not in amounts for m in MONEY_PATTERN.finditer(text))
+            or any(int(m.group(1)) not in percents for m in PERCENT_PATTERN.finditer(text))):
+        return ["user_amount_off_file"]
+    return []
+
+
 def apply_student_action(ctx: TrialContext, action: UserAction) -> list[Utterance]:
     """Validate and record the student's action. Raises TrialConflict (409) on any rule break.
     The student's text is stored verbatim; masking applies only when it is put into a prompt."""
     limits = text_limits(ctx.state)
     if action.kind == "speak" and action.text and limits is not None and len(action.text) > limits[1]:
         raise TrialConflict("text_too_long", ctx.state)
+    slot = current_slot(ctx.state)
     outcome = apply_user_action(ctx.state, action)
     produced: list[Utterance] = []
     if action.kind == "speak" and action.text:
-        produced.append(ctx.add(ctx.student_id, action.text.strip(), is_user=True, addressee=action.addressee))
+        text = action.text.strip()
+        produced.append(ctx.add(ctx.student_id, text, is_user=True, addressee=action.addressee,
+                                flags=_student_flags(ctx, text)))
+    elif action.kind == "decline":
+        produced.append(ctx.add(ctx.student_id, DECLINE_TEXT, is_user=True, kind="procedural", flags=["declined"]))
+    elif action.kind == "end_slot" and slot is not None and slot.key in OPT_OUT_TEXTS:
+        produced.append(ctx.add(ctx.student_id, OPT_OUT_TEXTS[slot.key], is_user=True, kind="procedural"))
     ctx.state = outcome.state
     if outcome.result == "skip_refused":
         produced.append(ctx.add("CHU_TOA", skip_refusal_text(ctx.state), kind="notice", flags=["skip_refused"]))

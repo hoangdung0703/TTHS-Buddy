@@ -219,3 +219,5 @@ SLOT_LEGAL_SLICES: dict[str, dict[str, tuple[str, ...]]] = {
     "bi_hai_trinh_bay": {BLTTHS_DOCUMENT: ("320",), BLHS_DOCUMENT: (CHARGE,)},
     "loi_sau_cung": {BLTTHS_DOCUMENT: ("324",), BLHS_DOCUMENT: (CHARGE,)},
 }
+# KSV answering the defendant's tranh luận turn (chặng R3) argues like the đối đáp.
+SLOT_LEGAL_SLICES["bi_cao_tranh_luan"] = SLOT_LEGAL_SLICES["doi_dap"]

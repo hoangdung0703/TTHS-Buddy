@@ -11,6 +11,7 @@ Tài liệu cho agent làm frontend ở session mới. Đọc file này là đ�
 - `backend/app/services/trial_record_summary.py` (tóm tắt IV.2, IV.3 của biên bản)
 - `backend/app/services/trial_procedure_notes.py` (chú giải thủ tục của vai Người xem)
 - `backend/app/services/trial_clerk.py` (vai Thư ký: ghi chép, mục IV.2/IV.3 do người dùng viết, lưu ý, câu nhắc ghi chép)
+- `backend/app/services/trial_defendant.py` (vai Bị cáo: thẻ "Vai của bạn", lời từ chối trả lời và căn cứ, lý lịch điền sẵn)
 
 Code thay đổi thì sửa file này cùng commit. Thiết kế tổng thể: `THIET-KE.md` (cùng thư mục). File này là chuẩn khi hai file mâu thuẫn.
 
@@ -18,7 +19,7 @@ Code thay đổi thì sửa file này cùng commit. Thiết kế tổng thể: `
 
 ## 0. Tóm tắt nhanh
 
-- Người dùng chọn **một** vai trong `config.user_roles`. Hiện có: `ksv` (Kiểm sát viên), `luat_su` (luật sư bào chữa), `nguoi_xem` (Người xem, từ chặng R1) và `thu_ky` (Thư ký phiên tòa, từ chặng R2). AI đóng mọi vai còn lại; với `nguoi_xem` AI đóng **mọi** vai, người dùng chỉ bấm chuyển phần (Mục 5.1); `thu_ky` nói một lần ở bước 1, ghi chép trong phiên và viết mục IV.2, IV.3 của biên bản qua các route riêng (Mục 5.2, 3.8–3.10).
+- Người dùng chọn **một** vai trong `config.user_roles`. Hiện có: `ksv` (Kiểm sát viên), `luat_su` (luật sư bào chữa), `nguoi_xem` (Người xem, từ chặng R1), `thu_ky` (Thư ký phiên tòa, từ chặng R2) và `bi_cao` (Bị cáo, từ chặng R3). AI đóng mọi vai còn lại; với `nguoi_xem` AI đóng **mọi** vai, người dùng chỉ bấm chuyển phần (Mục 5.1); `thu_ky` nói một lần ở bước 1, ghi chép trong phiên và viết mục IV.2, IV.3 của biên bản qua các route riêng (Mục 5.2, 3.8–3.10); `bi_cao` trả lời từng câu hỏi AI đặt cho mình ("đoạn xen"), được từ chối trả lời, có hai lượt nói không bắt buộc và nói lời sau cùng (Mục 5.3).
 - Phiên tòa có **11 bước, cố định thứ tự**. Server giữ trạng thái và chỉ chấp nhận những hành động có trong `state.allowed_actions`.
 - Mọi lượt **nói** tại phiên tòa đi qua **một** route: `POST /api/trials/{id}/turn`. (Ghi chép và biên bản của Thư ký không phải lời nói, có route riêng.) Route trả **SSE**; client đọc bằng `fetch` + `ReadableStream`, không dùng `EventSource` (cần method POST và header Authorization).
 - Mỗi request ghi phải gửi `expected_step` và `expected_version` lấy từ state mới nhất. Lệch thì nhận 409 kèm state hiện tại.
@@ -112,7 +113,7 @@ Gọi route này cũng tự chuyển sang `abandoned` mọi phiên `active` khô
       { "crime_key": "blhs_171", "crime_name": "Tội cướp giật tài sản", "dieu": "171", "allowed_khoan": ["1", "2"] },
       { "crime_key": "blhs_134", "crime_name": "Tội cố ý gây thương tích hoặc gây tổn hại cho sức khỏe của người khác", "dieu": "134", "allowed_khoan": ["1", "2"] }
     ],
-    "user_roles": ["ksv", "luat_su", "nguoi_xem", "thu_ky"],
+    "user_roles": ["bi_cao", "ksv", "luat_su", "nguoi_xem", "thu_ky"],
     "limits": { "max_cases_per_day": 5, "max_active_sessions": 3, "max_witnesses": 2, "abandon_after_days": 14 },
     "remaining": { "cases_today": 3, "active_sessions": 1, "usage_available": true }
   }
@@ -122,7 +123,7 @@ Gọi route này cũng tự chuyển sang `abandoned` mọi phiên `active` khô
 - `sessions` sắp xếp theo `updated_at` mới nhất trước. `status`: `active` | `completed` | `abandoned`.
 - `config.crimes` lấy từ cấu hình server. **Không hardcode** danh sách tội trong frontend.
 - `remaining.cases_today` = số vụ còn được tạo hôm nay: 5 trừ số lần tạo vụ thành công từ 0 giờ (giờ Việt Nam). Tạo thất bại không tính; xóa phiên không trả lại lượt. Khi server không đọc được sổ hạn mức thì `cases_today = 0` **và** `usage_available = false`: lúc đó **không** được báo "đã tạo đủ 5 vụ"; hãy báo "Tạm thời chưa tạo được vụ án mới, bạn vui lòng thử lại sau" (khóa nút tạo vụ như khi hết lượt). `usage_available = true` là bình thường. `remaining.active_sessions` = số phiên dở dang còn được mở thêm. Bằng 0 thì khóa nút "Phiên tòa mới" và hiện lý do.
-- Bộ chọn vai chỉ hiện các vai trong `config.user_roles` (nguồn duy nhất; server từ chối 422 mọi vai khác). Các vai chưa bật (Chủ tọa, Bị cáo) nếu muốn hiện thì để mờ, nhãn "Sắp có". Thẻ "Người xem": mô tả "Theo dõi trọn một phiên tòa do hệ thống đóng mọi vai"; không có pill Điều. Thẻ "Thư ký phiên tòa": pill "Điều 47, 258 BLTTHS"; mô tả gợi ý "Báo cáo sự có mặt, ghi chép và tự viết biên bản phiên tòa".
+- Bộ chọn vai chỉ hiện các vai trong `config.user_roles` (nguồn duy nhất; server từ chối 422 mọi vai khác). Vai chưa bật (Chủ tọa) nếu muốn hiện thì để mờ, nhãn "Sắp có". Thẻ "Người xem": mô tả "Theo dõi trọn một phiên tòa do hệ thống đóng mọi vai"; không có pill Điều. Thẻ "Thư ký phiên tòa": pill "Điều 47, 258 BLTTHS"; mô tả gợi ý "Báo cáo sự có mặt, ghi chép và tự viết biên bản phiên tòa". Thẻ "Bị cáo": pill "Điều 61 BLTTHS" (Điều 61 Bộ luật Tố tụng hình sự: Bị cáo, đã đối chiếu corpus); mô tả gợi ý "Trả lời xét hỏi, tự bào chữa và nói lời sau cùng".
 
 ### 3.2 `POST /api/trials` — tạo vụ án và phiên (SSE)
 
@@ -135,7 +136,7 @@ Body (mọi trường thừa đều bị 422; **không có ô mô tả tự do**
 | Trường | Mặc định | Ràng buộc |
 |---|---|---|
 | `crime_key` | bắt buộc | Một `crime_key` trong `config.crimes` (sai thì 400) |
-| `user_role` | bắt buộc | Một giá trị trong `config.user_roles`: `ksv`, `luat_su`, `nguoi_xem` |
+| `user_role` | bắt buộc | Một giá trị trong `config.user_roles`: `ksv`, `luat_su`, `nguoi_xem`, `thu_ky`, `bi_cao` |
 | `victim_present` | `true` | `false` nghĩa là bị hại vắng mặt, có đơn xin xét xử vắng mặt. Vụ án vẫn có bị hại, nhưng không ai hỏi bị hại tại phiên |
 | `witness_count` | `1` | 0–2 |
 | `has_related_party` | `false` | Có người có quyền lợi, nghĩa vụ liên quan |
@@ -180,7 +181,19 @@ Dùng khi mở trang phiên, sau khi tải lại trang, và sau mỗi 409. Cũng
 - `steps[].legal_basis` là số Điều của **Bộ luật Tố tụng hình sự**, dùng cho tooltip trên thanh tiến trình.
 - `utterances` là toàn bộ diễn biến từ đầu, đã sắp theo `seq`.
 - `court.name` là tên Tòa án đã cấu hình (mặc định `Tòa án nhân dân khu vực 1, tỉnh X`); cáo trạng, lời Chủ tọa và biên bản dùng đúng tên này và tên Viện kiểm sát tương ứng.
-- **Không có** trường thẻ nhân vật (`role_brief`, `stance`, `knowledge`, `demeanor`) và không có quyết định nghị án, với **mọi** vai hiện có, kể cả `nguoi_xem` và `thu_ky`. (Thẻ `role_brief` chỉ sẽ có ở vai Bị cáo, chặng sau.)
+- **Thẻ nhân vật chỉ có ở vai `bi_cao`**: trường `role_brief` (dưới đây). Mọi vai khác **không có khóa `role_brief`** trong response (khóa vắng mặt hẳn, không phải `null`), và không vai nào có `stance`, `knowledge`, `demeanor` của bất kỳ ai trong `case_file` hay `participants`. Không vai nào có quyết định nghị án.
+- `role_brief` (chỉ `bi_cao`, quyết định 9): thẻ của **chính** bị cáo, gợi ý nhập vai; tên người khác đã ẩn danh như panel (Mục 7):
+
+```json
+"role_brief": {
+  "stance": "<lập trường của bị cáo, ví dụ nhận tội một phần>",
+  "knowledge": ["<điều bị cáo biết>", "..."],
+  "demeanor": "<thái độ>",
+  "note": "Đây là gợi ý nhập vai. Bạn có thể khai khác; Hội đồng xét xử sẽ đối chiếu với hồ sơ."
+}
+```
+
+  Hiện ở tab **"Vai của bạn"** của panel hồ sơ, kèm nguyên văn `note`. Không có mã lập trường (`defendant_plea`) và không có thẻ của người khác.
 - **Không có** ghi chép hay bản nháp biên bản của Thư ký; lấy bằng `GET /notes` (3.8) và `GET /record` (3.7).
 
 ### 3.4 `POST /api/trials/{session_id}/turn` — một lượt (SSE)
@@ -197,8 +210,9 @@ Body:
 | `end_slot` | `end_slot` | — | Kết thúc phần của mình trong slot hiện tại (xong phần hỏi, xong đối đáp, hoặc bỏ qua lượt nêu ý kiến không bắt buộc) |
 | `advance` | `advance:<N>` | `target_step = N` | Sang bước kế tiếp. Chỉ có khi bước hiện tại đã xong |
 | `continue` | `continue` | — | Cho AI làm tiếp lượt còn dở: sau lần tạm nghỉ do guard, sau khi mất kết nối, hoặc sau khi tải lại trang |
+| `decline` | `decline` (chỉ vai `bi_cao`, Mục 5.3) | — | Từ chối trả lời câu hỏi đang chờ. Server ghi câu thủ tục cố định "Bị cáo không trả lời câu hỏi này." (`is_user: true`, `kind: "procedural"`, vào biên bản), không gọi AI cho câu đó; sau đó AI làm lượt kế tiếp như sau một câu trả lời |
 
-Vai `nguoi_xem` chỉ dùng `advance` và `continue`. `speak`/`end_slot` luôn nhận 409 `trial_action_not_allowed` (hoặc `trial_not_your_turn` khi AI đang nợ lượt). Vai `thu_ky` dùng `speak` đúng một lần (báo cáo bước 1, Mục 5.2), sau đó chỉ `advance` và `continue`.
+Vai `nguoi_xem` chỉ dùng `advance` và `continue`. `speak`/`end_slot` luôn nhận 409 `trial_action_not_allowed` (hoặc `trial_not_your_turn` khi AI đang nợ lượt). Vai `thu_ky` dùng `speak` đúng một lần (báo cáo bước 1, Mục 5.2), sau đó chỉ `advance` và `continue`. Vai `bi_cao` dùng `speak` để trả lời câu hỏi đang chờ (`state.pending_question`) và cho các lượt bước 7–9, `decline` khi bị xét hỏi ở bước 4–5, `end_slot` chỉ để bỏ hai lượt không bắt buộc ở bước 7–8 (Mục 5.3); không gửi `addressee`.
 
 `expected_step` và `expected_version` phải bằng `state.current_step` và `state.version` mới nhất.
 
@@ -212,6 +226,8 @@ Giới hạn `text` (đếm theo ký tự). **Lấy từ `state.text_limits`**, 
 | Bước 5: câu hỏi | 1 | 1500 |
 | Bước 6: luận tội / Bước 7: bào chữa | 300 | 6000 |
 | Bước 8: đối đáp | 1 | 6000 |
+| Vai `bi_cao`, bước 2, 4, 5: trả lời câu hỏi | 1 | 1500 |
+| Vai `bi_cao`, bước 7: bổ sung ý kiến bào chữa / bước 8: tranh luận / bước 9: lời nói sau cùng | 1 | 3000 |
 
 Lỗi khi vượt giới hạn:
 - Vượt `max` của slot: 409 `trial_text_too_long`.
@@ -230,6 +246,8 @@ Stream, theo thứ tự:
 Nếu AI không vượt được guard sau khi sinh lại: `utterance` `kind: "notice"` ("Hội đồng xét xử tạm nghỉ…"), rồi `state` với `allowed_actions: ["continue"]` (hoặc `[]` nếu đã chạm cầu chì, Mục 6), rồi `done`.
 
 Lỗi giữa chừng: `error`, stream đóng, không có `state`. Gọi lại `GET /{id}` để lấy trạng thái thật.
+
+Vai `bi_cao`: sau mỗi câu trả lời (hoặc `decline`) AI làm đúng **một** lời gọi rồi dừng ở câu hỏi kế tiếp, nên mỗi lượt chỉ chờ ~2–4s; stream kết thúc bằng `state` có `pending_question` mới. Khi AI kết thúc phần hỏi, cùng stream chạy luôn các lượt AI kế tiếp của bước cho tới lượt người dùng tiếp theo hoặc `advance:N`.
 
 Độ trễ đo được: lượt thoại thường ~2s; bài phát biểu dài 3–8s; một `advance` có thể chạy 2 lượt AI liền nhau, khoảng 5–15s. Với `nguoi_xem`, một `advance` chạy **mọi** lượt AI của bước mới rồi mới trả `state`: bước 5 có 2 đoạn hỏi (~5–10s), bước 8 có 2 bài đối đáp liền nhau (~6–14s), bước 11 gồm nghị án + tuyên án + lập biên bản (có thể tới ~30s). Cứ hiện `status` của từng lượt.
 
@@ -428,7 +446,7 @@ Payload `utterance`:
 | `speaker_id` | Một trong các id ở 3.3 |
 | `speaker_role` | Nhãn vai tiếng Việt (Chủ tọa, Hội thẩm, Thư ký, Kiểm sát viên, Luật sư bào chữa, Bị cáo, Bị hại, Người làm chứng, Người có quyền lợi, nghĩa vụ liên quan) |
 | `speaker_name` | Tên giả định |
-| `is_user` | `true` = lời của người dùng (bong bóng phải, nền primary). Phiên `nguoi_xem` không bao giờ có `true`; phiên `thu_ky` chỉ có đúng một lời `true` (báo cáo bước 1) |
+| `is_user` | `true` = lời của người dùng (bong bóng phải, nền primary). Phiên `nguoi_xem` không bao giờ có `true`; phiên `thu_ky` chỉ có đúng một lời `true` (báo cáo bước 1). Phiên `bi_cao`: câu trả lời, lời bước 7–9, và các câu thủ tục do hành động của người dùng sinh ra (`decline`: "Bị cáo không trả lời câu hỏi này."; bỏ lượt bước 7: "Bị cáo không bổ sung ý kiến bào chữa."; bỏ lượt bước 8: "Bị cáo không có ý kiến tranh luận.") đều `is_user: true`, `speaker_id: "BI_CAO"`; ba câu thủ tục có `kind: "procedural"` |
 | `kind` | `speech` = lời thoại thường; `procedural` = câu thủ tục soạn sẵn (báo cáo của Thư ký, "kết thúc phần xét hỏi"...), hiển thị dạng dòng thủ tục nhỏ; `notice` = Chủ tọa nhắc trật tự hoặc tạm nghỉ, hiển thị kiểu riêng, **không** thuộc biên bản |
 | `text` | Lời của AI đã có tên thật thay cho placeholder. Lời người dùng giữ nguyên văn đã gửi |
 | `addressee` | Chỉ có ở câu hỏi của người dùng tại bước 5: id người được hỏi |
@@ -461,7 +479,8 @@ Gợi ý render: tách theo `\n\n` thành đoạn; trong mỗi đoạn, nhóm c�
   "text_limits": { "min": 1, "max": 1500 },
   "procedure_note": null,
   "clerk_prompt": null,
-  "clerk_report": null
+  "clerk_report": null,
+  "pending_question": null
 }
 ```
 
@@ -476,6 +495,7 @@ Gợi ý render: tách theo `\n\n` thành đoạn; trong mỗi đoạn, nhóm c�
 | `procedure_note` | Chỉ vai `nguoi_xem`: chú giải thủ tục của `current_step` (Mục 5.1). Các vai khác: luôn `null` |
 | `clerk_prompt` | Chỉ vai `thu_ky`: câu nhắc ghi chép của `current_step` (Mục 5.2). Các vai khác: luôn `null` |
 | `clerk_report` | Chỉ vai `thu_ky`, chỉ khi báo cáo bước 1 đang chờ người dùng: lời mẫu điền sẵn và danh sách có mặt (Mục 5.2). Mọi lúc khác: `null` |
+| `pending_question` | Chỉ vai `bi_cao`, khi một câu hỏi đặt cho bị cáo đang chờ trả lời (đoạn xen, Mục 5.3): người hỏi, câu hỏi, `seq` của câu hỏi trong `utterances`, lý lịch điền sẵn (câu hỏi lý lịch) và căn cứ từ chối trả lời. Mọi lúc khác và mọi vai khác: `null` |
 
 Các dạng `allowed_actions`:
 
@@ -486,6 +506,7 @@ Các dạng `allowed_actions`:
 | `end_slot` | Nút "Kết thúc phần hỏi của tôi" (bước 5), "Kết thúc đối đáp" (bước 8), hoặc "Không có ý kiến" (bước 2) |
 | `advance:N` | Nút "Chuyển sang phần tiếp theo" (gửi `target_step: N`) |
 | `continue` | Nút "Tiếp tục" |
+| `decline` | Chỉ vai `bi_cao`: nút "Từ chối trả lời" cạnh ô trả lời, kèm `pending_question.decline_note` (Mục 5.3) |
 | `[]` khi `awaiting = "ai"` | Cầu chì tạm nghỉ đã chạm (Mục 6). Không có nút tiếp; chỉ cho hủy hoặc xóa phiên |
 | `[]` khi `awaiting = "none"` | Phiên đã xong hoặc đã hủy. Phiên `completed` thì hiện link biên bản |
 
@@ -520,7 +541,7 @@ Các bước không có ★ do AI làm hết. Người dùng chỉ thấy `advan
   "title": "Kiểm sát viên và luật sư xét hỏi",
   "text": "<đoạn văn tĩnh, tối đa 80 từ>",
   "legal_basis": ["307", "317", "318"],
-  "reviewed": false
+  "reviewed": true
 }
 ```
 
@@ -529,7 +550,7 @@ Các bước không có ★ do AI làm hết. Người dùng chỉ thấy `advan
 | `step`, `title` | Trùng `current_step`, `step_title` |
 | `text` | Văn bản thuần, một đoạn, cố định (không do AI sinh) |
 | `legal_basis` | Số Điều **Bộ luật Tố tụng hình sự**; có thể hiện bằng pill mở `ArticleModal` |
-| `reviewed` | `false` = bản nháp chưa được nhóm luật duyệt. Khi `false` hiện nhãn nhỏ "Bản nháp, đang chờ nhóm luật duyệt" |
+| `reviewed` | Hiện là `true`: 11 đoạn đã được đối chiếu với văn bản BLTTHS và duyệt (commit 6d3b4bc). Nếu sau này một bản sửa trở lại `false` thì hiện nhãn nhỏ "Bản nháp, đang chờ nhóm luật duyệt" |
 
 - `state` mới đến sau mỗi `advance` (sự kiện `state` cuối stream) đã mang chú giải của bước mới; không cần gọi thêm route nào.
 - Panel hồ sơ vụ án giữ nguyên như các vai khác (đầy đủ, đã ẩn danh, không có thẻ nhân vật).
@@ -571,6 +592,55 @@ Frontend hiện câu nhắc ghi chép với nhãn trung tính "Gợi ý ghi ché
 
 **Ghi chép** trong phiên: route 3.8. **Sau tuyên án**: phiên `completed` như mọi vai, nhưng **không** có lời gọi tóm tắt biên bản (không có `status` "Đang lập biên bản..."). Màn biên bản mở ở chế độ soạn: `GET /record` (3.7) trả bản nháp, người dùng viết IV.2 và IV.3 (3.9), xem `notices`, rồi chốt (3.10).
 
+### 5.3 Vai Bị cáo (`bi_cao`)
+
+Người dùng là bị cáo (THIET-KE 11.2). AI đóng Hội đồng xét xử, KSV, luật sư bào chữa, bị hại, người làm chứng, người có quyền lợi, nghĩa vụ liên quan; cả luận tội (bước 6) và một vòng đối đáp KSV–luật sư (bước 8). Không có route mới: mọi thứ đi qua `/turn` và `GET /{id}`. Không có `procedure_note`, `clerk_prompt`, `clerk_report`.
+
+**Đoạn xen.** Ở các phần AI xét hỏi bị cáo, AI nói tới câu hỏi dành cho bị cáo thì **dừng**: câu hỏi đó là `utterance` cuối của stream (lời của Chủ tọa, Hội thẩm, KSV hoặc luật sư), rồi `state` có `awaiting = "user"` và `pending_question`. Người dùng trả lời (`speak`) hoặc từ chối (`decline`, chỉ bước 4–5); AI làm một lời gọi và dừng ở câu hỏi kế tiếp, hoặc kết thúc phần đó. Về cấu trúc AI không thể viết lời của bị cáo: `BI_CAO` không có trong danh sách người nói của AI.
+
+| Bước | Phần | Lượt của người dùng | Trần câu hỏi | `allowed_actions` | `text_limits` |
+|---|---|---|---|---|---|
+| 1, 3, 6, 10, 11 | — | không có | — | `advance:N` / `continue` | `null` |
+| 2 | Khai mạc (đoạn xen) | trả lời câu hỏi lý lịch (điền sẵn `pending_question.prefill`), rồi câu hỏi có đề nghị thay đổi người tiến hành tố tụng không | 2 | `["speak"]` | 1–1500 |
+| 4 | Hội đồng xét xử hỏi bị cáo (đoạn xen) | trả lời câu hỏi của Chủ tọa, Hội thẩm | 6 | `["speak", "decline"]` | 1–1500 |
+| 5 | KSV hỏi, rồi luật sư hỏi (đoạn xen, từng bên) | trả lời; câu hỏi cho bị hại, người làm chứng do AI trả lời luôn | 4 mỗi bên | `["speak", "decline"]` | 1–1500 |
+| 7 | Bổ sung ý kiến bào chữa (Điều 320 khoản 2 BLTTHS), sau bài bào chữa | không bắt buộc, một lượt; Chủ tọa hỏi bằng câu thủ tục | — | `["speak", "end_slot"]` | 1–3000 |
+| 8 | Tranh luận (Điều 322 BLTTHS), sau vòng đối đáp KSV–luật sư | không bắt buộc, một lượt; nói thì AI KSV đáp lại một bài | — | `["speak", "end_slot"]` | 1–3000 |
+| 9 | Lời nói sau cùng (đoạn xen) | bắt buộc; nói xong phần kết thúc ngay, không ai hỏi thêm (Điều 324 khoản 2) | 1 | `["speak"]` | 1–3000 |
+
+- Trần câu hỏi là trần **tối đa**: AI có thể kết thúc phần hỏi sớm hơn (khi đó stream chạy tiếp sang phần kế tiếp). Ở bước 2, 4, 9 nếu AI kết thúc mà chưa hỏi đủ tối thiểu (bước 2: 2 câu; bước 4: 1 câu; bước 9: lời mời) thì Chủ tọa hỏi bằng câu cố định của server; frontend không phân biệt.
+- Gợi ý nút: bước 7 `end_slot` = "Không bổ sung"; bước 8 `end_slot` = "Không có ý kiến". Bấm thì server ghi câu thủ tục tương ứng (Mục 4, `is_user`).
+- Bước 4–5 trong lúc chờ trả lời, `end_slot` và `advance` nhận 409 (`trial_action_not_allowed`, `trial_slot_not_finished`); câu hỏi không bỏ qua được. `decline` ở bước 2, 9 hoặc ở vai khác: 409 `trial_action_not_allowed`.
+- Lời bị cáo được lưu và vào biên bản **nguyên văn**, kể cả khi khai khác hồ sơ (không bị chặn, không bị chú thích). AI đối chiếu theo hồ sơ: hỏi lại, công bố lời khai ở giai đoạn điều tra, đính chính số liệu sai bằng con số trong hồ sơ. Bộ phát hiện nhảy cóc vẫn áp dụng ("cho tôi nói lời sau cùng luôn" → Chủ tọa nhắc, không tính là câu trả lời, câu hỏi vẫn chờ).
+
+**`pending_question`**:
+
+```json
+"pending_question": {
+  "seq": 23,
+  "speaker_id": "HOI_THAM_1",
+  "speaker_role": "Hội thẩm",
+  "speaker_name": "<tên>",
+  "text": "<câu hỏi, đã thay tên>",
+  "prefill": null,
+  "decline_note": {
+    "text": "Bị cáo có quyền trình bày lời khai, trình bày ý kiến, không buộc phải đưa ra lời khai chống lại chính mình hoặc buộc phải nhận mình có tội. Việc từ chối trả lời được ghi vào biên bản phiên tòa. Khi bị cáo không khai tại phiên tòa, lời khai của bị cáo trong giai đoạn điều tra, truy tố có thể được công bố.",
+    "legal_basis": ["điểm h khoản 2 Điều 61 Bộ luật Tố tụng hình sự", "điểm b khoản 2 Điều 308 Bộ luật Tố tụng hình sự"],
+    "reviewed": false
+  }
+}
+```
+
+| Trường | Ý nghĩa |
+|---|---|
+| `seq`, `speaker_*`, `text` | Đúng là `utterance` cuối có `seq` này. Ô soạn trích lại "người hỏi: câu hỏi" phía trên ô trả lời; sau khi tải lại trang lấy từ đây, không tự dò trong `utterances` |
+| `prefill` | Chỉ câu hỏi lý lịch (bước 2, câu thứ nhất): câu trả lời dựng từ hồ sơ (tên đầy đủ, tuổi, nơi cư trú, nghề nghiệp, trình độ học vấn, tiền án, tiền sự). Điền sẵn vào ô trả lời, sửa được. Mọi câu khác: `null` |
+| `decline_note` | Có khi `decline` nằm trong `allowed_actions` (bước 4–5): giải thích quyền từ chối trả lời, hiện ở tooltip hoặc dòng nhỏ cạnh nút; `legal_basis` có thể hiện thành pill mở `ArticleModal` (Điều 61, 308 BLTTHS). `reviewed: false` = câu chữ chưa được nhóm luật duyệt; hiện nhãn trung tính, không cần nhãn chờ duyệt. Mọi lúc khác: `null` |
+
+**Thẻ "Vai của bạn"**: `role_brief` trong `GET /{id}` (3.3). Không có trong `state`.
+
+**Nghị án, biên bản.** Như vai KSV: AI nghị án và tuyên án; sau tuyên án có `status` "Đang lập biên bản..." và một lời gọi tóm tắt IV.2/IV.3. IV.2 gồm cả câu trả lời và câu từ chối trả lời của người dùng; IV.4 (lời nói sau cùng) là nguyên văn lời người dùng. Không có trường mới trong `GET /record`.
+
 ---
 
 ## 6. 409, khóa sinh và cầu chì tạm nghỉ
@@ -589,7 +659,7 @@ Body của 409:
 | `trial_not_your_turn`, `trial_not_ai_turn` | Gửi hành động không đúng lượt | Đồng bộ lại như dòng đầu |
 | `trial_skip_not_allowed` | `advance` tới bước không phải bước kế tiếp | Không nên xảy ra nếu chỉ dựng nút từ `allowed_actions` |
 | `trial_slot_not_finished` | `advance` hoặc `end_slot` khi phần hiện tại chưa đủ điều kiện (ví dụ chưa hỏi câu nào) | Hiện câu nhắc nhẹ |
-| `trial_action_not_allowed`, `trial_turn_limit` | Hành động không thuộc slot, hoặc đã hết số lượt hỏi/đối đáp. Vai `nguoi_xem` gửi `speak`/`end_slot` | Đồng bộ lại |
+| `trial_action_not_allowed`, `trial_turn_limit` | Hành động không thuộc slot, hoặc đã hết số lượt hỏi/đối đáp. Vai `nguoi_xem` gửi `speak`/`end_slot`. Vai `bi_cao` gửi `end_slot` khi đang có câu hỏi chờ, hoặc `decline` ngoài bước 4–5. Mọi vai khác gửi `decline` | Đồng bộ lại |
 | `trial_missing_addressee` | Câu hỏi bước 5 thiếu `addressee` hợp lệ (ví dụ hỏi bị hại vắng mặt) | Bắt chọn người được hỏi |
 | `trial_empty_text`, `trial_text_too_short`, `trial_text_too_long` | Lời trống, ngắn hơn ngưỡng, hoặc dài quá ngưỡng của slot | Chặn ngay ở client theo ngưỡng ở 3.4; 409 chỉ là lớp dự phòng |
 | `trial_not_active` | Phiên đã `completed` hoặc `abandoned` (kể cả vừa tự chuyển sau 14 ngày). Với ghi chép (3.8): chỉ khi `abandoned` | Chuyển giao diện sang chế độ chỉ xem |
@@ -599,7 +669,7 @@ Body của 409:
 | `trial_record_section_empty` | Chốt khi IV.2 hoặc IV.3 còn trống | Khóa nút "Chốt biên bản" khi một mục trống; 409 chỉ là lớp dự phòng |
 | `trial_guard_exhausted` | Cầu chì: AI đã tạm nghỉ 3 lần liên tiếp ở cùng một chỗ | Xem dưới |
 
-**Tạm nghỉ do guard.** Mọi lời AI đều được kiểm trước khi gửi: không nói bằng vai người dùng; chỉ viện dẫn Điều có trong ngữ cảnh, kèm đúng tên luật; không nêu số tiền ngoài hồ sơ; không tự đặt tên người. Lỗi được sinh lại 1 lần. Vẫn lỗi thì server gửi notice "Hội đồng xét xử tạm nghỉ…" và `allowed_actions: ["continue"]`. Người dùng bấm "Tiếp tục" để thử lại.
+**Tạm nghỉ do guard.** Mọi lời AI đều được kiểm trước khi gửi: không nói bằng vai người dùng (với vai `bi_cao` cả câu hỏi cũng không được gán cho `BI_CAO`); chỉ viện dẫn Điều có trong ngữ cảnh, kèm đúng tên luật; không nêu số tiền ngoài hồ sơ; không tự đặt tên người. Lỗi được sinh lại 1 lần. Vẫn lỗi thì server gửi notice "Hội đồng xét xử tạm nghỉ…" và `allowed_actions: ["continue"]`. Người dùng bấm "Tiếp tục" để thử lại.
 
 **Cầu chì.** Sau **3 notice tạm nghỉ liên tiếp** ở cùng một chỗ, `allowed_actions` thành `[]` dù `awaiting = "ai"`, và mọi `continue` nhận 409 `trial_guard_exhausted`. Giao diện báo: "Phiên tòa không thể tiếp tục ở bước này. Bạn có thể hủy phiên và tạo vụ án mới." Kèm nút Hủy hoặc Xóa. Không tự gửi `continue` lặp lại.
 
@@ -609,7 +679,7 @@ Body của 409:
 
 ## 7. `case_file` (panel hồ sơ vụ án)
 
-Có trong `GET /{id}`. Tên người đã điền sẵn **và đã ẩn danh** (dưới đây). Nơi cư trú do code gán từ danh sách địa danh giả định ("phường A, tỉnh X"...), giống cách gán tên người; model không đặt nơi cư trú. Server **không bao giờ** trả quyết định nghị án (`verdict_json`), lý do nghị án, các tham số dựng vụ án, hay "thẻ nhân vật". Nội dung phần quyết định chỉ xuất hiện dưới dạng lời tuyên án trong `utterances` ở bước 11.
+Có trong `GET /{id}`. Tên người đã điền sẵn **và đã ẩn danh** (dưới đây). Nơi cư trú do code gán từ danh sách địa danh giả định ("phường A, tỉnh X"...), giống cách gán tên người; model không đặt nơi cư trú. Server **không bao giờ** trả quyết định nghị án (`verdict_json`), lý do nghị án, các tham số dựng vụ án, hay "thẻ nhân vật" trong `case_file`. (Vai `bi_cao` nhận thẻ của chính bị cáo ở trường riêng `role_brief`, 3.3.) Nội dung phần quyết định chỉ xuất hiện dưới dạng lời tuyên án trong `utterances` ở bước 11.
 
 ```json
 {
@@ -665,6 +735,7 @@ Chuỗi nằm trong `disclaimer` (3.3). Bắt buộc hiện ở **mọi** màn h
 
 1. **Không lưu lời thoại, hồ sơ vụ án hay biên bản** vào `localStorage`, `sessionStorage`, IndexedDB, cache của service worker, URL hay query string. Chỉ được lưu trong bộ nhớ của trang và lấy lại bằng `GET /{id}`. Bản nháp người dùng đang gõ cũng không lưu. Ghi chép và bản nháp biên bản của Thư ký lưu **ở server** (3.8, 3.9), không ở trình duyệt.
 13. **Không đưa ghi chép của Thư ký vào bất kỳ request nào khác** ngoài `PUT /notes` (không gửi kèm `/turn`, không ghép vào lời báo cáo).
+14. **`role_brief` chỉ hiện trong phiên `bi_cao`**, ở tab "Vai của bạn", kèm nguyên văn `note`; không trình bày như dữ kiện đã chứng minh, không gửi lại server, không tự điền vào ô trả lời (chỉ `pending_question.prefill` được điền sẵn).
 2. **Không ghi lời thoại hay nội dung người dùng nhập** vào `console.log`, công cụ analytics, Sentry, log lỗi hay bất kỳ dịch vụ bên thứ ba nào. Khi báo lỗi chỉ ghi mã lỗi, `session_id` và số bước.
 3. **Không tự dựng nút hành động** ngoài `state.allowed_actions`. Không suy ra bước kế tiếp ở client. Không cho chuyển bước bằng cách gõ lời.
 4. **Không tự động lặp lại `continue`** hay gửi lại request sau 409 hoặc `error`. Luôn đồng bộ bằng `GET /{id}` và để người dùng bấm.
