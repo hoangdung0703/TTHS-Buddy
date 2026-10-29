@@ -28,7 +28,17 @@ const STEP_TEXT_LABELS: Record<number, string> = {
   8: "Ý kiến đối đáp"
 };
 
-function textLabelForStep(step: number): string {
+// The defendant (contract 5.3) answers questions at steps 2, 4, 5 and speaks freely at 7-9.
+const DEFENDANT_TEXT_LABELS: Record<number, string> = {
+  7: "Ý kiến bổ sung",
+  8: "Ý kiến tranh luận",
+  9: "Lời nói sau cùng"
+};
+
+function textLabelForStep(step: number, role = ""): string {
+  if (isDefendantRole(role)) {
+    return DEFENDANT_TEXT_LABELS[step] ?? "Câu trả lời";
+  }
   return STEP_TEXT_LABELS[step] ?? "Ý kiến";
 }
 
@@ -57,10 +67,14 @@ function isValidServerLimits(limits: unknown): limits is { min: number; max: num
 }
 
 // Limits for the composer: the server's text_limits when present and well-formed, otherwise the
-// per-step fallback. The label (wording only) always comes from the step.
-export function textLimitsForState(state: Pick<TrialState, "current_step" | "text_limits">): TrialTextLimits {
+// per-step fallback. The label (wording only) always comes from the step and the role.
+export function textLimitsForState(state: Pick<TrialState, "current_step" | "text_limits">, role = ""): TrialTextLimits {
   if (isValidServerLimits(state.text_limits)) {
-    return { min: state.text_limits.min, max: state.text_limits.max, label: textLabelForStep(state.current_step) };
+    return { min: state.text_limits.min, max: state.text_limits.max, label: textLabelForStep(state.current_step, role) };
+  }
+  if (isDefendantRole(role)) {
+    // Fallback mirrors contract 3.4: answers 1-1500, steps 7-9 1-3000.
+    return { min: 1, max: state.current_step >= 7 ? 3000 : TRIAL_TEXT_DEFAULT_MAX, label: textLabelForStep(state.current_step, role) };
   }
   return textLimitsForStep(state.current_step);
 }
@@ -91,10 +105,12 @@ export interface ParsedActions {
   canEndSlot: boolean;
   advanceTo: number | null;
   canContinue: boolean;
+  // Defendant role, steps 4-5: refuse to answer the pending question.
+  canDecline: boolean;
 }
 
 export function parseAllowedActions(actions: readonly string[]): ParsedActions {
-  const parsed: ParsedActions = { canSpeak: false, addressees: null, canEndSlot: false, advanceTo: null, canContinue: false };
+  const parsed: ParsedActions = { canSpeak: false, addressees: null, canEndSlot: false, advanceTo: null, canContinue: false, canDecline: false };
   for (const action of actions) {
     if (action === "speak") {
       parsed.canSpeak = true;
@@ -108,6 +124,8 @@ export function parseAllowedActions(actions: readonly string[]): ParsedActions {
       parsed.advanceTo = Number.isInteger(target) ? target : null;
     } else if (action === "continue") {
       parsed.canContinue = true;
+    } else if (action === "decline") {
+      parsed.canDecline = true;
     }
   }
   return parsed;
@@ -142,7 +160,11 @@ export function composerMode(state: TrialState): ComposerMode {
   return "waiting";
 }
 
-export function endSlotLabel(step: number): string {
+export function endSlotLabel(step: number, role = ""): string {
+  // Contract 5.3: the defendant's two optional turns.
+  if (isDefendantRole(role) && (step === 7 || step === 8)) {
+    return step === 7 ? "Không bổ sung" : "Không có ý kiến";
+  }
   if (step === 2) {
     return "Không có ý kiến";
   }
@@ -171,6 +193,14 @@ export function isClerkRole(role: string): boolean {
   return role === CLERK_ROLE;
 }
 
+// The defendant role (contract 5.3): answers each question the AI puts to them ("đoạn xen"), may
+// refuse at steps 4-5, has two optional turns (steps 7, 8) and the last word (step 9).
+export const DEFENDANT_ROLE = "bi_cao";
+
+export function isDefendantRole(role: string): boolean {
+  return role === DEFENDANT_ROLE;
+}
+
 // Roles with no speaking turn in the current state: the composer area is the observer's (advance,
 // continue, progress) rather than an input.
 export function usesObserverControls(role: string, mode: ComposerMode): boolean {
@@ -182,6 +212,9 @@ export function usesObserverControls(role: string, mode: ComposerMode): boolean 
 export function stepHint(step: number, role: string, isUserTurn: boolean): string {
   if (isObserverRole(role)) {
     return observerStepHint(step);
+  }
+  if (isDefendantRole(role)) {
+    return defendantStepHint(step, isUserTurn);
   }
   if (isClerkRole(role)) {
     return step === 1 && isUserTurn
@@ -226,6 +259,27 @@ export function stepHint(step: number, role: string, isUserTurn: boolean): strin
       return "Hội đồng xét xử vào phòng nghị án.";
     case 11:
       return "Chủ tọa tuyên đọc bản án mô phỏng.";
+    default:
+      return "";
+  }
+}
+
+function defendantStepHint(step: number, isUserTurn: boolean): string {
+  if (!isUserTurn) {
+    return observerStepHint(step);
+  }
+  switch (step) {
+    case 2:
+      return "Trả lời câu hỏi của Chủ tọa. Câu hỏi lý lịch đã điền sẵn từ hồ sơ; kiểm tra rồi sửa nếu cần.";
+    case 4:
+    case 5:
+      return "Trả lời câu hỏi đang chờ. Bạn có quyền từ chối trả lời; việc từ chối được ghi vào biên bản.";
+    case 7:
+      return "Bạn có thể bổ sung ý kiến bào chữa cho mình, hoặc bấm “Không bổ sung”.";
+    case 8:
+      return "Bạn có thể tranh luận với Kiểm sát viên, hoặc bấm “Không có ý kiến”.";
+    case 9:
+      return "Nói lời sau cùng. Không ai được đặt câu hỏi khi bị cáo nói lời sau cùng; nói xong là hết phần này.";
     default:
       return "";
   }
@@ -424,7 +478,8 @@ export const TRIAL_ROLE_LABELS: Record<string, string> = {
   ksv: "Kiểm sát viên",
   luat_su: "Luật sư bào chữa",
   nguoi_xem: "Người xem",
-  thu_ky: "Thư ký phiên tòa"
+  thu_ky: "Thư ký phiên tòa",
+  bi_cao: "Bị cáo"
 };
 
 export const TRIAL_STATUS_LABELS: Record<string, string> = {
@@ -546,3 +601,40 @@ export function formatSavedTime(iso: string | null | undefined): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 }
+
+// --- Defendant (contract 5.3) -------------------------------------------------------------------------
+
+// The presiding judge's invitation that opens an optional defendant turn (steps 7, 8): the server
+// writes it as a plain utterance, with no pending_question. The latest CHU_TOA line of the step,
+// unless the student has spoken after it.
+export function chairInvitation(utterances: readonly TrialUtterance[], step: number): TrialUtterance | null {
+  for (let index = utterances.length - 1; index >= 0; index--) {
+    const utterance = utterances[index];
+    if (utterance.step !== step || utterance.is_user) {
+      return null;
+    }
+    if (utterance.speaker_id === "CHU_TOA" && utterance.kind !== "notice") {
+      return utterance;
+    }
+  }
+  return null;
+}
+
+// "điểm h khoản 2 Điều 61 Bộ luật Tố tụng hình sự" -> the article and corpus law_version for an
+// ArticlePill; null when the citation names no article of a known code.
+export function legalBasisArticle(citation: string): { dieu: string; lawVersion: string } | null {
+  const match = /Điều\s+(\d+)/.exec(citation);
+  if (match === null) {
+    return null;
+  }
+  if (/Tố tụng hình sự|BLTTHS/.test(citation)) {
+    return { dieu: match[1], lawVersion: LAW_VERSION_BLTTHS };
+  }
+  if (/Bộ luật Hình sự|BLHS/.test(citation)) {
+    return { dieu: match[1], lawVersion: LAW_VERSION_BLHS };
+  }
+  return null;
+}
+
+export const DECLINE_CONFIRM_MESSAGE =
+  "Từ chối trả lời câu hỏi này? Biên bản sẽ ghi “Bị cáo không trả lời câu hỏi này.” và Hội đồng xét xử có thể công bố lời khai của bạn ở giai đoạn điều tra.";

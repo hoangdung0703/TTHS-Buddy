@@ -5,6 +5,10 @@ import { test } from "node:test";
 
 import {
   applyClerkDraft,
+  chairInvitation,
+  endSlotLabel,
+  isDefendantRole,
+  legalBasisArticle,
   canFinalizeClerkDraft,
   caseCreationBlockedReason,
   clerkNoticeHint,
@@ -152,7 +156,11 @@ test("no verdict field is ever read: the source has no verdict handling", async 
   }
   await walk(root);
   for (const file of files.filter((f) => /trial/i.test(f))) {
-    const source = await readFile(file, "utf8");
+    // The one allowed card is the defendant's own role_brief (contract 3.3, Mục 9.14): its type and
+    // reads through `brief.` are set aside; any other stance/demeanor is still a leak.
+    const source = (await readFile(file, "utf8"))
+      .replace(/export interface TrialRoleBrief \{[^}]*\}/, "")
+      .replace(/\bbrief\.(stance|demeanor)\b/g, "");
     const hit = source.match(/verdict_json|kết quả nghị án|defendant_plea|character_card|\bstance\b|\bdemeanor\b/i);
     assert.equal(hit, null, `${file} mentions ${hit?.[0]}`);
   }
@@ -296,4 +304,51 @@ test("clerk draft preview: saved text goes into the 'user' subsections only, inp
   assert.equal(iv4.summary, null);
   assert.equal(record.sections[1].subsections[1].summary, null);
   assert.equal(clerkSubsection(record, "iv3").heading, "3. Tranh luận");
+});
+
+// --- Defendant role (contract 5.3) ---
+
+test("defendant: label, decline parsed only from allowed_actions", () => {
+  assert.equal(isDefendantRole("bi_cao"), true);
+  assert.equal(TRIAL_ROLE_LABELS.bi_cao, "Bị cáo");
+  assert.equal(parseAllowedActions(["speak", "decline"]).canDecline, true);
+  assert.equal(parseAllowedActions(["speak"]).canDecline, false);
+  assert.equal(parseAllowedActions(["speak", "end_slot"]).canDecline, false);
+  assert.equal(composerMode({ ...baseState, current_step: 4, allowed_actions: ["speak", "decline"] }), "speak");
+});
+
+test("defendant limits: server values win; labels per step; fallback 1500 / 3000", () => {
+  const answer = textLimitsForState({ current_step: 4, text_limits: { min: 1, max: 1500 } }, "bi_cao");
+  assert.deepEqual([answer.min, answer.max, answer.label], [1, 1500, "Câu trả lời"]);
+  assert.equal(textLimitsForState({ current_step: 9, text_limits: { min: 1, max: 3000 } }, "bi_cao").label, "Lời nói sau cùng");
+  assert.equal(textLimitsForState({ current_step: 8, text_limits: null }, "bi_cao").max, 3000);
+  assert.equal(textLimitsForState({ current_step: 2, text_limits: null }, "bi_cao").max, 1500);
+  // Other roles unchanged.
+  assert.equal(textLimitsForState({ current_step: 8, text_limits: null }, "ksv").label, "Ý kiến đối đáp");
+});
+
+test("defendant end_slot labels: 'Không bổ sung' (7), 'Không có ý kiến' (8); other roles unchanged", () => {
+  assert.equal(endSlotLabel(7, "bi_cao"), "Không bổ sung");
+  assert.equal(endSlotLabel(8, "bi_cao"), "Không có ý kiến");
+  assert.equal(endSlotLabel(8, "luat_su"), "Kết thúc đối đáp");
+  assert.equal(endSlotLabel(2), "Không có ý kiến");
+  assert.match(stepHint(9, "bi_cao", true), /lời sau cùng/);
+  assert.match(stepHint(4, "bi_cao", true), /từ chối trả lời/);
+});
+
+test("chairInvitation: latest Chủ tọa line of the step, none once the student has spoken", () => {
+  const u = (seq, step, speaker_id, o = {}) => ({ seq, step, speaker_id, speaker_role: "", speaker_name: "", is_user: false, kind: "speech", text: `t${seq}`, addressee: null, ...o });
+  const lines = [u(1, 7, "LUAT_SU"), u(2, 7, "CHU_TOA", { kind: "procedural" })];
+  assert.equal(chairInvitation(lines, 7).seq, 2);
+  assert.equal(chairInvitation([...lines, u(3, 7, "BI_CAO", { is_user: true })], 7), null);
+  assert.equal(chairInvitation(lines, 8), null);
+  assert.equal(chairInvitation([u(4, 8, "CHU_TOA"), u(5, 8, "CHU_TOA", { kind: "notice" })], 8).seq, 4);
+});
+
+test("legalBasisArticle: article and code from the server's citation", () => {
+  const bltths = legalBasisArticle("điểm h khoản 2 Điều 61 Bộ luật Tố tụng hình sự");
+  assert.equal(bltths.dieu, "61");
+  assert.match(bltths.lawVersion, /BLTTHS/);
+  assert.match(legalBasisArticle("điểm s khoản 1 Điều 51 Bộ luật Hình sự").lawVersion, /BLHS/);
+  assert.equal(legalBasisArticle("Nghị quyết 05/2017"), null);
 });

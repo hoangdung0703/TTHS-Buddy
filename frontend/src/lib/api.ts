@@ -642,7 +642,7 @@ export async function createTrial(request: TrialCreateRequest, handlers: TrialSt
 
 export type TrialTurnRequest =
   | { expected_step: number; expected_version: number; action: "speak"; text: string; addressee?: string }
-  | { expected_step: number; expected_version: number; action: "end_slot" | "continue" }
+  | { expected_step: number; expected_version: number; action: "end_slot" | "continue" | "decline" }
   | { expected_step: number; expected_version: number; action: "advance"; target_step: number };
 
 // POST /api/trials/{id}/turn - SSE. Only the fields of the chosen action are sent: the schema

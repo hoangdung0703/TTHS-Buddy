@@ -1,17 +1,22 @@
 "use client";
 
-import { ArrowRight, FileText, Lock, Play, RotateCcw, Send, Trash2, XCircle } from "lucide-react";
+import { ArrowRight, FileText, Info, Lock, Play, RotateCcw, Send, ShieldOff, Trash2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 
+import { ArticlePill } from "@/components/trial/ArticlePill";
 import { ObserverControls } from "@/components/trial/ObserverControls";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  chairInvitation,
   composerMode,
+  DECLINE_CONFIRM_MESSAGE,
   endSlotLabel,
   GUARD_EXHAUSTED_MESSAGE,
   isClerkRole,
+  isDefendantRole,
+  legalBasisArticle,
   parseAllowedActions,
   TRIAL_TEXT_DEFAULT_MAX,
   stepHint,
@@ -19,13 +24,14 @@ import {
   usesObserverControls,
   validateTrialText
 } from "@/lib/trialRules";
-import type { TrialAttendanceEntry, TrialParticipant, TrialState, TrialStepInfo } from "@/lib/types";
+import type { TrialAttendanceEntry, TrialDeclineNote, TrialParticipant, TrialState, TrialStepInfo, TrialUtterance } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export type ComposerAction =
   | { action: "speak"; text: string; addressee?: string }
   | { action: "end_slot" }
   | { action: "continue" }
+  | { action: "decline" }
   | { action: "advance"; target_step: number };
 
 interface TrialComposerProps {
@@ -36,6 +42,8 @@ interface TrialComposerProps {
   userRole: string;
   steps: TrialStepInfo[];
   participants: Record<string, TrialParticipant>;
+  // The transcript, for the presiding judge's invitation before a defendant's optional turn.
+  utterances?: readonly TrialUtterance[];
   // A stream is running: the composer is locked whatever the state says.
   busy: boolean;
   statusMessage: string | null;
@@ -57,6 +65,7 @@ export function TrialComposer({
   userRole,
   steps,
   participants,
+  utterances = [],
   busy,
   statusMessage,
   lastWasPause,
@@ -69,7 +78,7 @@ export function TrialComposer({
 }: TrialComposerProps) {
   const mode = composerMode(state);
   const actions = parseAllowedActions(state.allowed_actions);
-  const limits = textLimitsForState(state);
+  const limits = textLimitsForState(state, userRole);
   const [addressee, setAddressee] = useState<string>("");
   const [touched, setTouched] = useState(false);
   const textareaId = useId();
@@ -79,9 +88,10 @@ export function TrialComposer({
   // The chosen addressee, falling back to the first allowed one when the list changes.
   const chosenAddressee = actions.addressees?.includes(addressee) ? addressee : (actions.addressees?.[0] ?? "");
 
+  const pendingSeq = state.pending_question?.seq ?? null;
   useEffect(() => {
     setTouched(false);
-  }, [state.current_step]);
+  }, [state.current_step, pendingSeq]);
 
   const hint = stepHint(state.current_step, userRole, mode === "speak");
   const nextStepTitle = actions.advanceTo !== null ? steps.find((step) => step.number === actions.advanceTo)?.title : undefined;
@@ -224,6 +234,26 @@ export function TrialComposer({
   // Clerk step-1 report (contract 5.2): the template is prefilled by the hearing screen; the
   // attendance list sits next to it for checking, and the template can be put back.
   const clerkReport = isClerkRole(userRole) ? (state.clerk_report ?? null) : null;
+  // Defendant (contract 5.3): the question waiting for an answer, quoted from pending_question
+  // (never looked up in the transcript); before the optional turns of steps 7-8, which have no
+  // pending question, the presiding judge's invitation.
+  const isDefendant = isDefendantRole(userRole);
+  const pending = isDefendant ? (state.pending_question ?? null) : null;
+  const invitation = isDefendant && pending === null ? chairInvitation(utterances, state.current_step) : null;
+  const quoted = pending ?? invitation;
+  const sendLabel = state.current_step === 6 || state.current_step === 7 || (isDefendant && state.current_step === 8)
+    ? "Trình bày"
+    : clerkReport !== null
+      ? "Báo cáo"
+      : isDefendant
+        ? state.current_step === 9 ? "Nói lời sau cùng" : "Trả lời"
+        : "Gửi";
+
+  function decline(): void {
+    if (window.confirm(DECLINE_CONFIRM_MESSAGE)) {
+      onAction({ action: "decline" });
+    }
+  }
 
   function submit(): void {
     setTouched(true);
@@ -264,6 +294,15 @@ export function TrialComposer({
             </div>
           ) : null}
           {clerkReport !== null && clerkReport.attendance.length > 0 ? <AttendanceList entries={clerkReport.attendance} /> : null}
+          {quoted !== null ? (
+            <blockquote data-testid="trial-pending-question" className="rounded-lg border-l-4 border-primary/40 bg-muted/40 px-3 py-2 text-sm">
+              <p className="mb-0.5 text-xs font-medium text-muted-foreground">
+                {pending !== null ? "Câu hỏi đang chờ" : "Chủ tọa mời"} · {quoted.speaker_role}
+                {quoted.speaker_name ? ` ${quoted.speaker_name}` : ""}
+              </p>
+              <p className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed text-foreground [@media(max-height:640px)]:max-h-12">{quoted.text}</p>
+            </blockquote>
+          ) : null}
           <label htmlFor={textareaId} className="sr-only">
             {limits.label}
           </label>
@@ -318,25 +357,74 @@ export function TrialComposer({
           <div className="flex flex-wrap items-center justify-end gap-2">
             {actions.canEndSlot ? (
               <Button type="button" variant="outline" size="sm" className="rounded-full" data-testid="trial-end-slot" onClick={() => onAction({ action: "end_slot" })}>
-                {endSlotLabel(state.current_step)}
+                {endSlotLabel(state.current_step, userRole)}
+              </Button>
+            ) : null}
+            {actions.canDecline ? (
+              <Button type="button" variant="outline" size="sm" className="rounded-full" data-testid="trial-decline" onClick={decline}>
+                <ShieldOff className="h-4 w-4" />
+                Từ chối trả lời
               </Button>
             ) : null}
             <Button type="submit" size="sm" className="rounded-full" disabled={!canSend} data-testid="trial-send">
               <Send className="h-4 w-4" />
-              {state.current_step === 6 || state.current_step === 7 ? "Trình bày" : clerkReport !== null ? "Báo cáo" : "Gửi"}
+              {sendLabel}
             </Button>
           </div>
+          {actions.canDecline && pending?.decline_note ? <DeclineNote note={pending.decline_note} /> : null}
           <p className="hidden text-right text-[0.7rem] text-muted-foreground md:block">Ctrl/⌘ + Enter để gửi</p>
         </form>
       ) : actions.canEndSlot ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
           <p className="text-sm text-muted-foreground">Bạn đã dùng hết số lượt ở phần này.</p>
           <Button variant="outline" size="sm" className="rounded-full" data-testid="trial-end-slot" onClick={() => onAction({ action: "end_slot" })}>
-            {endSlotLabel(state.current_step)}
+            {endSlotLabel(state.current_step, userRole)}
           </Button>
         </div>
       ) : null}
     </Frame>
+  );
+}
+
+// Why "Từ chối trả lời" exists (contract 5.3): the server's text and citations as sent, behind a
+// small toggle so the dock stays short. A neutral explanation; no review badge.
+function DeclineNote({ note }: { note: TrialDeclineNote }) {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        data-testid="trial-decline-note-toggle"
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex min-h-8 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Info className="h-3.5 w-3.5" aria-hidden="true" />
+        Quyền từ chối trả lời
+      </button>
+      {open ? (
+        <div id={bodyId} data-testid="trial-decline-note" className="flex w-full flex-col gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+          <p className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground">{note.text}</p>
+          {note.legal_basis.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Căn cứ:</span>
+              {note.legal_basis.map((citation) => {
+                const article = legalBasisArticle(citation);
+                return article !== null ? (
+                  <ArticlePill key={citation} dieu={article.dieu} lawVersion={article.lawVersion} label={citation} className="h-auto text-left" />
+                ) : (
+                  <span key={citation} className="text-xs text-foreground">
+                    {citation}
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

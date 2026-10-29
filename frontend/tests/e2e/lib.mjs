@@ -6,7 +6,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { config, FAKE, caseFile, participants, steps, makeUtterances, recordDoc, recordText, clerkRecordDoc, clerkRecordText, COURT_NAME, DISCLAIMER } from "./fixtures.mjs";
+import { config, FAKE, caseFile, participants, steps, makeUtterances, recordDoc, recordText, clerkRecordDoc, clerkRecordText, roleBrief, COURT_NAME, DISCLAIMER } from "./fixtures.mjs";
 
 export const PORT = Number(process.env.E2E_PORT ?? 3011);
 export const BASE = `http://localhost:${PORT}`;
@@ -86,7 +86,7 @@ const STORAGE_KEY = `sb-${new URL(SUPABASE_ORIGIN).hostname.split(".")[0]}-auth-
 
 export const baseState = (overrides = {}) => ({
   session_id: FAKE, current_step: 6, step_title: "Kiểm sát viên luận tội", status: "active", awaiting: "user",
-  allowed_actions: ["speak"], version: 10, text_limits: null, procedure_note: null, clerk_prompt: null, clerk_report: null, ...overrides
+  allowed_actions: ["speak"], version: 10, text_limits: null, procedure_note: null, clerk_prompt: null, clerk_report: null, pending_question: null, ...overrides
 });
 
 // What the server keeps for a clerk session (user_work): notes and the IV.2/IV.3 draft.
@@ -125,10 +125,12 @@ export function resetWorld() {
     clerk: baseClerk(), notesPut: null, draftPut: null, finalize: null, clerkBodies: [], requests: [] });
 }
 
+// Contract 3.3: role_brief only in a defendant session; for every other role the key is absent.
 export const detail = () => ({
   state: world.state, title: caseFile.title, crime_key: "blhs_173", user_role: world.role, disclaimer: DISCLAIMER,
   court: { name: COURT_NAME, hearing_date: "28/10/2026", venue: "phường A, tỉnh X" },
-  participants, case_file: caseFile, steps, utterances: world.utterances
+  participants, case_file: caseFile, steps, utterances: world.utterances,
+  ...(world.role === "bi_cao" ? { role_brief: roleBrief() } : {})
 });
 
 const cors = {

@@ -12,6 +12,7 @@ export const FULL = { BI_CAO: "Trần Đức Hùng", BI_HAI: "Huỳnh Hữu Vinh
 export const SHORT = { BI_CAO: "Trần Đức H", BI_HAI: "Huỳnh Hữu V", NLC_1: "Lý Thị H" };
 export const participants = {
   CHU_TOA: { id: "CHU_TOA", role: "Thẩm phán - Chủ tọa phiên tòa", name: "Nguyễn Văn An" },
+  HOI_THAM_1: { id: "HOI_THAM_1", role: "Hội thẩm", name: "Đoàn Thị Mai" },
   KSV: { id: "KSV", role: "Kiểm sát viên", name: "Vũ Xuân Việt" },
   LUAT_SU: { id: "LUAT_SU", role: "Luật sư bào chữa", name: "Trịnh Thị Thảo" },
   BI_CAO: { id: "BI_CAO", role: "Bị cáo", name: FULL.BI_CAO },
@@ -184,3 +185,30 @@ export const clerkRecordText = ({ iv2 = "", iv3 = "", finalized = false } = {}) 
   [`*** ${DISCLAIMER.toUpperCase()} ***`, ...(finalized ? [] : [CLERK_DRAFT_PREAMBLE]), COURT_NAME.toUpperCase(), "BIÊN BẢN",
     "2. Hỏi và trả lời tại phiên tòa", `(${CLERK_AUTHOR_NOTE})`, iv2 || "......", "3. Tranh luận tại phiên tòa", `(${CLERK_AUTHOR_NOTE})`, iv3 || "......",
     `*** ${DISCLAIMER.toUpperCase()} ***`].join("\n");
+
+// --- Defendant role (contract 5.3, 3.3) ------------------------------------------------------------
+export const ROLE_BRIEF_NOTE = "Đây là gợi ý nhập vai. Bạn có thể khai khác; Hội đồng xét xử sẽ đối chiếu với hồ sơ.";
+export const roleBrief = () => ({
+  stance: "Lập trường mẫu: nhận đã lấy tài sản nhưng cho rằng giá trị thấp hơn kết luận định giá.",
+  knowledge: [`Biết ${SHORT.BI_HAI} để máy tính trên bàn (dữ kiện mẫu).`, "Đã bán lại tài sản cho người lạ (dữ kiện mẫu)."],
+  demeanor: "Bình tĩnh, hơi lo lắng (mẫu).",
+  note: ROLE_BRIEF_NOTE
+});
+export const DECLINE_TEXT = "Bị cáo có quyền trình bày lời khai, trình bày ý kiến, không buộc phải đưa ra lời khai chống lại chính mình hoặc buộc phải nhận mình có tội (câu mẫu).";
+export const declineNote = () => ({
+  text: DECLINE_TEXT,
+  legal_basis: ["điểm h khoản 2 Điều 61 Bộ luật Tố tụng hình sự", "điểm b khoản 2 Điều 308 Bộ luật Tố tụng hình sự"],
+  reviewed: false
+});
+export const IDENTITY_PREFILL = `Tôi tên là ${FULL.BI_CAO}, 32 tuổi, nơi cư trú phường A, tỉnh X, nghề nghiệp lao động tự do, trình độ học vấn 12/12, chưa có tiền án, tiền sự.`;
+// A question put to the defendant: the utterance and the matching pending_question.
+export function defendantQuestion(seq, step, speaker_id, text, { prefill = null, decline = false } = {}) {
+  const utterance = utt(seq, step, speaker_id, text);
+  return {
+    utterance,
+    pending: {
+      seq, speaker_id, speaker_role: utterance.speaker_role, speaker_name: utterance.speaker_name, text,
+      prefill, decline_note: decline ? declineNote() : null
+    }
+  };
+}

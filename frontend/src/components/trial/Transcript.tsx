@@ -63,6 +63,19 @@ function UtteranceItem({ utterance, participants }: { utterance: TrialUtterance;
     );
   }
 
+  // A fixed sentence the student's own action produced (defendant: "Bị cáo không trả lời câu hỏi
+  // này.", a skipped optional turn): on the student's side, but neutral rather than primary.
+  if (utterance.kind === "procedural" && utterance.is_user) {
+    return (
+      <li data-testid="trial-user-procedural" data-seq={utterance.seq} className="flex flex-col items-end gap-1">
+        <p className="text-xs font-medium text-muted-foreground">Bạn · {speaker}</p>
+        <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm border border-border bg-muted/50 px-4 py-2.5 text-sm leading-relaxed text-foreground sm:max-w-[75%]">
+          {utterance.text}
+        </p>
+      </li>
+    );
+  }
+
   if (utterance.kind === "procedural") {
     return (
       <li data-testid="trial-procedural" data-seq={utterance.seq} className="flex justify-center px-2">

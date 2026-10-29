@@ -5,7 +5,8 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import {
-  FAKE, FULL, SHORT, OBSERVER_PREAMBLE, TRANSCRIPT_MARKER, CLERK_PREFILL, clerkPrompt, clerkRecordText, clerkReport, config, makeUtterances, procedureNote, recordText, utt
+  FAKE, FULL, SHORT, OBSERVER_PREAMBLE, TRANSCRIPT_MARKER, CLERK_PREFILL, DECLINE_TEXT, IDENTITY_PREFILL, ROLE_BRIEF_NOTE, clerkPrompt, clerkRecordText, clerkReport, config,
+  defendantQuestion, makeUtterances, procedureNote, recordText, utt
 } from "./fixtures.mjs";
 import {
   BASE, baseState, check, chromium, failureCount, fulfillError, fulfillSse, installStreamingTurn, newPage, noPageOverflow, signIn, signOut,
@@ -890,7 +891,285 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 600 
   await context.close();
 }
 
-const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || m.includes(CLERK_MARK) || m.includes(CLERK_PREFILL.slice(0, 40)) || /Uncaught|TypeError/.test(m));
+// =============================== Bị cáo (defendant, contract 5.3, 3.3) ===============================
+const DEF_MARK = "Câu trả lời mẫu của bị cáo";
+const q2 = defendantQuestion(60, 2, "CHU_TOA", "Bị cáo cho biết họ tên, tuổi, nơi cư trú, nghề nghiệp, trình độ học vấn, tiền án, tiền sự?", { prefill: IDENTITY_PREFILL });
+const q2b = defendantQuestion(62, 2, "CHU_TOA", "Bị cáo có đề nghị thay đổi người tiến hành tố tụng không?");
+const q4 = defendantQuestion(70, 4, "HOI_THAM_1", "Bị cáo lấy chiếc máy tính vào lúc nào?", { decline: true });
+const q4b = defendantQuestion(72, 4, "CHU_TOA", "Sau đó bị cáo mang tài sản đi đâu?", { decline: true });
+const q9 = defendantQuestion(90, 9, "CHU_TOA", "Bị cáo được nói lời sau cùng.");
+const defState = (step, o = {}) => baseState({ current_step: step, step_title: `Bước ${step}`, version: 40 + step, text_limits: { min: 1, max: 1500 }, ...o });
+const asking = (step, question, o = {}) => defState(step, { allowed_actions: question.pending.decline_note ? ["speak", "decline"] : ["speak"], pending_question: question.pending, ...o });
+const userUtt = (seq, step, text, o = {}) => utt(seq, step, "BI_CAO", text, { is_user: true, ...o });
+const withLines = (...lines) => [...makeUtterances(10), ...lines];
+const sentTurns = [];
+// A /turn answer: the student's line (if any), the AI's next lines, then the new state.
+const answerTurn = (lines, next) => (route, body) => {
+  sentTurns.push(body);
+  world.state = next;
+  world.utterances.push(...lines);
+  return fulfillSse(route, lines.map((u) => sseEvent("utterance", u)).join("") + sseEvent("state", next) + sseEvent("done", {}));
+};
+const pendingQuote = (page) => page.getByTestId("trial-pending-question");
+
+// /trial/new: the card is selectable once bi_cao is in config.user_roles, and the case is created.
+resetWorld();
+world.config = config({ user_roles: ["bi_cao", "ksv", "luat_su", "nguoi_xem", "thu_ky"] });
+({ context, page } = await open());
+answerDialogs(page);
+await page.goto(`${BASE}/trial/new`);
+await page.getByTestId("role-bi_cao").waitFor({ timeout: 20000 });
+const defCard = page.getByTestId("role-bi_cao");
+check("defendant new: card enabled, contract description, pill Điều 61 BLTTHS, no 'Sắp có'",
+  (await defCard.getByRole("radio").isEnabled()) && (await defCard.innerText()).includes("Trả lời xét hỏi, tự bào chữa và nói lời sau cùng")
+  && (await defCard.getByRole("button", { name: "Xem toàn văn Điều 61 BLTTHS" }).count()) === 1 && !(await defCard.innerText()).includes("Sắp có"));
+check("defendant new: Chủ tọa still 'Sắp có'", (await page.getByTestId("role-chu_toa").getByRole("radio").isDisabled()) && (await page.getByTestId("role-chu_toa").innerText()).includes("Sắp có"));
+let defCreateBody = null;
+world.create = (route, body) => {
+  defCreateBody = body;
+  return fulfillSse(route, sseEvent("session", { session_id: FAKE, title: "Vụ mẫu" }) + sseEvent("state", baseState()) + sseEvent("done", {}));
+};
+await defCard.getByRole("radio").click();
+await page.getByRole("radio", { name: /Tội trộm cắp tài sản/ }).click();
+await shot(page, "defendant-new-desktop");
+world.role = "bi_cao";
+world.utterances = withLines(q2.utterance);
+world.state = asking(2, q2);
+await page.getByRole("button", { name: "Tạo vụ án" }).click();
+check("defendant new: created with exactly the 5 fields, user_role bi_cao",
+  (await page.waitForURL(`**/trial/${FAKE}`, { timeout: 15000 }).then(() => true, () => false))
+  && Object.keys(defCreateBody).sort().join() === "crime_key,has_related_party,user_role,victim_present,witness_count" && defCreateBody.user_role === "bi_cao");
+
+// Step 2: the identity question, answer prefilled from pending_question.prefill, no decline.
+const answerBox = page.getByTestId("trial-input");
+await answerBox.waitFor({ timeout: 20000 });
+await page.waitForTimeout(600);
+check("defendant step 2: identity answer prefilled from pending_question.prefill", (await answerBox.inputValue()) === IDENTITY_PREFILL);
+check("defendant step 2: the waiting question quoted with who asks it",
+  (await pendingQuote(page).innerText()).includes("Câu hỏi đang chờ · Chủ tọa Nguyễn Văn An") && (await pendingQuote(page).innerText()).includes(q2.pending.text));
+check("defendant step 2: counter 1-1.500, 'Trả lời', no 'Từ chối trả lời', no end-slot",
+  /\/1\.500 ký tự/.test(await page.getByTestId("trial-counter").innerText()) && (await page.getByTestId("trial-send").innerText()).includes("Trả lời")
+  && (await page.getByTestId("trial-decline").count()) === 0 && (await page.getByTestId("trial-end-slot").count()) === 0);
+check("defendant: header 'Vai của bạn: Bị cáo'", (await page.getByText("Vai của bạn: Bị cáo").count()) === 1);
+const defAside = page.locator('aside[aria-label="Hồ sơ vụ án"]');
+const roleTab = defAside.getByRole("tab", { name: "Vai của bạn" });
+check("defendant panel: 'Vai của bạn' is the first tab", (await defAside.getByRole("tab").first().innerText()).trim() === "Vai của bạn");
+await roleTab.click();
+const brief = defAside.getByTestId("trial-role-brief");
+check("defendant panel: role_brief with the note verbatim first, stance, knowledge list, demeanor; the tab is the selected one",
+  (await roleTab.getAttribute("aria-selected")) === "true" && (await defAside.getByRole("tab", { name: "Tóm tắt" }).getAttribute("aria-selected")) === "false"
+  && (await defAside.getByTestId("trial-role-brief-note").innerText()).trim() === ROLE_BRIEF_NOTE && (await brief.innerText()).includes("Lập trường mẫu")
+  && (await brief.locator("li").count()) === 2 && (await brief.innerText()).includes("Bình tĩnh, hơi lo lắng"));
+check("defendant: the role brief is never put in the answer box", !(await answerBox.inputValue()).includes("Lập trường mẫu"));
+await page.mouse.move(0, 0);
+await page.waitForTimeout(300);
+await shot(page, "defendant-step2-desktop");
+await context.close();
+
+// Answering: exact body, the box clears, the next question is quoted (no prefill).
+sentTurns.length = 0;
+resetWorld();
+world.role = "bi_cao";
+world.utterances = withLines(q2.utterance);
+({ context, page } = await open());
+answerDialogs(page);
+await openHearing(page, asking(2, q2));
+world.turn = answerTurn([userUtt(61, 2, IDENTITY_PREFILL), q2b.utterance], asking(2, q2b, { version: 43 }));
+await page.getByTestId("trial-send").click();
+await page.waitForFunction((text) => document.querySelector('[data-testid="trial-pending-question"]')?.innerText.includes(text), q2b.pending.text, { timeout: 10000 }).catch(() => {});
+check("defendant answer: body exactly {expected_step, expected_version, action speak, text}, no addressee",
+  JSON.stringify(sentTurns[0]) === JSON.stringify({ expected_step: 2, expected_version: 42, action: "speak", text: IDENTITY_PREFILL }));
+check("defendant answer: shown as the student's line, box cleared, next question quoted",
+  (await page.locator('[data-seq="61"][data-testid="trial-user-utterance"]').innerText()).includes("Bạn · Bị cáo")
+  && (await page.getByTestId("trial-input").inputValue()) === "" && (await pendingQuote(page).innerText()).includes(q2b.pending.text));
+await context.close();
+
+// Steps 4-5: decline with a confirm, the neutral note with the server's citations, 1500 cap.
+sentTurns.length = 0;
+resetWorld();
+world.role = "bi_cao";
+world.utterances = withLines(q4.utterance);
+({ context, page } = await open());
+answerDialogs(page);
+await openHearing(page, asking(4, q4));
+check("defendant step 4: 'Từ chối trả lời' next to 'Trả lời', question from Hội thẩm quoted",
+  (await page.getByTestId("trial-decline").isVisible()) && (await pendingQuote(page).innerText()).includes("Câu hỏi đang chờ · Hội thẩm"));
+await page.getByTestId("trial-decline-note-toggle").click();
+const declineNoteBox = page.getByTestId("trial-decline-note");
+check("defendant decline note: server text and both citations as article pills, no review badge",
+  (await declineNoteBox.innerText()).includes(DECLINE_TEXT)
+  && (await declineNoteBox.getByRole("button", { name: "Xem toàn văn điểm h khoản 2 Điều 61 Bộ luật Tố tụng hình sự" }).count()) === 1
+  && (await declineNoteBox.getByRole("button", { name: "Xem toàn văn điểm b khoản 2 Điều 308 Bộ luật Tố tụng hình sự" }).count()) === 1
+  && !/đang chờ nhóm luật duyệt/.test(await page.locator("body").innerText()));
+await page.getByTestId("trial-input").fill("x".repeat(1501));
+check("defendant step 4: 1501 characters blocked", (await page.getByTestId("trial-send").isDisabled()) && /1\.501\/1\.500/.test(await page.getByTestId("trial-counter").innerText()));
+await page.getByTestId("trial-input").fill("");
+await shot(page, "defendant-step4-desktop");
+world.turn = answerTurn([userUtt(71, 4, "Bị cáo không trả lời câu hỏi này.", { kind: "procedural" }), q4b.utterance], asking(4, q4b, { version: 45 }));
+dialogAnswer = false;
+await page.getByTestId("trial-decline").click();
+await page.waitForTimeout(500);
+check("defendant decline: cancelling the confirm sends nothing", sentTurns.length === 0);
+dialogAnswer = true;
+await page.getByTestId("trial-decline").click();
+await page.waitForFunction((text) => document.querySelector('[data-testid="trial-pending-question"]')?.innerText.includes(text), q4b.pending.text, { timeout: 10000 }).catch(() => {});
+check("defendant decline: body exactly {expected_step 4, expected_version 44, action decline}",
+  JSON.stringify(sentTurns[0]) === JSON.stringify({ expected_step: 4, expected_version: 44, action: "decline" }));
+const declineLine = page.locator('[data-seq="71"]');
+check("defendant decline: the procedural line on the student's side, neutral (not the primary bubble), next question waits",
+  (await declineLine.getAttribute("data-testid")) === "trial-user-procedural" && (await declineLine.innerText()).includes("Bạn · Bị cáo")
+  && (await declineLine.innerText()).includes("Bị cáo không trả lời câu hỏi này.") && !((await declineLine.innerHTML()).includes("bg-primary"))
+  && (await pendingQuote(page).innerText()).includes(q4b.pending.text));
+// 409 trial_action_not_allowed: soft notice, state and transcript re-read, no blank screen.
+world.turn = (route, body) => {
+  sentTurns.push(body);
+  world.state = defState(4, { allowed_actions: ["advance:5"], version: 50, text_limits: null });
+  return fulfillError(route, 409, "trial_action_not_allowed", { state: world.state });
+};
+let defGets = world.requests.filter((r) => r.method === "GET" && r.path.endsWith(FAKE)).length;
+await page.getByTestId("trial-decline").click();
+await page.getByTestId("trial-soft-notice").waitFor({ timeout: 10000 });
+check("defendant 409 trial_action_not_allowed: soft Vietnamese notice, state adopted, transcript re-read",
+  (await page.getByTestId("trial-soft-notice").innerText()).includes("Phiên tòa vừa thay đổi trạng thái") && (await page.getByTestId("trial-advance").isVisible())
+  && world.requests.filter((r) => r.method === "GET" && r.path.endsWith(FAKE)).length > defGets);
+// HTTP refusals before streaming: Vietnamese, on the screen, the answer kept.
+const refusals = [
+  [422, "validation_error", "Dữ liệu gửi lên không hợp lệ"],
+  [429, "rate_limit_exceeded", "thao tác hơi nhanh"],
+  [503, "data_unavailable", "Máy chủ dữ liệu đang tạm gián đoạn"],
+  [401, "http_error", "Phiên đăng nhập đã hết hạn"]
+];
+for (const [status, code, wording] of refusals) {
+  await openHearing(page, asking(4, q4b));
+  world.turn = (route) => fulfillError(route, status, code);
+  await page.getByTestId("trial-input").fill(`${DEF_MARK} ${status}.`);
+  await page.getByTestId("trial-send").click();
+  await page.getByTestId("trial-error").waitFor({ timeout: 10000 }).catch(() => {});
+  check(`defendant ${status} ${code}: '${wording}' on screen, answer kept`,
+    (await page.getByTestId("trial-error").innerText().catch(() => "")).includes(wording) && (await page.getByTestId("trial-input").inputValue()) === `${DEF_MARK} ${status}.`);
+}
+await openHearing(page, asking(4, q4b));
+world.turn = (route) => route.abort("failed");
+await page.getByTestId("trial-input").fill(`${DEF_MARK} mạng.`);
+await page.getByTestId("trial-send").click();
+check("defendant network error: 'Mất kết nối', state re-read", (await page.getByTestId("trial-error").waitFor({ timeout: 10000 }).then(() => page.getByTestId("trial-error").innerText(), () => "")).includes("Mất kết nối"));
+await openHearing(page, asking(4, q4b));
+world.turn = (route) => {
+  world.state = asking(4, q4b, { version: 60 });
+  return fulfillError(route, 409, "trial_version_mismatch", { state: world.state });
+};
+await page.getByTestId("trial-input").fill(`${DEF_MARK} 409.`);
+await page.getByTestId("trial-send").click();
+await page.getByTestId("trial-soft-notice").waitFor({ timeout: 10000 });
+check("defendant 409 version mismatch: soft notice, answer kept", (await page.getByTestId("trial-input").inputValue()) === `${DEF_MARK} 409.`);
+await context.close();
+
+// Steps 7-8: the presiding judge's invitation quoted, "Không bổ sung" / "Không có ý kiến", 1-3000.
+sentTurns.length = 0;
+resetWorld();
+world.role = "bi_cao";
+const invite7 = utt(80, 7, "CHU_TOA", "Bị cáo Trần Đức Hùng có bổ sung ý kiến bào chữa cho mình không?", { kind: "procedural" });
+world.utterances = withLines(utt(79, 7, "LUAT_SU", "Bài bào chữa mẫu."), invite7);
+({ context, page } = await open());
+answerDialogs(page);
+await openHearing(page, defState(7, { allowed_actions: ["speak", "end_slot"], text_limits: { min: 1, max: 3000 } }));
+check("defendant step 7: the presiding judge's invitation quoted ('Chủ tọa mời')",
+  (await pendingQuote(page).innerText()).includes("Chủ tọa mời") && (await pendingQuote(page).innerText()).includes(invite7.text));
+check("defendant step 7: 'Không bổ sung' button, counter /3.000, no decline",
+  (await page.getByTestId("trial-end-slot").innerText()).trim() === "Không bổ sung" && /\/3\.000 ký tự/.test(await page.getByTestId("trial-counter").innerText())
+  && (await page.getByTestId("trial-decline").count()) === 0);
+await page.getByTestId("trial-input").fill("y".repeat(3001));
+check("defendant step 7: 3001 characters blocked", await page.getByTestId("trial-send").isDisabled());
+await page.getByTestId("trial-input").fill("");
+await shot(page, "defendant-step7-desktop");
+world.turn = answerTurn([userUtt(81, 7, "Bị cáo không bổ sung ý kiến bào chữa.", { kind: "procedural" })], defState(7, { allowed_actions: ["advance:8"], version: 48, text_limits: null }));
+await page.getByTestId("trial-end-slot").click();
+await page.getByTestId("trial-advance").waitFor({ timeout: 10000 });
+check("defendant 'Không bổ sung': body exactly {expected_step 7, expected_version 47, action end_slot}; line on the student's side",
+  JSON.stringify(sentTurns[0]) === JSON.stringify({ expected_step: 7, expected_version: 47, action: "end_slot" })
+  && (await page.locator('[data-seq="81"]').getAttribute("data-testid")) === "trial-user-procedural");
+const invite8 = utt(85, 8, "CHU_TOA", "Bị cáo Trần Đức Hùng có ý kiến tranh luận, đối đáp gì với Kiểm sát viên không?", { kind: "procedural" });
+world.utterances.push(invite8);
+await openHearing(page, defState(8, { allowed_actions: ["speak", "end_slot"], text_limits: { min: 1, max: 3000 } }));
+check("defendant step 8: 'Không có ý kiến' and the step-8 invitation", (await page.getByTestId("trial-end-slot").innerText()).trim() === "Không có ý kiến"
+  && (await pendingQuote(page).innerText()).includes(invite8.text) && (await page.getByTestId("trial-send").innerText()).includes("Trình bày"));
+const DEBATE = `${DEF_MARK}: bị cáo không đồng ý với giá trị tài sản.`;
+world.turn = answerTurn([userUtt(86, 8, DEBATE), utt(87, 8, "KSV", "Kiểm sát viên đáp lại (mẫu).")], defState(8, { allowed_actions: ["advance:9"], version: 49, text_limits: null }));
+await page.getByTestId("trial-input").fill(DEBATE);
+await page.getByTestId("trial-send").click();
+await page.getByTestId("trial-advance").waitFor({ timeout: 10000 });
+check("defendant step 8: speaking sends speak with the text, then only 'Sang bước tiếp theo'",
+  JSON.stringify(sentTurns[1]) === JSON.stringify({ expected_step: 8, expected_version: 48, action: "speak", text: DEBATE }) && (await page.getByTestId("trial-input").count()) === 0);
+
+// Step 9: the last word - one answer, no decline, no end-slot, no question box afterwards.
+world.utterances.push(q9.utterance);
+await openHearing(page, asking(9, q9, { text_limits: { min: 1, max: 3000 } }));
+check("defendant step 9: 'Nói lời sau cùng', no decline, no end-slot, large box",
+  (await page.getByTestId("trial-send").innerText()).includes("Nói lời sau cùng") && (await page.getByTestId("trial-decline").count()) === 0
+  && (await page.getByTestId("trial-end-slot").count()) === 0 && (await pendingQuote(page).innerText()).includes(q9.pending.text));
+const LAST_WORD = `${DEF_MARK}: bị cáo xin Hội đồng xét xử khoan hồng.`;
+world.turn = answerTurn([userUtt(91, 9, LAST_WORD)], defState(9, { allowed_actions: ["advance:10"], version: 50, text_limits: null }));
+await page.getByTestId("trial-input").fill(LAST_WORD);
+await page.getByTestId("trial-send").click();
+await page.getByTestId("trial-advance").waitFor({ timeout: 10000 });
+check("defendant step 9: after the last word no input or question remains",
+  (await page.getByTestId("trial-input").count()) === 0 && (await pendingQuote(page).count()) === 0);
+await context.close();
+
+// Record: the same layout as KSV (summary IV.2, verbatim IV.3/IV.4).
+resetWorld();
+world.role = "bi_cao";
+({ context, page } = await open());
+await page.goto(`${BASE}/trial/${FAKE}/record`);
+await page.getByTestId("trial-record").waitFor({ timeout: 20000 });
+check("defendant record: unchanged layout (labels as KSV), no clerk editor, no draft line",
+  (await page.getByTestId("record-content-label").allInnerTexts()).join() === "Nguyên văn,Tóm tắt,Nguyên văn,Nguyên văn"
+  && (await page.locator("textarea").count()) === 0 && (await page.getByTestId("record-preamble").count()) === 0);
+await context.close();
+
+// Other roles: no "Vai của bạn" tab, nothing breaks without the key.
+for (const role of ["ksv", "luat_su", "nguoi_xem", "thu_ky"]) {
+  resetWorld();
+  world.role = role;
+  ({ context, page } = await open());
+  const state = role === "nguoi_xem" ? baseState({ current_step: 5, allowed_actions: ["advance:6"], procedure_note: procedureNote(5) })
+    : role === "thu_ky" ? baseState({ current_step: 5, allowed_actions: ["advance:6"], clerk_prompt: clerkPrompt(5) }) : baseState();
+  await openHearing(page, state, role);
+  if (role === "thu_ky") await page.locator("aside").getByRole("tab", { name: "Hồ sơ vụ án" }).click();
+  check(`${role}: no 'Vai của bạn' tab, no decline, no pending-question quote`,
+    (await page.getByRole("tab", { name: "Vai của bạn" }).count()) === 0 && (await page.getByTestId("trial-decline").count()) === 0
+    && (await pendingQuote(page).count()) === 0 && (await page.getByRole("tab", { name: "Tóm tắt" }).count()) >= 1);
+  await context.close();
+}
+
+// Viewports: phone (drawer has the tab), short laptop, large desktop.
+resetWorld();
+world.role = "bi_cao";
+world.utterances = withLines(q4.utterance);
+({ context, page } = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }));
+await openHearing(page, asking(4, q4));
+info = await scrollInfo(page);
+check(`defendant 390px step 4: no page overflow, dock ${info.dockH}px ≤ 60% of the screen, latest line visible`,
+  (await noPageOverflow(page)) && info.dockH <= 506 && info.latestVisible);
+await shot(page, "defendant-step4-mobile");
+await page.getByRole("button", { name: "Hồ sơ vụ án" }).click();
+const defDrawer = page.getByRole("dialog", { name: "Hồ sơ vụ án" });
+await defDrawer.getByRole("tab", { name: "Vai của bạn" }).click();
+check("defendant 390px: drawer has 'Vai của bạn' with the note, all 6 tabs inside, no overflow",
+  (await defDrawer.getByTestId("trial-role-brief-note").innerText()).trim() === ROLE_BRIEF_NOTE && (await defDrawer.getByRole("tab").count()) === 6
+  && (await defDrawer.getByRole("tablist").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)) && (await noPageOverflow(page)));
+await shot(page, "defendant-role-brief-mobile");
+await context.close();
+for (const [width, height] of [[1280, 600], [1440, 900], [1920, 1080]]) {
+  ({ context, page } = await open({ viewport: { width, height } }));
+  await openHearing(page, asking(4, q4));
+  info = await scrollInfo(page);
+  check(`defendant ${width}x${height}: no page overflow, latest line above the dock`, (await noPageOverflow(page)) && info.latestVisible);
+  if (width !== 1440) await shot(page, `defendant-step4-${width}x${height}`);
+  await context.close();
+}
+
+const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || m.includes(CLERK_MARK) || m.includes(DEF_MARK) || m.includes(IDENTITY_PREFILL.slice(0, 30)) || m.includes(CLERK_PREFILL.slice(0, 40)) || /Uncaught|TypeError/.test(m));
 if (process.env.E2E_DEBUG) badConsole.forEach((m) => console.log(`  console: ${m.slice(0, 200)}`));
 // Regression: nothing may stretch the document past the record (absolutely positioned sr-only labels
 // used to resolve against <body>, leaving hundreds of px of empty page under the h-screen frame).

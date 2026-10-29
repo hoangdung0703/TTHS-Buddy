@@ -5,7 +5,7 @@ import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "rea
 import { ArticlePill } from "@/components/trial/ArticlePill";
 import { TrialText } from "@/components/trial/TrialText";
 import { formatVnd, LAW_VERSION_BLHS, roleLabelForId } from "@/lib/trialRules";
-import type { TrialCaseFile, TrialPerson } from "@/lib/types";
+import type { TrialCaseFile, TrialPerson, TrialRoleBrief } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -15,7 +15,9 @@ const TABS = [
   { key: "statements", label: "Lời khai" },
   { key: "people", label: "Nhân thân" }
 ] as const;
-export type CaseFileTab = (typeof TABS)[number]["key"];
+// Defendant sessions only (contract 3.3, Mục 9.14): the student's own character card, first.
+const ROLE_TAB = { key: "role", label: "Vai của bạn" } as const;
+export type CaseFileTab = (typeof TABS)[number]["key"] | typeof ROLE_TAB.key;
 type TabKey = CaseFileTab;
 
 const EVIDENCE_TYPE_LABELS: Record<string, string> = {
@@ -55,7 +57,8 @@ export function CaseFilePanel({
   isInjuryCase,
   tab: controlledTab,
   onTabChange,
-  wide = false
+  wide = false,
+  roleBrief = null
 }: {
   caseFile: TrialCaseFile;
   // Điều 134: measure_value is % tổn thương cơ thể, not đồng.
@@ -65,9 +68,13 @@ export function CaseFilePanel({
   onTabChange?: (tab: CaseFileTab) => void;
   // Expanded reading view: larger type for the indictment and statements.
   wide?: boolean;
+  // Defendant sessions: adds the "Vai của bạn" tab. Null (or a missing key) for every other role.
+  roleBrief?: TrialRoleBrief | null;
 }) {
   const [ownTab, setOwnTab] = useState<TabKey>("summary");
-  const tab = controlledTab ?? ownTab;
+  const tabs: ReadonlyArray<{ key: TabKey; label: string }> = roleBrief ? [ROLE_TAB, ...TABS] : TABS;
+  const wanted = controlledTab ?? ownTab;
+  const tab: TabKey = tabs.some((item) => item.key === wanted) ? wanted : "summary";
   const setTab = (next: TabKey) => {
     setOwnTab(next);
     onTabChange?.(next);
@@ -87,21 +94,21 @@ export function CaseFilePanel({
   const textSize = wide ? "text-base" : "text-[0.9375rem]";
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    const index = TABS.findIndex((item) => item.key === tab);
+    const index = tabs.findIndex((item) => item.key === tab);
     let next = index;
     if (event.key === "ArrowRight") {
-      next = (index + 1) % TABS.length;
+      next = (index + 1) % tabs.length;
     } else if (event.key === "ArrowLeft") {
-      next = (index - 1 + TABS.length) % TABS.length;
+      next = (index - 1 + tabs.length) % tabs.length;
     } else if (event.key === "Home") {
       next = 0;
     } else if (event.key === "End") {
-      next = TABS.length - 1;
+      next = tabs.length - 1;
     } else {
       return;
     }
     event.preventDefault();
-    setTab(TABS[next].key);
+    setTab(tabs[next].key);
     tabRefs.current[next]?.focus();
   }
 
@@ -111,7 +118,7 @@ export function CaseFilePanel({
     <div className="flex min-h-0 min-w-0 flex-col">
       {/* Wraps onto a second row instead of scrolling, so all five tabs are visible from 320px up. */}
       <div role="tablist" aria-label="Hồ sơ vụ án" onKeyDown={handleKeyDown} className="flex flex-wrap gap-1.5 border-b border-border pb-3">
-        {TABS.map((item, index) => (
+        {tabs.map((item, index) => (
           <button
             key={item.key}
             ref={(element) => {
@@ -143,6 +150,8 @@ export function CaseFilePanel({
         tabIndex={0}
         className="flex min-w-0 flex-col gap-5 overflow-y-auto py-4 focus-visible:outline-none"
       >
+        {tab === "role" && roleBrief ? <RoleBriefView brief={roleBrief} /> : null}
+
         {tab === "summary" ? (
           <>
             {caseFile.title ? <p className="font-serif text-lg font-light leading-snug text-foreground">{caseFile.title}</p> : null}
@@ -287,6 +296,38 @@ export function CaseFilePanel({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// The character card as a role-play hint, never as proven facts: the server's note leads, verbatim.
+function RoleBriefView({ brief }: { brief: TrialRoleBrief }) {
+  return (
+    <div data-testid="trial-role-brief" className="flex flex-col gap-4">
+      <p data-testid="trial-role-brief-note" className="rounded-lg border border-primary/15 bg-secondary/40 px-3 py-2 text-sm leading-relaxed text-foreground">
+        {brief.note}
+      </p>
+      {brief.stance ? (
+        <Section title="Lập trường gợi ý">
+          <Paragraph>{brief.stance}</Paragraph>
+        </Section>
+      ) : null}
+      {brief.knowledge.length > 0 ? (
+        <Section title="Những gì nhân vật biết">
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-sm leading-relaxed text-foreground">
+            {brief.knowledge.map((item, index) => (
+              <li key={index} className="break-words">
+                {item}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+      {brief.demeanor ? (
+        <Section title="Thái độ">
+          <Paragraph>{brief.demeanor}</Paragraph>
+        </Section>
+      ) : null}
     </div>
   );
 }

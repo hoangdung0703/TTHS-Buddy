@@ -230,7 +230,7 @@ export interface NoteUpsertRequest {
 // ============================================================================
 
 // The roles the client knows how to present. Which ones may be chosen comes from config.user_roles.
-export type TrialUserRole = "ksv" | "luat_su" | "nguoi_xem" | "thu_ky";
+export type TrialUserRole = "ksv" | "luat_su" | "nguoi_xem" | "thu_ky" | "bi_cao";
 export type TrialStatus = "active" | "completed" | "abandoned";
 export type TrialAwaiting = "user" | "ai" | "none";
 export type TrialUtteranceKind = "speech" | "procedural" | "notice";
@@ -292,6 +292,39 @@ export interface TrialState {
   // Clerk role only, while the step-1 report waits for the student: template text and the summoned
   // people to check it against; null at any other time.
   clerk_report?: TrialClerkReport | null;
+  // Defendant role only (contract 5.3): the question put to the student that waits for an answer
+  // (đoạn xen); null at any other time and for every other role.
+  pending_question?: TrialPendingQuestion | null;
+}
+
+export interface TrialDeclineNote {
+  text: string;
+  // Full citations as the server writes them ("điểm h khoản 2 Điều 61 Bộ luật Tố tụng hình sự").
+  legal_basis: string[];
+  reviewed: boolean;
+}
+
+export interface TrialPendingQuestion {
+  // The question's utterance in the transcript.
+  seq: number;
+  speaker_id: string;
+  speaker_role: string;
+  speaker_name: string;
+  text: string;
+  // Step-2 identity question only: the answer built from the case file, prefilled and editable.
+  prefill: string | null;
+  // Present when "decline" is allowed (steps 4-5).
+  decline_note: TrialDeclineNote | null;
+}
+
+// "Vai của bạn" (contract 3.3): the defendant's own character card, a role-play hint only. The key
+// is absent for every other role.
+export interface TrialRoleBrief {
+  stance: string;
+  knowledge: string[];
+  demeanor: string;
+  // Shown verbatim (contract Mục 9.14).
+  note: string;
 }
 
 export interface TrialClerkPrompt {
@@ -425,6 +458,8 @@ export interface TrialDetail {
   case_file: TrialCaseFile;
   steps: TrialStepInfo[];
   utterances: TrialUtterance[];
+  // Defendant sessions only; the key is missing otherwise.
+  role_brief?: TrialRoleBrief;
 }
 
 // GET /api/trials/{id}/record (contract 3.7): `record` follows Mẫu số 22-HS; `text` is its plain

@@ -75,6 +75,17 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
       setDraft((current) => (current.length === 0 ? reportPrefill : current));
     }
   }, [reportPrefill]);
+  // Defendant (contract 5.3): the identity answer built from the case file goes into the box once
+  // per question; only pending_question.prefill is ever prefilled, never the role brief.
+  const prefilledQuestionRef = useRef<number | null>(null);
+  const answerPrefill = state?.pending_question?.prefill ?? null;
+  const pendingSeq = state?.pending_question?.seq ?? null;
+  useEffect(() => {
+    if (answerPrefill !== null && pendingSeq !== null && prefilledQuestionRef.current !== pendingSeq) {
+      prefilledQuestionRef.current = pendingSeq;
+      setDraft((current) => (current.length === 0 ? answerPrefill : current));
+    }
+  }, [answerPrefill, pendingSeq]);
 
   const reload = useCallback(async (): Promise<boolean> => {
     try {
@@ -423,7 +434,8 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const lastUtterance = utterances[utterances.length - 1];
   const lastWasPause = lastUtterance !== undefined && lastUtterance.kind === "notice";
   const isInjuryCase = detail.case_file.charge?.dieu === "134";
-  const caseFilePanel = <CaseFilePanel caseFile={detail.case_file} isInjuryCase={isInjuryCase} tab={caseTab} onTabChange={setCaseTab} />;
+  const roleBrief = detail.role_brief ?? null;
+  const caseFilePanel = <CaseFilePanel caseFile={detail.case_file} isInjuryCase={isInjuryCase} tab={caseTab} onTabChange={setCaseTab} roleBrief={roleBrief} />;
 
   return (
     <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
@@ -552,6 +564,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
             userRole={detail.user_role}
             steps={detail.steps}
             participants={detail.participants}
+            utterances={utterances}
             busy={busy}
             statusMessage={statusMessage}
             lastWasPause={lastWasPause}
@@ -631,7 +644,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
               </button>
             </div>
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <CaseFilePanel caseFile={detail.case_file} isInjuryCase={isInjuryCase} tab={caseTab} onTabChange={setCaseTab} wide />
+              <CaseFilePanel caseFile={detail.case_file} isInjuryCase={isInjuryCase} tab={caseTab} onTabChange={setCaseTab} roleBrief={roleBrief} wide />
             </div>
           </div>
         </div>

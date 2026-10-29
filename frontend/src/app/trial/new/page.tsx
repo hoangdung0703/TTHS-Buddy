@@ -38,7 +38,12 @@ const ROLE_CARDS: RoleCard[] = [
     description: "Xét hỏi, trình bày bài bào chữa và đối đáp để bảo vệ quyền lợi của bị cáo.",
     basis: [{ dieu: "73", label: "Điều 73 BLTTHS" }]
   },
-  { key: "bi_cao", label: "Bị cáo", description: "Trả lời xét hỏi, tự bào chữa và nói lời sau cùng." },
+  {
+    key: "bi_cao",
+    label: "Bị cáo",
+    description: "Trả lời xét hỏi, tự bào chữa và nói lời sau cùng.",
+    basis: [{ dieu: "61", label: "Điều 61 BLTTHS" }]
+  },
   { key: "chu_toa", label: "Chủ tọa", description: "Điều khiển phiên tòa theo đúng trình tự tố tụng." },
   // Contract 3.1: "Điều 47, 258 BLTTHS", one pill per article so each opens its own text.
   {
