@@ -10,7 +10,14 @@ import { Button } from "@/components/ui/button";
 import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
 import { abandonTrial, deleteTrial, getTrials, TrialApiError } from "@/lib/api";
 import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
-import { messageForTrialError, TRIAL_ROLE_LABELS, TRIAL_STATUS_LABELS, TRIAL_TOTAL_STEPS } from "@/lib/trialRules";
+import {
+  caseCreationBlockedReason,
+  isUsageAvailable,
+  messageForTrialError,
+  TRIAL_ROLE_LABELS,
+  TRIAL_STATUS_LABELS,
+  TRIAL_TOTAL_STEPS
+} from "@/lib/trialRules";
 import type { TrialConfig, TrialSummary } from "@/lib/types";
 
 function formatDate(value: string): string {
@@ -31,17 +38,6 @@ function statusBadgeClass(status: string): string {
     return "bg-accent/20 text-accent-foreground";
   }
   return "bg-muted text-muted-foreground";
-}
-
-// Why "Tạo phiên mới" is locked, or null when it is not.
-function createBlockedReason(config: TrialConfig): string | null {
-  if (config.remaining.cases_today <= 0) {
-    return `Hôm nay bạn đã tạo đủ ${config.limits.max_cases_per_day} vụ án. Bạn quay lại vào ngày mai nhé.`;
-  }
-  if (config.remaining.active_sessions <= 0) {
-    return `Bạn đang có ${config.limits.max_active_sessions} phiên dở dang. Hãy hoàn thành, bỏ hoặc xóa bớt một phiên để tạo phiên mới.`;
-  }
-  return null;
 }
 
 export default function TrialListPage() {
@@ -105,7 +101,7 @@ export default function TrialListPage() {
     }
   }
 
-  const blockedReason = config !== null ? createBlockedReason(config) : null;
+  const blockedReason = config !== null ? caseCreationBlockedReason(config) : null;
 
   return (
     <TrialShell title="Phiên tòa giả định">
@@ -137,7 +133,8 @@ export default function TrialListPage() {
             <span>
               Vụ án còn tạo được hôm nay:{" "}
               <strong className="font-medium text-foreground">
-                {config.remaining.cases_today}/{config.limits.max_cases_per_day}
+                {/* An unreadable usage log reports 0 left; that is not a used-up quota. */}
+                {isUsageAvailable(config) ? `${config.remaining.cases_today}/${config.limits.max_cases_per_day}` : "chưa kiểm tra được"}
               </strong>
             </span>
             <span>
@@ -150,7 +147,7 @@ export default function TrialListPage() {
         ) : null}
 
         {blockedReason !== null ? (
-          <p id="trial-create-blocked" className="mb-6 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          <p id="trial-create-blocked" data-testid="trial-create-blocked" className="mb-6 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
             {blockedReason}
           </p>
         ) : null}

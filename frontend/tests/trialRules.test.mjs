@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  caseCreationBlockedReason,
   composerMode,
   GLOBAL_DAILY_LIMIT_MESSAGE,
   isCaseLimitCode,
@@ -18,6 +19,7 @@ import {
   textLimitsForState,
   textLimitsForStep,
   USAGE_LOG_UNAVAILABLE_MESSAGE,
+  USAGE_UNAVAILABLE_NOTICE,
   validateTrialText
 } from "../src/lib/trialRules.ts";
 
@@ -197,4 +199,17 @@ test("limit refusals are notices, other failures are errors", () => {
   for (const code of [null, "rate_limit_exceeded", "data_unavailable", "http_error"]) {
     assert.equal(isCaseLimitCode(code), false, String(code));
   }
+});
+
+test("usage log unreadable: 'tạm thời chưa tạo được', never 'đã tạo đủ'", () => {
+  const limits = { max_cases_per_day: 5, max_active_sessions: 3, max_witnesses: 2, abandon_after_days: 14 };
+  const reason = (remaining) => caseCreationBlockedReason({ limits, remaining });
+  assert.equal(USAGE_UNAVAILABLE_NOTICE, "Tạm thời chưa tạo được vụ án mới, bạn vui lòng thử lại sau.");
+  assert.equal(reason({ cases_today: 0, active_sessions: 2, usage_available: false }), USAGE_UNAVAILABLE_NOTICE);
+  assert.equal(reason({ cases_today: 0, active_sessions: 0, usage_available: false }), USAGE_UNAVAILABLE_NOTICE);
+  assert.match(reason({ cases_today: 0, active_sessions: 2, usage_available: true }), /đã tạo đủ 5 vụ án/);
+  // An older backend without the field: available.
+  assert.match(reason({ cases_today: 0, active_sessions: 2 }), /đã tạo đủ 5 vụ án/);
+  assert.equal(reason({ cases_today: 3, active_sessions: 2 }), null);
+  assert.match(reason({ cases_today: 3, active_sessions: 0, usage_available: true }), /3 phiên dở dang/);
 });

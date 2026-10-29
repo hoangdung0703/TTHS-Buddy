@@ -256,7 +256,9 @@ export interface TrialConfig {
   crimes: TrialCrime[];
   user_roles: string[];
   limits: { max_cases_per_day: number; max_active_sessions: number; max_witnesses: number; abandon_after_days: number };
-  remaining: { cases_today: number; active_sessions: number };
+  // usage_available = false: the server could not read the usage log (cases_today is then 0 but
+  // does not mean the quota is used up). Missing on an older backend: treat as true.
+  remaining: { cases_today: number; active_sessions: number; usage_available?: boolean };
 }
 
 export interface TrialListResponse {

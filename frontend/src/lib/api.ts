@@ -45,6 +45,7 @@ import type {
   TrialUtterance,
   WeakTopic
 } from "@/lib/types";
+import { createTrialFeatureCache, type TrialFeatureStatus, type TrialFeatureUser } from "@/lib/trialFeatureCache";
 import { parseTrialErrorBody, type ParsedTrialError } from "@/lib/trialRules";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 
@@ -452,74 +453,82 @@ export class TrialApiError extends ApiError {
   }
 }
 
+// The signed-in user's id and access token, or null when signed out.
+async function currentTrialUser(): Promise<TrialFeatureUser | null> {
+  const { data } = await getSupabaseClient().auth.getSession();
+  const session = data.session;
+  return session ? { id: session.user.id, token: session.access_token } : null;
+}
+
+// Every trial request also tells the feature cache what it learned about the user who made it:
+// any 2xx means the feature is on for them, the flag-style 404 that it is off.
 async function trialRequest(path: string, init: RequestInit = {}): Promise<Response> {
-  const authHeader = await getAuthHeader();
+  const user = await currentTrialUser();
   const response = await fetch(`${getApiBaseUrl()}/api/trials${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...authHeader, ...init.headers }
+    headers: { "Content-Type": "application/json", ...(user ? { Authorization: `Bearer ${user.token}` } : {}), ...init.headers }
   });
   if (!response.ok) {
-    throw new TrialApiError(parseTrialErrorBody(response.status, await response.text()));
+    const error = new TrialApiError(parseTrialErrorBody(response.status, await response.text()));
+    if (error.featureDisabled) {
+      trialFeature.remember("disabled", user?.id ?? null);
+    }
+    throw error;
   }
+  trialFeature.remember("enabled", user?.id ?? null);
   return response;
 }
 
 // --- Feature probe ---------------------------------------------------------------------------------
 // The flag lives only in the backend. HEAD /api/trials (contract 3.0) answers 204 when the feature
-// is on, 404 when it is off and 401 without a valid token; unlike GET it runs no cleanup and no
-// limit counting. Probed once per page load and kept in module memory (never in storage). Only a
-// definite answer is cached; 401, a network error or 5xx leaves it unknown so a later page can ask
-// again.
-export type TrialFeatureStatus = "unknown" | "enabled" | "disabled";
+// is on for the caller, 404 when it is off for them (TRIAL_ENABLED off, or not in
+// TRIAL_ALLOWED_EMAILS), 401 without a valid token while open to everyone; unlike GET it runs no
+// cleanup and no limit counting. The answer is kept per signed-in user (lib/trialFeatureCache.ts).
+export type { TrialFeatureStatus };
 
-let trialFeatureStatus: TrialFeatureStatus = "unknown";
-let trialFeatureProbe: Promise<TrialFeatureStatus> | null = null;
-const trialFeatureListeners = new Set<(status: TrialFeatureStatus) => void>();
+const trialFeature = createTrialFeatureCache({ currentUser: currentTrialUser, probe: headTrialFeature });
+let listeningToAuth = false;
 
-export function getTrialFeatureStatus(): TrialFeatureStatus {
-  return trialFeatureStatus;
-}
-
-export function rememberTrialFeature(status: Exclude<TrialFeatureStatus, "unknown">): void {
-  if (trialFeatureStatus === status) {
+// Sign-in, sign-out and account switches happen without a page reload: drop the previous user's
+// answer at once (the menu hides) and probe again for the new user.
+function listenToAuthChanges(): void {
+  if (listeningToAuth || typeof window === "undefined") {
     return;
   }
-  trialFeatureStatus = status;
-  trialFeatureListeners.forEach((listener) => listener(status));
+  listeningToAuth = true;
+  getSupabaseClient().auth.onAuthStateChange((_event, session) => {
+    const userId = session?.user.id ?? null;
+    if (userId === trialFeature.getUserId()) {
+      return;
+    }
+    trialFeature.setUser(userId);
+    if (userId !== null) {
+      // Deferred: supabase-js must not be called back from inside its own auth callback.
+      setTimeout(() => void trialFeature.probe(), 0);
+    }
+  });
+}
+
+export function getTrialFeatureStatus(): TrialFeatureStatus {
+  return trialFeature.getStatus();
 }
 
 export function subscribeTrialFeature(listener: (status: TrialFeatureStatus) => void): () => void {
-  trialFeatureListeners.add(listener);
-  return () => {
-    trialFeatureListeners.delete(listener);
-  };
+  listenToAuthChanges();
+  return trialFeature.subscribe(listener);
 }
 
 export function probeTrialFeature(): Promise<TrialFeatureStatus> {
-  if (trialFeatureStatus !== "unknown") {
-    return Promise.resolve(trialFeatureStatus);
-  }
-  if (trialFeatureProbe === null) {
-    trialFeatureProbe = headTrialFeature()
-      .catch((): TrialFeatureStatus => "unknown")
-      .then((status) => {
-        trialFeatureProbe = null;
-        if (status !== "unknown") {
-          rememberTrialFeature(status);
-        }
-        return trialFeatureStatus;
-      });
-  }
-  return trialFeatureProbe;
+  listenToAuthChanges();
+  return trialFeature.probe();
 }
 
-async function headTrialFeature(): Promise<TrialFeatureStatus> {
-  const authHeader = await getAuthHeader();
-  const response = await fetch(`${getApiBaseUrl()}/api/trials`, { method: "HEAD", headers: authHeader });
+async function headTrialFeature(token: string): Promise<TrialFeatureStatus> {
+  const response = await fetch(`${getApiBaseUrl()}/api/trials`, { method: "HEAD", headers: { Authorization: `Bearer ${token}` } });
   if (response.ok) {
     return "enabled";
   }
-  // A HEAD response has no body, but this route only answers 404 when TRIAL_ENABLED is off.
+  // A HEAD response has no body, but this route only answers 404 when the feature is off for the caller.
   if (response.status === 404) {
     return "disabled";
   }
@@ -532,28 +541,15 @@ async function headTrialFeature(): Promise<TrialFeatureStatus> {
   return "unknown";
 }
 
-function noteFeatureFromError(error: unknown): void {
-  if (error instanceof TrialApiError && error.featureDisabled) {
-    rememberTrialFeature("disabled");
-  }
-}
-
 // --- Plain routes ------------------------------------------------------------------------------------
 
 async function trialJson<T>(path: string, init: RequestInit = {}): Promise<T> {
-  try {
-    const response = await trialRequest(path, init);
-    return (await response.json()) as T;
-  } catch (error) {
-    noteFeatureFromError(error);
-    throw error;
-  }
+  const response = await trialRequest(path, init);
+  return (await response.json()) as T;
 }
 
 export async function getTrials(): Promise<TrialListResponse> {
-  const result = await trialJson<TrialListResponse>("");
-  rememberTrialFeature("enabled");
-  return result;
+  return trialJson<TrialListResponse>("");
 }
 
 export async function getTrial(sessionId: string): Promise<TrialDetail> {
@@ -567,12 +563,7 @@ export async function abandonTrial(sessionId: string): Promise<TrialState> {
 
 // 204 No Content on success.
 export async function deleteTrial(sessionId: string): Promise<void> {
-  try {
-    await trialRequest(`/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
-  } catch (error) {
-    noteFeatureFromError(error);
-    throw error;
-  }
+  await trialRequest(`/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
 }
 
 export async function getTrialRecord(sessionId: string): Promise<TrialRecord> {
@@ -612,13 +603,7 @@ function dispatchTrialBlock(block: string, handlers: TrialStreamHandlers): void 
 }
 
 async function streamTrial(path: string, body: unknown, handlers: TrialStreamHandlers, signal?: AbortSignal): Promise<void> {
-  let response: Response;
-  try {
-    response = await trialRequest(path, { method: "POST", body: JSON.stringify(body), signal });
-  } catch (error) {
-    noteFeatureFromError(error);
-    throw error;
-  }
+  const response = await trialRequest(path, { method: "POST", body: JSON.stringify(body), signal });
   if (response.body === null) {
     throw new TrialApiError({ status: response.status, code: null, featureDisabled: false, state: null, serverMessage: null });
   }

@@ -24,7 +24,9 @@ npx -y playwright@1.64.0 install chromium
 
 ## Bao phủ
 
-- Cờ tính năng: dò bằng `HEAD /api/trials` (một lần, không dò lại khi chuyển trang), cờ tắt thì ẩn menu và chuyển mọi trang `/trial*` về trang chính, backend chưa có HEAD (405) thì dùng `GET`; không lưu gì về phiên tòa vào storage.
+- Cờ tính năng: dò bằng `HEAD /api/trials` (một lần mỗi người dùng, không dò lại khi chuyển trang), cờ tắt thì ẩn menu và chuyển mọi trang `/trial*` về trang chính, backend chưa có HEAD (405) thì dùng `GET`; không lưu gì về phiên tòa vào storage.
+- Danh sách email (`TRIAL_ALLOWED_EMAILS` giả lập): không gửi HEAD khi chưa đăng nhập; đăng nhập sau khi đã vào `/trial` lúc chưa đăng nhập; đổi tài khoản A ↔ B qua form đăng nhập/đăng xuất mà không tải lại trang; lỗi mạng khi dò thì trang sau dò lại; đang chờ kết quả dò thì ẩn menu nhưng không chuyển hướng.
+- `remaining.usage_available = false`: trang danh sách và trang tạo vụ hiện đúng câu của hợp đồng, khóa nút tạo, không báo "đã tạo đủ"; backend cũ thiếu trường thì như trước.
 - `/trial/new`: thẻ vai bật/tắt theo `config.user_roles`, "Sắp có", thẻ Người xem không có pill Điều, body tạo vụ đúng 5 trường; 429 `trial_global_daily_limit`, 429 `trial_daily_case_limit`, 503 `trial_usage_log_unavailable` (thông điệp riêng, khung trung tính) và lỗi 503 khác.
 - Phiên tòa (KSV): ngưỡng ký tự (bảng dự phòng và `text_limits`), 409 đồng bộ lại, bước 5 chọn người được hỏi, tên viết tắt trong panel và tên đầy đủ trong diễn biến, văn bản có cấu trúc, ký tự HTML, cáo trạng trong panel, panel mở rộng, cuộn và nút "Có lời mới", cầu chì tạm nghỉ, không tự gửi `continue`, lỗi giữa stream, thanh kết thúc, không có chỗ hiện nghị án, chờ "Đang lập biên bản" tối đa ~15 giây.
 - Phiên tòa (Người xem): không có ô nhập; chú giải thủ tục mở sẵn ở mỗi bước mới, gấp được, nhãn "Bản nháp, đang chờ nhóm luật duyệt" khi `reviewed = false`; tiến trình và nút khóa khi AI đang trình bày; body `advance`/`continue` đúng hợp đồng; 409; cầu chì; khung dưới không che lời mới nhất; 320/390px.

@@ -54,16 +54,32 @@ export const failureCount = () => failures;
 // expiry means it never tries to refresh. The token is an unsigned placeholder; only the mocked
 // backend ever sees it.
 const b64url = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
-const FAKE_USER = { id: "00000000-0000-4000-8000-0000000000e2", email: "sinhvien@e2e.test", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" };
 const FAR_FUTURE = 4102444800; // 2100-01-01
-const FAKE_SESSION = {
-  access_token: `${b64url({ alg: "none", typ: "JWT" })}.${b64url({ sub: FAKE_USER.id, exp: FAR_FUTURE, role: "authenticated" })}.e2e`,
-  refresh_token: "e2e-refresh",
-  token_type: "bearer",
-  expires_in: 3600,
-  expires_at: FAR_FUTURE,
-  user: FAKE_USER
-};
+// Stable fake user id per email, so the app can tell users apart.
+const userIdFor = (email) => `00000000-0000-4000-8000-${Buffer.from(email).toString("hex").padEnd(12, "0").slice(0, 12)}`;
+export const DEFAULT_EMAIL = "sinhvien@e2e.test";
+
+export function fakeSession(email = DEFAULT_EMAIL) {
+  const user = { id: userIdFor(email), email, aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" };
+  return {
+    access_token: `${b64url({ alg: "none", typ: "JWT" })}.${b64url({ sub: user.id, email, exp: FAR_FUTURE, role: "authenticated" })}.e2e`,
+    refresh_token: `e2e-refresh-${user.id}`,
+    token_type: "bearer",
+    expires_in: 3600,
+    expires_at: FAR_FUTURE,
+    user
+  };
+}
+
+// The email inside a fake bearer token, or null without one.
+function emailFromAuthorization(header) {
+  const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
+  try {
+    return token ? JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()).email ?? null : null;
+  } catch {
+    return null;
+  }
+}
 const STORAGE_KEY = `sb-${new URL(SUPABASE_ORIGIN).hostname.split(".")[0]}-auth-token`;
 
 // --- Mocked backend ------------------------------------------------------------------------------------
@@ -77,6 +93,13 @@ export const baseState = (overrides = {}) => ({
 export const world = {
   // "on" | "off" | "head405" (a backend without the HEAD route)
   flag: "on",
+  // TRIAL_ALLOWED_EMAILS: null = everyone signed in; a list = only those emails, everyone else
+  // (signed out included) gets the flag-off 404.
+  allowedEmails: null,
+  // async (route) => boolean, consulted first for HEAD /api/trials; true = it answered (e.g. aborted).
+  head: null,
+  // Milliseconds every /api/trials* answer waits (a slow backend while the probe is pending).
+  delay: 0,
   config: config(),
   role: "ksv",
   state: baseState(),
@@ -88,7 +111,7 @@ export const world = {
 };
 
 export function resetWorld() {
-  Object.assign(world, { flag: "on", config: config(), role: "ksv", state: baseState(), utterances: makeUtterances(), turn: null, create: null, requests: [] });
+  Object.assign(world, { flag: "on", allowedEmails: null, head: null, delay: 0, config: config(), role: "ksv", state: baseState(), utterances: makeUtterances(), turn: null, create: null, requests: [] });
 }
 
 export const detail = () => ({
@@ -117,16 +140,26 @@ async function handleApi(route) {
   if (method === "OPTIONS") {
     return route.fulfill({ status: 204, headers: cors });
   }
-  world.requests.push({ method, path });
+  const email = emailFromAuthorization(request.headers().authorization);
+  world.requests.push({ method, path, email });
   if (!path.startsWith("/api/trials")) {
     // Other features run on their built-in mock data; anything that still calls out gets a benign answer.
     const emptyLists = { "/api/chat/conversations": { conversations: [] }, "/api/notes": { notes: [] } };
     return route.fulfill(json(200, emptyLists[path] ?? {}));
   }
-  if (world.flag === "off") {
+  if (world.delay > 0) {
+    await new Promise((resolve) => setTimeout(resolve, world.delay));
+  }
+  if (world.flag === "off" || (world.allowedEmails !== null && !world.allowedEmails.includes(email))) {
     return route.fulfill(notFound());
   }
+  if (email === null) {
+    return route.fulfill(json(401, { error: { code: "http_error", message: "Not authenticated" } }));
+  }
   if (path === "/api/trials") {
+    if (method === "HEAD" && world.head) {
+      if (await world.head(route)) return;
+    }
     if (method === "HEAD") {
       return route.fulfill(world.flag === "head405" ? { status: 405, headers: cors } : { status: 204, headers: cors });
     }
@@ -154,17 +187,43 @@ async function handleApi(route) {
 }
 
 // One browser context with the fake session, the mocked origins and console capture.
-export async function newPage(browser, { viewport = { width: 1440, height: 900 }, consoleBucket, ...options } = {}) {
+// Supabase Auth endpoints the app calls: password sign-in (any password; the session is the fake one
+// for that email), sign-out, and anything else answered with an empty object.
+async function handleSupabase(route) {
+  const request = route.request();
+  const url = new URL(request.url());
+  const headers = { "access-control-allow-origin": BASE, "access-control-allow-headers": "*", "access-control-allow-methods": "*" };
+  if (request.method() === "OPTIONS") {
+    return route.fulfill({ status: 204, headers });
+  }
+  if (url.pathname === "/auth/v1/token" && url.searchParams.get("grant_type") === "password") {
+    const { email } = JSON.parse(request.postData() ?? "{}");
+    return route.fulfill({ status: 200, headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(fakeSession(email)) });
+  }
+  if (url.pathname === "/auth/v1/logout") {
+    return route.fulfill({ status: 204, headers });
+  }
+  return route.fulfill({ status: 200, headers: { ...headers, "content-type": "application/json" }, body: "{}" });
+}
+
+// signedInAs: the email whose session is in storage when the app loads, or null to start signed out.
+export async function newPage(browser, { viewport = { width: 1440, height: 900 }, consoleBucket, signedInAs = DEFAULT_EMAIL, ...options } = {}) {
   const context = await browser.newContext({ viewport, serviceWorkers: "block", ...options });
-  await context.addInitScript(({ key, session }) => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(session));
-    } catch {
-      // storage blocked: the app redirects to /login and the check fails visibly
-    }
-  }, { key: STORAGE_KEY, session: FAKE_SESSION });
+  if (signedInAs !== null) {
+    await context.addInitScript(({ key, session }) => {
+      try {
+        // Only before the app's first load: a later sign-out must stay signed out.
+        if (!window.sessionStorage.getItem("e2e-seeded")) {
+          window.localStorage.setItem(key, JSON.stringify(session));
+          window.sessionStorage.setItem("e2e-seeded", "1");
+        }
+      } catch {
+        // storage blocked: the app redirects to /login and the check fails visibly
+      }
+    }, { key: STORAGE_KEY, session: fakeSession(signedInAs) });
+  }
   await context.route(`${API_ORIGIN}/**`, handleApi);
-  await context.route(`${SUPABASE_ORIGIN}/**`, (route) => route.fulfill(json(200, {})));
+  await context.route(`${SUPABASE_ORIGIN}/**`, handleSupabase);
   const page = await context.newPage();
   if (consoleBucket) {
     page.on("console", (message) => consoleBucket.push(message.text()));
@@ -229,3 +288,17 @@ export const scrollInfo = (page) => page.evaluate(() => {
 });
 
 export const noPageOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+
+// Signs in through the real login form (fake Supabase answers) and waits for the dashboard.
+export async function signIn(page, email) {
+  await page.fill('input[type="email"]', email);
+  await page.fill('input[type="password"]', "e2e-placeholder-password");
+  await page.click('button[type="submit"]');
+  await page.waitForURL("**/dashboard", { timeout: 20000 });
+}
+
+// Signs out with the top bar button (client-side, no reload) and waits for the login page.
+export async function signOut(page) {
+  await page.locator('button[title="Đăng xuất"]').click();
+  await page.waitForURL("**/login", { timeout: 20000 });
+}

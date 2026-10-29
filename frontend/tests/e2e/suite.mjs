@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { FAKE, FULL, SHORT, OBSERVER_PREAMBLE, TRANSCRIPT_MARKER, config, makeUtterances, procedureNote, recordText, utt } from "./fixtures.mjs";
 import {
-  BASE, baseState, check, chromium, failureCount, fulfillError, fulfillSse, installStreamingTurn, newPage, noPageOverflow,
+  BASE, baseState, check, chromium, failureCount, fulfillError, fulfillSse, installStreamingTurn, newPage, noPageOverflow, signIn, signOut,
   openHearing, resetWorld, scrollInfo, sseEvent, world
 } from "./lib.mjs";
 
@@ -57,6 +57,95 @@ world.flag = "head405";
 await page.goto(`${BASE}/dashboard`);
 check("backend without HEAD (405): falls back to GET, menu visible",
   await page.getByRole("link", { name: "Phiên tòa giả định" }).first().waitFor({ timeout: 15000 }).then(() => trialRequests("GET") === 1, () => false));
+await context.close();
+
+// =============================== Probe kept per user (TRIAL_ALLOWED_EMAILS) ===============================
+const USER_A = "a@e2e.test";
+const USER_B = "b@e2e.test";
+const headProbes = () => world.requests.filter((r) => r.method === "HEAD" && r.path === "/api/trials");
+const menuLink = (page) => page.getByRole("link", { name: "Phiên tòa giả định" });
+const menuShows = (page) => menuLink(page).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
+
+resetWorld();
+world.allowedEmails = [USER_A];
+({ context, page } = await open({ signedInAs: null }));
+// Signed out, /trial mounts the feature gate before the login redirect: the old code probed here
+// without a token, got the allowlist 404 and kept "disabled" for the whole page life.
+await page.goto(`${BASE}/trial`);
+await page.waitForURL("**/login", { timeout: 15000 });
+await page.waitForTimeout(800);
+check("signed out: no HEAD probe without a token", headProbes().length === 0);
+await page.evaluate(() => { window.__e2eSamePage = true; });
+await signIn(page, USER_A);
+check("sign-in after a signed-out visit: listed user sees the menu", await menuShows(page));
+check("listed user: exactly one HEAD probe, made with that user's token", headProbes().length === 1 && headProbes()[0].email === USER_A);
+await signOut(page);
+check("sign-out: menu gone, no probe while signed out", (await menuLink(page).count()) === 0 && headProbes().length === 1);
+await signIn(page, USER_B);
+await page.waitForTimeout(1500);
+check("switch A -> B without reload: B (not listed) has no menu", (await menuLink(page).count()) === 0 && headProbes().filter((h) => h.email === USER_B).length === 1);
+await signOut(page);
+await signIn(page, USER_A);
+check("switch B -> A without reload: the menu comes back", await menuShows(page));
+check("no page reload during sign-in/out/switch, one probe per sign-in", (await page.evaluate(() => window.__e2eSamePage === true)) && headProbes().length === 3);
+await signOut(page);
+await signIn(page, USER_B);
+await page.waitForTimeout(1000);
+await page.goto(`${BASE}/trial`);
+check("not-listed user: /trial redirects to the dashboard", await redirectsHome(page));
+await context.close();
+
+// A network error is not remembered: the next page asks again.
+resetWorld();
+let failingHeads = 1;
+world.head = async (route) => {
+  if (failingHeads-- <= 0) return false;
+  await route.abort("failed");
+  return true;
+};
+({ context, page } = await open());
+await page.goto(`${BASE}/dashboard`);
+await page.waitForTimeout(2000);
+check("probe network error: menu hidden, no redirect state kept", (await menuLink(page).count()) === 0 && headProbes().length === 1);
+await page.getByRole("link", { name: "Vở ghi" }).first().click();
+await page.waitForURL("**/notes");
+check("after a network error the next page probes again and shows the menu", (await menuShows(page)) && headProbes().length === 2);
+await context.close();
+
+// "unknown" (probe still pending) hides the menu but does not redirect.
+resetWorld();
+world.delay = 3000;
+({ context, page } = await open());
+await page.goto(`${BASE}/trial`);
+await page.waitForTimeout(1500);
+check("probe pending: /trial is not redirected, menu hidden", new URL(page.url()).pathname === "/trial" && (await menuLink(page).count()) === 0);
+check("probe answers: menu shown, still on /trial", (await menuShows(page)) && new URL(page.url()).pathname === "/trial");
+await context.close();
+
+// =============================== Usage log unreadable (usage_available = false) ===============================
+const USAGE_NOTICE = "Tạm thời chưa tạo được vụ án mới, bạn vui lòng thử lại sau.";
+resetWorld();
+world.config = config({ remaining: { cases_today: 0, active_sessions: 2, usage_available: false } });
+({ context, page } = await open());
+await page.goto(`${BASE}/trial`);
+await page.getByTestId("trial-create-blocked").waitFor({ timeout: 20000 });
+check("list, usage unavailable: contract notice, create locked, no 'đã tạo đủ', no '0/5'",
+  (await page.getByTestId("trial-create-blocked").innerText()).trim() === USAGE_NOTICE
+  && (await page.getByRole("button", { name: "Tạo phiên mới" }).isDisabled())
+  && !/đã tạo đủ/.test(await page.locator("body").innerText())
+  && !(await page.getByTestId("trial-quota").innerText()).includes("0/5"));
+await page.goto(`${BASE}/trial/new`);
+await page.getByTestId("role-nguoi_xem").waitFor({ timeout: 20000 });
+await page.getByTestId("role-nguoi_xem").getByRole("radio").click();
+await page.getByRole("radio", { name: /Tội trộm cắp tài sản/ }).click();
+check("new, usage unavailable: contract notice, 'Tạo vụ án' locked, no 'đã tạo đủ'",
+  (await page.getByTestId("trial-create-blocked").innerText()).trim() === USAGE_NOTICE
+  && (await page.getByRole("button", { name: "Tạo vụ án" }).isDisabled())
+  && !/đã tạo đủ/.test(await page.locator("body").innerText()));
+world.config = config({ remaining: { cases_today: 0, active_sessions: 2 } }); // older backend, no field
+await page.goto(`${BASE}/trial/new`);
+await page.getByTestId("trial-create-blocked").waitFor({ timeout: 20000 });
+check("new, older backend without usage_available and 0 left: 'đã tạo đủ 5 vụ án'", (await page.getByTestId("trial-create-blocked").innerText()).includes("đã tạo đủ 5 vụ án"));
 await context.close();
 
 // =============================== /trial/new ===============================
@@ -430,7 +519,7 @@ for (const role of ["ksv", "nguoi_xem"]) {
   await page.emulateMedia({ media: "print" });
   check(`record (${role}): print hides banner, buttons and app chrome, keeps the preamble/disclaimers`,
     !(await page.getByTestId("trial-banner").isVisible()) && !(await page.getByRole("button", { name: "In / lưu PDF" }).isVisible())
-    && !(await page.getByRole("button", { name: "Đăng xuất" }).isVisible()) && (await page.getByTestId("record-disclaimer").first().isVisible())
+    && !(await page.locator('button[title="Đăng xuất"]').isVisible()) && (await page.getByTestId("record-disclaimer").first().isVisible())
     && (role === "ksv" || (await page.getByTestId("record-preamble").isVisible())));
   await context.close();
 }

@@ -3,7 +3,7 @@
 // Everything that decides WHAT the student may do comes from state.allowed_actions; the helpers
 // here only translate that list into UI pieces and pre-check text the server would reject anyway.
 
-import type { TrialState, TrialUtterance } from "./types";
+import type { TrialConfig, TrialState, TrialUtterance } from "./types";
 
 // --- Text limits --------------------------------------------------------------------------------
 // The server sends the limits of the current slot in state.text_limits (contract Mục 3.4/5); that is
@@ -345,6 +345,30 @@ export function messageForTrialError(error: Pick<ParsedTrialError, "status" | "c
     return "Bạn thao tác hơi nhanh. Đợi khoảng một phút rồi thử lại nhé.";
   }
   return "Đã có lỗi xảy ra. Bạn thử lại sau ít phút nhé.";
+}
+
+// --- Case creation limits (contract 3.1) ----------------------------------------------------------
+
+// Contract 3.1: the wording when the usage log cannot be read. Never "đã tạo đủ 5 vụ".
+export const USAGE_UNAVAILABLE_NOTICE = "Tạm thời chưa tạo được vụ án mới, bạn vui lòng thử lại sau.";
+
+// False only when the server says so; an older backend without the field counts as available.
+export function isUsageAvailable(config: Pick<TrialConfig, "remaining">): boolean {
+  return config.remaining.usage_available !== false;
+}
+
+// Why creating a new case is locked, or null when it is not.
+export function caseCreationBlockedReason(config: Pick<TrialConfig, "remaining" | "limits">): string | null {
+  if (!isUsageAvailable(config)) {
+    return USAGE_UNAVAILABLE_NOTICE;
+  }
+  if (config.remaining.cases_today <= 0) {
+    return `Hôm nay bạn đã tạo đủ ${config.limits.max_cases_per_day} vụ án. Bạn quay lại vào ngày mai nhé.`;
+  }
+  if (config.remaining.active_sessions <= 0) {
+    return `Bạn đang có ${config.limits.max_active_sessions} phiên dở dang. Hãy hoàn thành, bỏ hoặc xóa bớt một phiên để tạo phiên mới.`;
+  }
+  return null;
 }
 
 // Refusals to create a case that are limits, not failures: shown as a calm notice, not an error box.

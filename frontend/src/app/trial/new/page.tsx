@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
 import { createTrial, getTrials, TrialApiError } from "@/lib/api";
 import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
-import { isCaseLimitCode, LAW_VERSION_BLTTHS, messageForTrialError } from "@/lib/trialRules";
+import { caseCreationBlockedReason, isCaseLimitCode, LAW_VERSION_BLTTHS, messageForTrialError } from "@/lib/trialRules";
 import type { TrialConfig, TrialUserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -146,8 +146,8 @@ export default function NewTrialPage() {
 
   const roleEnabled = (key: string) => config?.user_roles.includes(key) ?? false;
   const maxWitnesses = config?.limits.max_witnesses ?? 2;
-  const blocked =
-    config !== null && (config.remaining.cases_today <= 0 || config.remaining.active_sessions <= 0);
+  const blockedReason = config !== null ? caseCreationBlockedReason(config) : null;
+  const blocked = blockedReason !== null;
   const canSubmit = config !== null && role !== null && crimeKey !== null && !blocked && phase !== "creating";
 
   async function handleCreate(): Promise<void> {
@@ -253,10 +253,8 @@ export default function NewTrialPage() {
             className="flex flex-col gap-8"
           >
             {blocked ? (
-              <p role="status" className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                {config.remaining.cases_today <= 0
-                  ? `Hôm nay bạn đã tạo đủ ${config.limits.max_cases_per_day} vụ án. Bạn quay lại vào ngày mai nhé.`
-                  : `Bạn đang có ${config.limits.max_active_sessions} phiên dở dang. Hãy hoàn thành, bỏ hoặc xóa bớt một phiên trong danh sách để tạo phiên mới.`}
+              <p role="status" data-testid="trial-create-blocked" className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                {blockedReason}
               </p>
             ) : null}
 
