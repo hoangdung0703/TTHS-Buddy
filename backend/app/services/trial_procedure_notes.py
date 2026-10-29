@@ -4,8 +4,10 @@ One short note per hearing step: what the step does, who speaks, and the BLTTHS 
 on. Plain data, 0 LLM calls, the same text for every session.
 
 DRAFT written by the developer from the BLTTHS 2015 text in the corpus (amended 2021 and by Luật
-99/2025/QH15). NOT yet reviewed by the legal team: PROCEDURE_NOTES_REVIEWED stays False, and the API
-sends that flag with every note, until the team has read and corrected all 11 notes.
+99/2025/QH15). Each claim was checked against the corpus article text on 2026-10-29 and the notes
+corrected accordingly, see docs/phien-toa-gia-dinh/procedure-notes-verification.md. Still NOT approved:
+PROCEDURE_NOTES_REVIEWED stays False, and the API sends that flag with every note, until a reviewer
+has read that report and signed off on all 11 notes.
 """
 from __future__ import annotations
 
@@ -26,44 +28,52 @@ class ProcedureNote:
 
 PROCEDURE_NOTES: dict[int, ProcedureNote] = {n.step: n for n in (
     ProcedureNote(1, (
-        "Trước khi khai mạc, Thư ký Tòa án kiểm tra sự có mặt của những người được triệu tập, nêu lý do người "
-        "vắng mặt và phổ biến nội quy phiên tòa. Việc vắng mặt của Kiểm sát viên, bị cáo, người bào chữa, bị hại "
-        "hay người làm chứng có thể dẫn tới hoãn phiên tòa hoặc xét xử vắng mặt, tùy từng trường hợp luật định."
+        "Trước khi khai mạc, Thư ký kiểm tra sự có mặt của người được triệu tập, nêu lý do người vắng mặt và phổ biến "
+        "nội quy. Kiểm sát viên vắng mặt mà không có người dự khuyết thì phải hoãn phiên tòa; bị cáo vắng mặt có thể "
+        "bị áp giải, hoãn hoặc xét xử vắng mặt khi luật cho phép; người bào chữa, bị hại, người làm chứng vắng mặt "
+        "thì tùy trường hợp hoãn hoặc vẫn xử."
     ), ("300", "289", "290", "291", "292", "293", "297")),
     ProcedureNote(2, (
-        "Chủ tọa khai mạc phiên tòa, đọc quyết định đưa vụ án ra xét xử, kiểm tra lý lịch bị cáo và sự có mặt của "
-        "những người được triệu tập, phổ biến quyền và nghĩa vụ của họ. Chủ tọa hỏi có ai đề nghị thay đổi người "
-        "tiến hành tố tụng không. Người làm chứng cam đoan khai báo đúng sự thật và được cách ly trước khi được hỏi."
-    ), ("301", "302", "304", "305")),
+        "Chủ tọa khai mạc, đọc quyết định đưa vụ án ra xét xử. Thư ký báo cáo sự có mặt; Chủ tọa kiểm tra lại, kiểm "
+        "tra lý lịch, phổ biến quyền và nghĩa vụ của người được triệu tập, rồi hỏi có ai đề nghị thay đổi Thẩm phán, "
+        "Hội thẩm, Kiểm sát viên, Thư ký, người giám định, phiên dịch không. Người làm chứng cam đoan khai trung thực "
+        "và được cách ly trước khi được hỏi."
+    ), ("301", "302", "303", "304", "305")),
     ProcedureNote(3, (
-        "Trước khi xét hỏi, Kiểm sát viên công bố bản cáo trạng và có thể trình bày ý kiến bổ sung. Ý kiến bổ sung "
-        "không được làm xấu đi tình trạng của bị cáo. Cáo trạng xác định phạm vi xét xử: Tòa án chỉ xét xử những bị "
-        "cáo và hành vi theo tội danh mà Viện kiểm sát truy tố."
+        "Trước khi xét hỏi, Kiểm sát viên công bố bản cáo trạng và có thể trình bày ý kiến bổ sung, nhưng không được "
+        "làm xấu đi tình trạng của bị cáo. Tòa án xét xử những bị cáo và hành vi theo tội danh bị truy tố; có thể xử "
+        "theo khoản khác hoặc về tội bằng hay nhẹ hơn, còn muốn xử tội nặng hơn thì phải trả hồ sơ để Viện kiểm sát "
+        "truy tố lại."
     ), ("306", "298")),
     ProcedureNote(4, (
-        "Hội đồng xét xử phải làm rõ đầy đủ từng sự việc và từng người. Chủ tọa điều hành việc hỏi và hỏi trước, sau "
-        "đó Hội thẩm hỏi. Bị cáo được hỏi về hành vi của mình; bị hại và người làm chứng được hỏi về những gì họ biết. "
-        "Lời khai ở giai đoạn điều tra có thể được công bố khi lời khai tại phiên tòa mâu thuẫn hoặc người khai vắng mặt."
+        "Hội đồng xét xử phải xác định đầy đủ tình tiết về từng sự việc, từng tội và từng người. Chủ tọa hỏi trước, "
+        "rồi để Thẩm phán, Hội thẩm, người khác hỏi. Bị cáo trình bày về cáo trạng rồi được hỏi thêm; bị hại, người "
+        "làm chứng trình bày điều họ biết. Lời khai giai đoạn điều tra, truy tố chỉ được công bố khi luật cho phép, "
+        "như lời khai mâu thuẫn hoặc người khai vắng mặt."
     ), ("307", "308", "309", "310", "311")),
     ProcedureNote(5, (
-        "Sau Hội đồng xét xử, Kiểm sát viên rồi người bào chữa lần lượt hỏi theo sự điều hành của Chủ tọa. Kiểm sát "
-        "viên thường làm rõ yếu tố cấu thành tội phạm và chứng cứ buộc tội; luật sư làm rõ tình tiết có lợi cho bị "
-        "cáo. Khi các tình tiết đã được xem xét đầy đủ và không ai yêu cầu hỏi thêm, Chủ tọa tuyên bố kết thúc xét hỏi."
-    ), ("307", "317", "318")),
+        "Theo sự điều hành của Chủ tọa, sau Hội đồng xét xử, Kiểm sát viên hỏi về chứng cứ liên quan đến việc buộc "
+        "tội, gỡ tội; người bào chữa hỏi về chứng cứ liên quan đến việc bào chữa. Bị cáo được hỏi người khác khi Chủ "
+        "tọa đồng ý. Khi tình tiết đã được xem xét đầy đủ, Chủ tọa hỏi còn ai yêu cầu xét hỏi không; nếu không thì "
+        "kết thúc xét hỏi."
+    ), ("307", "309", "310", "311", "318")),
     ProcedureNote(6, (
-        "Kết thúc xét hỏi, phiên tòa chuyển sang tranh luận. Kiểm sát viên trình bày luận tội: phân tích chứng cứ, "
-        "đề nghị kết tội bị cáo theo toàn bộ hay một phần nội dung cáo trạng hoặc về tội nhẹ hơn, đề nghị mức hình "
-        "phạt, trách nhiệm dân sự và xử lý vật chứng. Nếu không còn căn cứ kết tội, Kiểm sát viên rút quyết định truy tố."
-    ), ("320", "321", "319")),
+        "Mở đầu tranh luận, Kiểm sát viên luận tội: phân tích chứng cứ có tội, vô tội, đề nghị kết tội theo toàn bộ "
+        "hay một phần cáo trạng hoặc về tội nhẹ hơn, đề nghị hình phạt, bồi thường và xử lý vật chứng. Nếu không có "
+        "căn cứ kết tội, Kiểm sát viên rút toàn bộ quyết định truy tố, đề nghị tuyên bị cáo không có tội; Hội đồng "
+        "xét xử vẫn nghị án."
+    ), ("320", "321", "319", "325")),
     ProcedureNote(7, (
-        "Sau luận tội, bị cáo và người bào chữa trình bày lời bào chữa; bị cáo có quyền bổ sung ý kiến. Luật sư phản "
-        "bác những điểm buộc tội chưa vững, nêu tình tiết giảm nhẹ và đề nghị mức xử lý có lợi cho bị cáo. Bị hại hoặc "
-        "người đại diện của họ trình bày ý kiến để bảo vệ quyền và lợi ích của mình."
-    ), ("320",)),
+        "Sau luận tội, bị cáo và người bào chữa trình bày lời bào chữa; bị cáo, người đại diện của bị cáo có quyền bổ "
+        "sung. Người bào chữa đưa ra chứng cứ, lập luận để đối đáp với Kiểm sát viên về chứng cứ, tình tiết giảm nhẹ, "
+        "mức hình phạt và đưa ra đề nghị. Bị hại, đương sự hoặc người đại diện của họ trình bày ý kiến để bảo vệ "
+        "quyền lợi của mình."
+    ), ("320", "322")),
     ProcedureNote(8, (
-        "Kiểm sát viên phải đưa ra lập luận đối với từng ý kiến của người bào chữa và người tham gia tố tụng; người "
-        "tham gia tranh luận có quyền đáp lại. Chủ tọa không được hạn chế thời gian tranh luận. Nếu qua tranh luận "
-        "thấy cần xem xét thêm chứng cứ, Hội đồng xét xử quyết định trở lại việc xét hỏi."
+        "Kiểm sát viên phải đưa ra chứng cứ, lập luận đối đáp đến cùng từng ý kiến của bị cáo, người bào chữa, người "
+        "tham gia tố tụng khác; người tranh luận có quyền đáp lại. Chủ tọa không được hạn chế thời gian tranh luận "
+        "nhưng được cắt ý kiến không liên quan hoặc lặp lại. Nếu còn tình tiết chưa được làm sáng tỏ, Hội đồng xét xử "
+        "phải trở lại xét hỏi rồi tiếp tục tranh luận."
     ), ("322", "323")),
     ProcedureNote(9, (
         "Khi không ai tranh luận thêm, Chủ tọa tuyên bố kết thúc tranh luận và bị cáo được nói lời sau cùng. Không "
@@ -77,9 +87,10 @@ PROCEDURE_NOTES: dict[int, ProcedureNote] = {n.step: n for n in (
         "sơ, tạm đình chỉ vụ án."
     ), ("326",)),
     ProcedureNote(11, (
-        "Chủ tọa hoặc một thành viên Hội đồng xét xử đọc bản án, gồm phần nhận định và phần quyết định về tội danh, "
-        "hình phạt, trách nhiệm dân sự, vật chứng và án phí, rồi có thể giải thích về việc chấp hành bản án. Bị cáo, "
-        "bị hại và đương sự có quyền kháng cáo trong 15 ngày kể từ ngày tuyên án."
+        "Chủ tọa hoặc thành viên khác của Hội đồng xét xử đọc bản án (xử kín thì chỉ đọc phần quyết định), rồi có thể "
+        "giải thích chấp hành án và quyền kháng cáo. Bị cáo, bị hại, người đại diện của họ có quyền kháng cáo; đương "
+        "sự kháng cáo phần liên quan đến mình. Thời hạn 15 ngày kể từ ngày tuyên án; bị cáo, đương sự vắng mặt tính "
+        "từ ngày nhận hoặc niêm yết bản án."
     ), ("327", "331", "333")),
 )}
 
