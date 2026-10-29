@@ -34,6 +34,7 @@ from app.models.auth import AuthUser
 from app.models.chat import ChatStreamErrorEvent, ChatStreamStatusEvent
 from app.models.trial import CaseOptions
 from app.models.trial_api import (
+    TrialClerkDraftOut,
     TrialConfigOut,
     TrialCreateRequest,
     TrialCrimeOut,
@@ -41,12 +42,29 @@ from app.models.trial_api import (
     TrialLimitsOut,
     TrialDoneEvent,
     TrialListResponse,
+    TrialNotesOut,
+    TrialNotesRequest,
+    TrialRecordDraftRequest,
     TrialRecordResponse,
     TrialRemainingOut,
     TrialSessionEvent,
     TrialTurnRequest,
 )
 from app.services.trial_case_service import CaseGenerationFailed, create_case, load_pack_for_crime
+from app.services.trial_clerk import (
+    CLERK_SECTIONS,
+    NOTES_MAX_CHARS,
+    SECTION_HARD_MAX_CHARS,
+    SECTION_MAX_CHARS,
+    SECTION_MIN_CHARS,
+    clean_notes,
+    draft_of,
+    notes_of,
+    review_draft,
+    with_draft,
+    with_finalized,
+    with_notes,
+)
 from app.services.trial_config import (
     ABANDON_AFTER_DAYS,
     CRIMES,
@@ -73,6 +91,7 @@ from app.services.trial_session_service import (
     verdict_json,
 )
 from app.services.trial_state_machine import (
+    CLERK_ROLE,
     ENABLED_USER_ROLES,
     OBSERVER_ROLE,
     STEP_BY_NUMBER,
@@ -171,7 +190,8 @@ def _stale_cutoff() -> datetime:
 
 
 def _state_of(session_id: str, ctx: TrialContext):
-    return state_out(session_id, ctx.state, consecutive_guard_pauses(ctx) >= MAX_CONSECUTIVE_GUARD_PAUSES)
+    return state_out(session_id, ctx.state, consecutive_guard_pauses(ctx) >= MAX_CONSECUTIVE_GUARD_PAUSES,
+                     case=ctx.case)
 
 
 def consecutive_guard_pauses(ctx: TrialContext) -> int:
@@ -263,8 +283,9 @@ async def run_ai_stream(repo: TrialRepository, user_id: str, session_id: str, ct
             _log_turn(ctx, produced, "ai", 0)
             for event in _events_for(produced, ctx):
                 yield event
-        if ctx.state.status == "completed" and ctx.record_summary is None:
+        if ctx.state.status == "completed" and ctx.record_summary is None and ctx.state.user_role != CLERK_ROLE:
             # The session is already stored as completed; the summary only improves the biên bản.
+            # A Thư ký session has none: the student writes IV.2 and IV.3 (decision 7).
             yield _sse_format("status", ChatStreamStatusEvent(message=RECORD_STATUS_TEXT))
             with telemetry.stage("record_summary"):
                 await asyncio.shield(_summarise_and_store(repo, user_id, session_id, ctx))
@@ -524,10 +545,133 @@ async def trial_record(session_id: uuid.UUID, request: Request,
     session, ctx = await _load(repo, current_user.user_id, session_id, settings, TrialCallRecorder())
     if ctx.state.status != "completed":
         return _conflict("not_completed", str(session_id), ctx)
-    record = build_record(ctx.case, ctx.transcript, _as_datetime(session.get("created_at")),
-                          _as_datetime(session.get("completed_at")), summary=ctx.record_summary,
-                          observer=session["user_role"] == OBSERVER_ROLE)
-    return TrialRecordResponse(session_id=session_id, text=render_record_text(record), record=record)
+    return _record_response(session_id, session, ctx)
+
+
+def _record_response(session_id: uuid.UUID, session: dict, ctx: TrialContext) -> TrialRecordResponse:
+    """Built by code, no LLM call. A Thư ký session shows the student's own IV.2 / IV.3 (a draft
+    until finalised) and carries the editable draft with its notices."""
+    started, ended = _as_datetime(session.get("created_at")), _as_datetime(session.get("completed_at"))
+    clerk = None
+    if session["user_role"] == CLERK_ROLE:
+        draft = draft_of(session.get("user_work"))
+        record = build_record(ctx.case, ctx.transcript, started, ended, clerk=draft.sections(),
+                              draft=not draft.finalized)
+        clerk = _clerk_draft_out(ctx, session.get("user_work"))
+    else:
+        record = build_record(ctx.case, ctx.transcript, started, ended, summary=ctx.record_summary,
+                              observer=session["user_role"] == OBSERVER_ROLE)
+    return TrialRecordResponse(session_id=session_id, text=render_record_text(record), record=record, clerk=clerk)
+
+
+# --- Thư ký (chặng R2, design doc Mục 11.3): notes and the biên bản draft --------------------------
+# Not utterances: they never go through /turn, never change the state or its version, and are
+# never put into a prompt or a log line (lengths and labels only).
+
+def _clerk_draft_out(ctx: TrialContext, user_work: dict | None) -> TrialClerkDraftOut:
+    draft = draft_of(user_work)
+    return TrialClerkDraftOut(
+        iv2=draft.iv2, iv3=draft.iv3, updated_at=_as_datetime(draft.updated_at), finalized=draft.finalized,
+        finalized_at=_as_datetime(draft.finalized_at),
+        notices=[n.as_dict() for n in review_draft(ctx.case, ctx.transcript, draft)],
+        limits={"min": SECTION_MIN_CHARS, "max": SECTION_MAX_CHARS, "hard_max": SECTION_HARD_MAX_CHARS})
+
+
+def _clerk_refusal(session: dict, ctx: TrialContext, session_id: str, *, completed: bool) -> JSONResponse | None:
+    """409 unless this is a Thư ký session in a status that allows the action: notes while active
+    or completed, the draft and finalising only once completed."""
+    if session["user_role"] != CLERK_ROLE:
+        return _conflict("not_clerk", session_id, ctx)
+    if completed and ctx.state.status != "completed":
+        return _conflict("not_completed", session_id, ctx)
+    if ctx.state.status not in ("active", "completed"):
+        return _conflict("not_active", session_id, ctx)
+    return None
+
+
+async def _save_user_work(repo: TrialRepository, user_id: str, session_id: str, work: dict) -> None:
+    if not await asyncio.to_thread(repo.update_user_work, user_id, session_id, work):
+        raise _not_found()   # deleted meanwhile
+
+
+def _log_clerk(action: str, **counts) -> None:
+    logger.info("TRIAL_CLERK %s", json.dumps({"action": action, **counts}))
+
+
+@router.get("/{session_id}/notes", response_model=TrialNotesOut)
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def get_trial_notes(session_id: uuid.UUID, request: Request,
+                          current_user: AuthUser = Depends(require_supabase_user),
+                          settings: Settings = Depends(get_settings),
+                          repo: TrialRepository = Depends(get_trial_repository)):
+    session, ctx = await _load(repo, current_user.user_id, session_id, settings, TrialCallRecorder())
+    if session["user_role"] != CLERK_ROLE:
+        return _conflict("not_clerk", str(session_id), ctx)
+    notes, updated_at = notes_of(session.get("user_work"))
+    return TrialNotesOut(notes=notes, updated_at=_as_datetime(updated_at), max_chars=NOTES_MAX_CHARS)
+
+
+@router.put("/{session_id}/notes", response_model=TrialNotesOut)
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def put_trial_notes(session_id: uuid.UUID, body: TrialNotesRequest, request: Request,
+                          current_user: AuthUser = Depends(require_supabase_user),
+                          settings: Settings = Depends(get_settings),
+                          repo: TrialRepository = Depends(get_trial_repository)):
+    user_id, sid = current_user.user_id, str(session_id)
+    session, ctx = await _load(repo, user_id, session_id, settings, TrialCallRecorder())
+    refusal = _clerk_refusal(session, ctx, sid, completed=False)
+    if refusal is not None:
+        return refusal
+    notes = clean_notes(body.text)
+    work = with_notes(session.get("user_work"), notes, utc_now())
+    await _save_user_work(repo, user_id, sid, work)
+    _log_clerk("notes", chars=len(notes))
+    return TrialNotesOut(notes=notes, updated_at=_as_datetime(work["notes_updated_at"]), max_chars=NOTES_MAX_CHARS)
+
+
+@router.put("/{session_id}/record/draft", response_model=TrialClerkDraftOut)
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def put_record_draft(session_id: uuid.UUID, body: TrialRecordDraftRequest, request: Request,
+                           current_user: AuthUser = Depends(require_supabase_user),
+                           settings: Settings = Depends(get_settings),
+                           repo: TrialRepository = Depends(get_trial_repository)):
+    user_id, sid = current_user.user_id, str(session_id)
+    session, ctx = await _load(repo, user_id, session_id, settings, TrialCallRecorder())
+    refusal = _clerk_refusal(session, ctx, sid, completed=True)
+    if refusal is not None:
+        return refusal
+    if draft_of(session.get("user_work")).finalized:
+        return _conflict("record_finalized", sid, ctx)
+    work = with_draft(session.get("user_work"), {"iv2": body.iv2, "iv3": body.iv3}, utc_now())
+    await _save_user_work(repo, user_id, sid, work)
+    out = _clerk_draft_out(ctx, work)
+    _log_clerk("draft", chars={k: len(getattr(out, k)) for k in CLERK_SECTIONS},
+               notices=sorted({f"{n.section}:{n.code}" for n in out.notices}))
+    return out
+
+
+@router.post("/{session_id}/record/finalize", response_model=TrialRecordResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def finalize_record(session_id: uuid.UUID, request: Request,
+                          current_user: AuthUser = Depends(require_supabase_user),
+                          settings: Settings = Depends(get_settings),
+                          repo: TrialRepository = Depends(get_trial_repository)):
+    """Finalises the stored draft. Notices never block it (decision 6); only an empty section does,
+    since the record would then have no IV.2 or IV.3 at all. Idempotent: finalising again returns
+    the same record."""
+    user_id, sid = current_user.user_id, str(session_id)
+    session, ctx = await _load(repo, user_id, session_id, settings, TrialCallRecorder())
+    refusal = _clerk_refusal(session, ctx, sid, completed=True)
+    if refusal is not None:
+        return refusal
+    draft = draft_of(session.get("user_work"))
+    if not draft.finalized:
+        if any(not text.strip() for text in draft.sections().values()):
+            return _conflict("record_section_empty", sid, ctx)
+        session["user_work"] = with_finalized(session.get("user_work"), utc_now())
+        await _save_user_work(repo, user_id, sid, session["user_work"])
+        _log_clerk("finalize", chars={k: len(v) for k, v in draft.sections().items()})
+    return _record_response(session_id, session, ctx)
 
 
 def _as_datetime(value) -> datetime | None:

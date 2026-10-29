@@ -129,7 +129,7 @@ class ObserverStateMachineTests(unittest.TestCase):
 
     def test_request_accepts_only_enabled_roles(self):
         TrialCreateRequest(crime_key="blhs_173", user_role="nguoi_xem")
-        for role in ("bi_cao", "thu_ky", "chu_toa", "admin"):
+        for role in ("bi_cao", "chu_toa", "admin"):
             with self.assertRaises(ValidationError):
                 TrialCreateRequest(crime_key="blhs_173", user_role=role)
         with self.assertRaises(ValueError):

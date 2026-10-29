@@ -27,7 +27,7 @@ TRIAL_DISCLAIMER = (
 )
 
 # Roles a stored case may record; which ones a NEW case may use is trial_state_machine.ENABLED_USER_ROLES.
-UserRole = Literal["ksv", "luat_su", "nguoi_xem"]
+UserRole = Literal["ksv", "luat_su", "nguoi_xem", "thu_ky"]
 EvidenceType = Literal["vat_chung", "giam_dinh", "dinh_gia", "tai_lieu"]
 Gender = Literal["nam", "nu"]
 PleaValue = Literal["nhan_toan_bo", "nhan_mot_phan", "choi_toi"]

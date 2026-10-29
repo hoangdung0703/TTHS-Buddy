@@ -8,6 +8,10 @@ write carries the version it expects, and claiming a session for an AI turn also
 generation lock to be free; a write that matches 0 rows returns False and the route answers 409.
 Inserts are single attempts (data_access policy: a retried insert could store twice).
 
+The Thư ký's notes and biên bản draft live in mock_trial_sessions.user_work (migration 0013), written
+only by update_user_work: never with the state fields, and without touching `version`, so saving
+notes during an AI turn neither races nor invalidates the hearing's optimistic concurrency.
+
 The daily limits count USAGE_LOG (migration 0014), one row per successful case creation that outlives
 the case: deleting a session or a case never frees quota.
 """
@@ -59,6 +63,7 @@ class TrialRepository(Protocol):
     def claim_and_update(self, user_id: str, session_id: str, expected_version: int, fields: dict[str, Any],
                          lock_until: datetime | None) -> bool: ...
     def update_state(self, user_id: str, session_id: str, expected_version: int, fields: dict[str, Any]) -> bool: ...
+    def update_user_work(self, user_id: str, session_id: str, user_work: dict[str, Any]) -> bool: ...
     def release_lock(self, user_id: str, session_id: str) -> None: ...
     def set_status(self, user_id: str, session_id: str, status: str) -> bool: ...
     def delete_session(self, user_id: str, session_id: str) -> bool: ...
@@ -165,6 +170,13 @@ class SupabaseTrialRepository:
                     .eq("version", expected_version).execute())
         return len(response.data or []) == 1
 
+    def update_user_work(self, user_id: str, session_id: str, user_work: dict[str, Any]) -> bool:
+        # Writes the whole value, so a retry stores the same thing again (safe to retry).
+        response = execute_with_retry(
+            lambda: self.client.table(SESSIONS).update({"user_work": user_work, "updated_at": _iso(utc_now())})
+            .eq("user_id", user_id).eq("id", session_id), "trial: save user work")
+        return len(response.data or []) == 1
+
     def release_lock(self, user_id: str, session_id: str) -> None:
         execute_with_retry(lambda: self.client.table(SESSIONS).update({"generating_until": None})
                            .eq("user_id", user_id).eq("id", session_id), "trial: release lock")
@@ -239,7 +251,8 @@ class InMemoryTrialRepository:
         session_id = str(uuid.uuid4())
         now = utc_now()
         self.sessions[session_id] = {"created_at": now, "updated_at": now, "generating_until": None,
-                                     "completed_at": None, **copy.deepcopy(row), "id": session_id}
+                                     "completed_at": None, "user_work": None, **copy.deepcopy(row),
+                                     "id": session_id}
         return session_id
 
     def get_session(self, user_id: str, session_id: str) -> dict[str, Any] | None:
@@ -288,6 +301,13 @@ class InMemoryTrialRepository:
         if row is None:
             return False
         row.update(copy.deepcopy(fields), updated_at=utc_now())
+        return True
+
+    def update_user_work(self, user_id: str, session_id: str, user_work: dict[str, Any]) -> bool:
+        row = self.sessions.get(session_id)
+        if not row or row["user_id"] != user_id:
+            return False
+        row.update(user_work=copy.deepcopy(user_work), updated_at=utc_now())
         return True
 
     def release_lock(self, user_id: str, session_id: str) -> None:

@@ -1051,3 +1051,29 @@ Theo số câu hỏi ở 11.7:
 - `TRIAL_ALLOWED_EMAILS` (phân tách bằng dấu phẩy, không phân biệt hoa thường). Khác rỗng khi `TRIAL_ENABLED=true`: chỉ người có email trong danh sách (lấy từ JWT đã xác thực, không ghi log) dùng được `/api/trials*`; người khác, kể cả chưa đăng nhập hay token sai, nhận đúng 404 như cờ tắt, cả với `HEAD`. Rỗng: mọi người dùng đã đăng nhập (như trước). Kiểm ở dependency cấp router, trước xác thực của route; việc xác thực token dùng chung bộ nhớ đệm trong request nên không xác thực hai lần.
 - `GET /api/trials`: thêm `config.remaining.usage_available` (`false` khi không đọc được sổ hạn mức) để frontend không báo nhầm "đã đủ 5 vụ".
 - Quy trình bật: chạy 0012–0014 → đặt `TRIAL_ALLOWED_EMAILS` → bật `TRIAL_ENABLED` → mở rộng danh sách, cuối cùng để rỗng (API-CONTRACT Mục 1).
+
+### 11.12 Chặng R2 — vai Thư ký (backend), 29/10/2026
+
+**Không cần migration mới:** dùng cột `mock_trial_sessions.user_work` của 0013 (đã chạy).
+
+**Đã làm (backend, theo 11.3 và quyết định 5–8 ở 11.8):**
+- `thu_ky` vào `ENABLED_USER_ROLES`. Slot `bao_cao_co_mat` (bước 1) có `min_user_turns=1`, `min_chars=100`, trường mới `SlotSpec.max_chars=3000`: với Thư ký là lượt người dùng (chỉ `speak`, không bỏ qua được); với mọi vai khác vẫn là mẫu code, không đổi. Từ bước 2, mọi slot là slot AI (như Người xem, gồm đối đáp AI–AI một vòng).
+- `state.clerk_report` (chỉ khi báo cáo đang chờ): lời mẫu `attendance_report` đã điền tên, kèm danh sách có mặt/vắng mặt theo hồ sơ. `state.clerk_prompt`: câu nhắc ghi chép cho từng bước (11 câu tĩnh, `backend/app/services/trial_clerk.py`, **bản nháp, `reviewed: false`, chờ nhóm luật duyệt**). Vai Thư ký không có `procedure_note`.
+- Ghi chép: `GET`/`PUT /api/trials/{id}/notes`, tối đa 20.000 ký tự, lưu ở `user_work.notes`. Không đổi `version`, không đụng khóa sinh, không vào prompt, log chỉ ghi độ dài.
+- Biên bản: `PUT /record/draft` (IV.2, IV.3; làm sạch markdown; tối đa 6.000 ký tự mỗi mục), `POST /record/finalize` (idempotent). `GET /record` của phiên Thư ký dựng IV.2/IV.3 từ bản của người dùng (`content: "user"`, nhãn "Do Thư ký (người học) ghi"); chưa chốt thì `draft: true` và dòng "Bản nháp" ở preamble. Phiên Thư ký **không** chạy lời gọi tóm tắt biên bản; `GET /record` vẫn không gọi LLM.
+- Lưu ý (chỉ phản hồi, không chặn chốt): mục trống, ngoài 200–4.000 ký tự, số tiền/% không có trong lời nói của các bước của mục đó, Điều thiếu tên luật, Điều không ai viện dẫn ở mục đó, tên người không thuộc phiên.
+- Guard "nói thay Thư ký": chặn bằng cấu trúc (`THU_KY` không bao giờ có trong enum người nói); mẫu nội dung `THU_KY` thêm ở mức đo (`speaks_for_student`), không chặn.
+- API-CONTRACT: 3.7–3.10, 5.2, bảng 409.
+
+**Giả định khi thiết kế thiếu chi tiết** (chọn cách an toàn, không đổi quyết định đã chốt):
+1. Chốt biên bản bị chặn khi IV.2 hoặc IV.3 **trống hoàn toàn** (409 `trial_record_section_empty`); mọi lưu ý khác không chặn. Lý do: biên bản không thể thiếu hẳn một mục.
+2. Độ dài: 200–4.000 là mức gợi ý (lưu ý); trần lưu trữ cứng 6.000 ký tự mỗi mục (422), bằng trần bài phát biểu dài.
+3. Thêm `GET /notes` (thiết kế chỉ nêu `PUT`) để mở lại phiên trên máy khác vẫn thấy ghi chép.
+4. Ghi chép được lưu cả khi phiên `completed` (để viết biên bản), không lưu khi `abandoned`.
+5. So số tiền, % và Điều với lời nói **trong các bước của mục** (IV.2 = bước 4–5, IV.3 = bước 6–8), không với hồ sơ, đúng câu chữ 11.3.5.
+6. "Làm sạch markdown": bỏ dấu `**`, `__`, `` ` ``, `#` đầu dòng; `*`/`+` đầu dòng thành `- `; không đổi chữ.
+7. Ghi chép và bản nháp ghi đè cả giá trị `user_work` (đọc rồi ghi). Hai tab cùng lưu cùng lúc thì bản sau thắng; chấp nhận vì cùng một người dùng.
+
+**Đo (Gemini thật, 29 lời gọi, ước tính 32–40, trần 50; script `backend/evaluation/run_trial_thu_ky_e2e.py`, offline, không tài khoản test):** 2/2 phiên đủ 11 bước (seed 9301 Điều 173, 9302 Điều 134); mỗi phiên 1 lời gọi tạo vụ + 13–14 lời gọi trong phiên; 0 lời gọi tóm tắt biên bản; ~339K token vào, ~21K ra, ~10K thinking cho cả 2 phiên. Độ trễ một lời gọi trong phiên: trung vị 2,9s, p90 4,8s. 0 lần bị guard loại, 0 lần tạm nghỉ, 0 cờ đo `speaks_for_student`. Người dùng giả (script): báo cáo bước 1 dài 297/349 ký tự; IV.2 3.789/3.747, IV.3 1.489/806 ký tự (chép câu đầu mỗi lời); 0 lưu ý trên văn bản chép đúng (không có lưu ý oan). Biên bản 2/2 đủ I–IV, IV.2/IV.3 `content: "user"`.
+
+**Còn chờ:** nhóm luật duyệt 11 câu nhắc ghi chép và các câu "Lưu ý"; xác nhận giả định 1–2; giao diện Thư ký (chặng sau, theo 11.3.7 và API-CONTRACT 5.2, 3.8–3.10).

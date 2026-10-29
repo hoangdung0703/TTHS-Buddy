@@ -14,6 +14,8 @@ is the transcript arranged into the form, so it can never contain a line nobody 
   adopted in deliberation; the judgment text is added verbatim as an appendix outside the form.
 - IV.2 and IV.3 use the clerk's summary (trial_record_summary, chặng 3E) when one passed its
   checks; otherwise they are verbatim. IV.1 and IV.4 are always verbatim.
+- In a Thư ký session (chặng R2) IV.2 and IV.3 are what the student wrote (trial_clerk), labelled as
+  such; until the student finalises them the record is a draft with a "Bản nháp" line.
 - The simulation notice is inserted by code at the top and bottom of the text rendering.
 """
 from __future__ import annotations
@@ -41,6 +43,9 @@ FORM_REFERENCE = ("Mẫu số 22-HS (Ban hành kèm theo Nghị quyết số 05/
 BLANK = "......"
 # Outside the form, first line of a Người xem record (design doc Mục 11.1.5).
 OBSERVER_NOTE = "Phiên tòa mô phỏng do hệ thống đóng mọi vai; người học quan sát."
+# Outside the form, first line of a Thư ký record the student has not finalised (Mục 11.3.5).
+DRAFT_NOTE = "Bản nháp: Thư ký chưa chốt biên bản."
+CLERK_AUTHOR_NOTE = "Do Thư ký (người học) ghi"
 
 # Hearing steps -> numbered items of form part IV ("Phần tranh tụng tại phiên tòa"); the last
 # element is the record_summary key for the items that may be summarised.
@@ -172,7 +177,10 @@ def _entries(case: CaseFile, utterances: list[Utterance], steps: tuple[int, ...]
 
 
 def _debate_item(case: CaseFile, utterances: list[Utterance], heading: str, steps: tuple[int, ...],
-                 key: str | None, summary: dict | None) -> TrialRecordSection:
+                 key: str | None, summary: dict | None, clerk: dict[str, str] | None) -> TrialRecordSection:
+    if clerk is not None and key in clerk:
+        return TrialRecordSection(heading=heading, content="user", summary=clerk[key] or None,
+                                  author_note=CLERK_AUTHOR_NOTE)
     text = (summary or {}).get(key) if key else None
     if text:
         return TrialRecordSection(heading=heading, content="summary", summary=render(text, case.participants))
@@ -182,12 +190,15 @@ def _debate_item(case: CaseFile, utterances: list[Utterance], heading: str, step
 
 def build_record(case: CaseFile, utterances: list[Utterance], started_at: datetime | None,
                  completed_at: datetime | None, summary: dict | None = None,
-                 observer: bool = False) -> TrialRecordOut:
+                 observer: bool = False, clerk: dict[str, str] | None = None,
+                 draft: bool = False) -> TrialRecordOut:
+    """`clerk`: the Thư ký's own IV.2 / IV.3 (keys "iv2", "iv3"), replacing summary and verbatim;
+    `draft`: not finalised yet."""
     start = (started_at or datetime.now(timezone.utc)).astimezone(VIETNAM_TZ)
     end = (completed_at or datetime.now(timezone.utc)).astimezone(VIETNAM_TZ)
     names = case.participants
     return TrialRecordOut(
-        disclaimer=TRIAL_DISCLAIMER, form_reference=FORM_REFERENCE, preamble=[OBSERVER_NOTE] if observer else [],
+        disclaimer=TRIAL_DISCLAIMER, form_reference=FORM_REFERENCE, preamble=[*([OBSERVER_NOTE] if observer else []), *([DRAFT_NOTE] if draft else [])],
         court_name=court_office(case),
         national_header=["CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", "Độc lập - Tự do - Hạnh phúc"],
         title="BIÊN BẢN", subtitle="PHIÊN TÒA HÌNH SỰ SƠ THẨM",
@@ -198,7 +209,8 @@ def build_record(case: CaseFile, utterances: list[Utterance], started_at: dateti
             TrialRecordSection(heading="III. Phần thủ tục bắt đầu phiên tòa",
                                entries=_entries(case, utterances, OPENING_STEPS)),
             TrialRecordSection(heading="IV. Phần tranh tụng tại phiên tòa", subsections=[
-                _debate_item(case, utterances, heading, steps, key, summary) for heading, steps, key in DEBATE_ITEMS
+                _debate_item(case, utterances, heading, steps, key, summary, clerk)
+                for heading, steps, key in DEBATE_ITEMS
             ], notes=list(DELIBERATION_NOTES)),
         ],
         closing=[
@@ -215,6 +227,7 @@ def build_record(case: CaseFile, utterances: list[Utterance], started_at: dateti
         ],
         appendix=[TrialRecordSection(heading=APPENDIX_HEADING, notes=[APPENDIX_NOTE],
                                      entries=_entries(case, utterances, (JUDGMENT_STEP,)))],
+        draft=draft,
     )
 
 
@@ -225,7 +238,9 @@ def _field_line(f: TrialRecordField) -> str:
 def _section_lines(section: TrialRecordSection, top: bool) -> list[str]:
     lines = ["", section.heading.upper() if top else section.heading]
     lines += [_field_line(f) for f in section.fields]
-    if section.content == "summary" and section.summary:
+    if section.author_note:
+        lines.append(f"({section.author_note})")
+    if section.content in ("summary", "user") and section.summary:
         lines.append(section.summary)
     lines += [f"{e.speaker_role} {e.speaker_name}: {e.text}".replace(" :", ":") for e in section.entries]
     for sub in section.subsections:

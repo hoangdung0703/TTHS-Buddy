@@ -69,6 +69,7 @@ from app.services.trial_state_machine import (
     ROLE_LABELS,
     ROLE_TO_IDS,
     STEP_BY_NUMBER,
+    CaseShape,
     SessionState,
     SlotSpec,
     TrialConflict,
@@ -332,6 +333,10 @@ _SPEAKS_FOR_STUDENT = {
                       re.IGNORECASE),
     "LUAT_SU": re.compile(r"(?:\{LUAT_SU\}|luật sư)\s+(?:đã\s+|vừa\s+|cũng\s+)?(?:thừa nhận|đồng ý|xác nhận|rút)",
                           re.IGNORECASE),
+    # Thư ký (chặng R2): another speaker reporting in the clerk's place ("Thư ký báo cáo: ..."). A
+    # reference to the report already made ("Thư ký đã báo cáo") is not matched.
+    "THU_KY": re.compile(r"(?:\{THU_KY\}|thư ký(?: phiên tòa)?)\s+(?:xin\s+)?(?:báo cáo|thừa nhận|xác nhận)",
+                         re.IGNORECASE),
 }
 
 
@@ -467,8 +472,9 @@ async def _generate_speech(ctx: TrialContext, slot_key: str, instruction: str, s
 
 # --- Templates (0 LLM calls) ----------------------------------------------------------------------
 
-def _attendance_report(ctx: TrialContext) -> str:
-    shape = ctx.state.shape
+def attendance_report(shape: CaseShape) -> str:
+    """The Thư ký's step-1 report: the AI's words when the AI is Thư ký, the prefilled draft the
+    student edits when the student is (Mục 11.3.1)."""
     present = ["Kiểm sát viên {KSV}", "bị cáo {BI_CAO}", "luật sư {LUAT_SU} bào chữa cho bị cáo"]
     absent: list[str] = []
     if shape.victim_present:
@@ -561,7 +567,7 @@ async def run_ai_turn(ctx: TrialContext) -> list[Utterance]:
 async def _dispatch(ctx: TrialContext, slot: SlotSpec) -> list[Utterance]:
     state = ctx.state
     if slot.key == "bao_cao_co_mat":
-        return [ctx.add("THU_KY", _attendance_report(ctx), kind="procedural")]
+        return [ctx.add("THU_KY", attendance_report(state.shape), kind="procedural")]
     if slot.key in _TEMPLATES:
         speaker, text = _TEMPLATES[slot.key]
         return [ctx.add(speaker, text, kind="procedural")]

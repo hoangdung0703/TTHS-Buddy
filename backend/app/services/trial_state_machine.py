@@ -13,6 +13,10 @@ tọa role later needs UI for that role's actions, not a new engine.
 Người xem (chặng R1, design doc Mục 11.1) is a role with no participant id: every slot is an AI
 slot, the student only advances between steps, and the đối đáp of step 8 becomes a fixed number of
 AI rounds (AI_DEBATE_ROUNDS), each speech a separate AI turn.
+
+Thư ký (chặng R2, design doc Mục 11.3) speaks once: the step-1 attendance report, which is a template
+slot for every other role. Every later slot is an AI slot, as for Người xem; the clerk's real work
+(notes, parts IV.2 and IV.3 of the biên bản) goes through trial_clerk, never through this machine.
 """
 from __future__ import annotations
 
@@ -45,9 +49,11 @@ ROLE_TO_IDS: dict[str, tuple[str, ...]] = {
 }
 LAY_IDS_PREFIXES = ("BI_CAO", "BI_HAI", "NLC_", "NLQ")
 # Roles whose stage is enabled: the API accepts no other (config.user_roles is built from this).
-ENABLED_USER_ROLES: frozenset[str] = frozenset({"ksv", "luat_su", "nguoi_xem"})
+ENABLED_USER_ROLES: frozenset[str] = frozenset({"ksv", "luat_su", "nguoi_xem", "thu_ky"})
 # Observes only: no participant id, never speaks, every slot is an AI slot.
 OBSERVER_ROLE = "nguoi_xem"
+# Speaks only the step-1 report, then writes parts IV.2 and IV.3 of the biên bản (trial_clerk).
+CLERK_ROLE = "thu_ky"
 # Đối đáp when neither side is the student: KSV then luật sư per round (decision 2026-10-29, item 3).
 AI_DEBATE_ROUNDS = 1
 
@@ -63,6 +69,8 @@ class SlotSpec:
     min_user_turns: int = 0
     max_user_turns: int = 1
     min_chars: int = 0
+    # Student slots only: overrides the default maximum of text_limits.
+    max_chars: int | None = None
     # Debate only: the other side.
     opponent: Role | None = None
     # The slot exists only when the student's role is in this set; None = every role (Mục 11.0a).
@@ -79,7 +87,9 @@ class StepSpec:
 
 STEPS: tuple[StepSpec, ...] = (
     StepSpec(1, "Thư ký báo cáo sự có mặt", ("300", "288", "289", "290", "291", "292", "293"), (
-        SlotSpec("bao_cao_co_mat", "thu_ky", "template"),
+        # A code template when the AI is Thư ký; the student's prefilled report when the student is
+        # (Mục 11.3.1: 100-3.000 characters).
+        SlotSpec("bao_cao_co_mat", "thu_ky", "template", min_user_turns=1, min_chars=100, max_chars=3000),
     )),
     StepSpec(2, "Khai mạc phiên tòa", ("301", "302", "303", "304", "305"), (
         SlotSpec("khai_mac", "chu_toa", "segment", speakers=("chu_toa", "bi_cao")),
@@ -307,6 +317,8 @@ def text_limits(state: SessionState) -> tuple[int, int] | None:
         return None
     slot = current_slot(state)
     assert slot is not None
+    if slot.max_chars is not None:
+        return max(1, slot.min_chars), slot.max_chars
     return (max(1, slot.min_chars),
             LONG_TEXT_MAX_CHARS if slot.kind in LONG_TEXT_SLOT_KINDS else SHORT_TEXT_MAX_CHARS)
 

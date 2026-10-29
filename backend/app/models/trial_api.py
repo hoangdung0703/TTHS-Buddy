@@ -57,6 +57,28 @@ class TrialProcedureNote(BaseModel):
     reviewed: bool
 
 
+class TrialClerkPrompt(BaseModel):
+    """Thư ký only: what to note down at this step. `reviewed` stays false until the legal team
+    has approved the text."""
+    step: int
+    text: str
+    reviewed: bool
+
+
+class TrialAttendanceEntry(BaseModel):
+    speaker_id: str
+    role: str
+    name: str
+    present: bool
+
+
+class TrialClerkReport(BaseModel):
+    """Thư ký only, while the step-1 report is due: the template report to prefill the textarea
+    with (names rendered) and the summoned people per the case file, to check it against."""
+    prefill: str
+    attendance: list[TrialAttendanceEntry]
+
+
 class TrialStateOut(BaseModel):
     session_id: uuid.UUID
     current_step: int
@@ -69,6 +91,10 @@ class TrialStateOut(BaseModel):
     text_limits: TrialTextLimits | None = None
     # Người xem only: the procedure note of current_step; null for every other role.
     procedure_note: TrialProcedureNote | None = None
+    # Thư ký only: the note-taking prompt of current_step; null for every other role.
+    clerk_prompt: TrialClerkPrompt | None = None
+    # Thư ký only, and only while the step-1 report is the student's turn; null otherwise.
+    clerk_report: TrialClerkReport | None = None
 
 
 class TrialUtteranceOut(BaseModel):
@@ -163,8 +189,11 @@ class TrialRecordSection(BaseModel):
     heading: str
     # "summary": show `summary` (clerk's summary, chặng 3E) instead of `entries`; "verbatim": show
     # `entries`. `summary_fallback` = a summary was attempted but failed its checks.
-    content: Literal["verbatim", "summary"] = "verbatim"
+    # "user": `summary` holds the text the student playing Thư ký wrote (null while still empty).
+    content: Literal["verbatim", "summary", "user"] = "verbatim"
     summary: str | None = None
+    # Who wrote `summary` when it is not the code, e.g. "Do Thư ký (người học) ghi".
+    author_note: str | None = None
     summary_fallback: bool = False
     fields: list[TrialRecordField] = []
     entries: list[TrialRecordEntry] = []
@@ -195,6 +224,33 @@ class TrialRecordOut(BaseModel):
     signatures: list[TrialRecordSignature]
     # Outside Mẫu 22-HS: the judgment as pronounced, verbatim from the transcript.
     appendix: list[TrialRecordSection] = []
+    # Thư ký sessions only: true until the clerk has finalised IV.2 and IV.3 (the preamble then
+    # carries the "Bản nháp" line).
+    draft: bool = False
+
+
+class TrialClerkNotice(BaseModel):
+    """One "Lưu ý" on a clerk-written section: feedback, never a refusal or a score."""
+    section: Literal["iv2", "iv3"]
+    code: str
+    message: str
+
+
+class TrialClerkSectionLimits(BaseModel):
+    min: int        # suggested; shorter gives a notice
+    max: int        # suggested; longer gives a notice
+    hard_max: int   # refused above this (422)
+
+
+class TrialClerkDraftOut(BaseModel):
+    """The clerk's IV.2 / IV.3 as stored (cleaned), with the notices computed on it."""
+    iv2: str
+    iv3: str
+    updated_at: datetime | None = None
+    finalized: bool
+    finalized_at: datetime | None = None
+    notices: list[TrialClerkNotice]
+    limits: TrialClerkSectionLimits
 
 
 class TrialRecordResponse(BaseModel):
@@ -203,6 +259,26 @@ class TrialRecordResponse(BaseModel):
     # lines included: for copy and print.
     text: str
     record: TrialRecordOut
+    # Thư ký sessions only: the editable draft and its notices; null for every other role.
+    clerk: TrialClerkDraftOut | None = None
+
+
+class TrialNotesRequest(_Strict):
+    # Must match trial_clerk.NOTES_MAX_CHARS (a test checks it).
+    text: str = Field(max_length=20000)
+
+
+class TrialNotesOut(BaseModel):
+    notes: str
+    updated_at: datetime | None = None
+    max_chars: int
+
+
+class TrialRecordDraftRequest(_Strict):
+    """Either section may be omitted (null) to keep its stored text. Bounds must match
+    trial_clerk.SECTION_HARD_MAX_CHARS (a test checks it)."""
+    iv2: str | None = Field(default=None, max_length=6000)
+    iv3: str | None = Field(default=None, max_length=6000)
 
 
 class TrialSessionEvent(BaseModel):

@@ -9,6 +9,7 @@ from app.core.config import Settings
 from app.models.trial import CaseFile, Verdict
 from app.models.trial_api import TrialStateOut, TrialSummaryOut, TrialUtteranceOut
 from app.services.trial_anonymise import anonymise_case_view
+from app.services.trial_clerk import attendance, clerk_prompt, report_prefill
 from app.services.trial_legal_pack import build_pack
 from app.services.trial_metrics import TrialCallRecorder
 from app.services.trial_names import render
@@ -19,10 +20,12 @@ from app.services.trial_state_machine import (
     STEP_BY_NUMBER,
     STEPS,
     OBSERVER_ROLE,
+    CLERK_ROLE,
     CaseShape,
     SessionState,
     allowed_actions,
     awaiting,
+    current_slot,
     text_limits,
 )
 from app.services.trial_turn_service import TrialContext, Utterance, role_of
@@ -90,17 +93,29 @@ def build_context(case_row: dict[str, Any], session_row: dict[str, Any], utteran
     )
 
 
-def state_out(session_id: str, state: SessionState, guard_exhausted: bool = False) -> TrialStateOut:
+REPORT_SLOT = "bao_cao_co_mat"
+
+
+def state_out(session_id: str, state: SessionState, guard_exhausted: bool = False,
+              case: CaseFile | None = None) -> TrialStateOut:
+    """`case` is needed only for the Thư ký's step-1 report (names in the prefill)."""
     actions = allowed_actions(state)
     if state.status == "active" and awaiting(state) == "ai":
         actions = [] if guard_exhausted else ["continue"]
     limits = text_limits(state)
+    clerk = state.user_role == CLERK_ROLE
+    slot = current_slot(state)
+    report_due = (clerk and case is not None and awaiting(state) == "user" and slot is not None
+                  and slot.key == REPORT_SLOT)
     return TrialStateOut(session_id=session_id, current_step=state.current_step,
                          step_title=STEP_BY_NUMBER[state.current_step].title, status=state.status,
                          awaiting=awaiting(state), allowed_actions=actions, version=state.version,
                          text_limits={"min": limits[0], "max": limits[1]} if limits else None,
                          procedure_note=procedure_note(state.current_step) if state.user_role == OBSERVER_ROLE
-                         else None)
+                         else None,
+                         clerk_prompt=clerk_prompt(state.current_step) if clerk else None,
+                         clerk_report={"prefill": report_prefill(case, state.shape),
+                                       "attendance": attendance(case, state.shape)} if report_due else None)
 
 
 def utterance_out(u: Utterance, case: CaseFile) -> TrialUtteranceOut:
