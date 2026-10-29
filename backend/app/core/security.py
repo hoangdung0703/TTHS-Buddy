@@ -165,6 +165,16 @@ def verify_supabase_jwt_for_request(request: Request, token: str, settings: Sett
     return user
 
 
+def verified_user_or_none(request: Request, authorization: str | None, settings: Settings) -> AuthUser | None:
+    """The verified user of this request, or None when the header is missing, malformed or its token
+    does not verify. For gates that must answer something other than 401 (e.g. the mock-trial
+    rollout allowlist, which answers 404). Shares the per-request verification cache."""
+    try:
+        return verify_supabase_jwt_for_request(request, _extract_bearer_token(authorization), settings)
+    except HTTPException:
+        return None
+
+
 async def require_supabase_user(
     request: Request,
     authorization: str | None = Header(default=None, alias="Authorization"),

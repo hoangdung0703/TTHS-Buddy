@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # Feature flag for "Phiên tòa giả định". OFF by default: every /api/trials* route then answers
     # 404 exactly like an unknown path, so a deployment without the flag does not reveal the feature.
     trial_enabled: bool = Field(default=False, alias="TRIAL_ENABLED")
+    # Staged rollout: comma-separated emails (case-insensitive). Non-empty while TRIAL_ENABLED: only
+    # these users reach /api/trials*, everyone else gets the flag-off 404. Empty: every signed-in user.
+    trial_allowed_emails: str = Field(default="", alias="TRIAL_ALLOWED_EMAILS")
     # Optional model for mock-trial CASE GENERATION only (chặng 3H, phương án B). Unset: the case is
     # generated with GEMINI_CHAT_MODEL like every other trial call.
     trial_case_model: str | None = Field(default=None, alias="TRIAL_CASE_MODEL")

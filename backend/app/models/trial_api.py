@@ -110,6 +110,9 @@ class TrialLimitsOut(BaseModel):
 class TrialRemainingOut(BaseModel):
     cases_today: int
     active_sessions: int
+    # False: the usage log could not be read; cases_today is then 0 because creation is refused
+    # (503 trial_usage_log_unavailable), not because the daily limit was used up.
+    usage_available: bool = True
 
 
 class TrialConfigOut(BaseModel):

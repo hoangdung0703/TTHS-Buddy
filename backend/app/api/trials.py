@@ -19,7 +19,7 @@ from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -29,7 +29,7 @@ from app.core.config import Settings, get_settings
 from app.core.data_access import DataUnavailable
 from app.core.logging import get_logger
 from app.core.rate_limit import DEFAULT_RATE_LIMIT, LLM_ROUTE_RATE_LIMIT, limiter
-from app.core.security import require_supabase_user
+from app.core.security import require_supabase_user, verified_user_or_none
 from app.models.auth import AuthUser
 from app.models.chat import ChatStreamErrorEvent, ChatStreamStatusEvent
 from app.models.trial import CaseOptions
@@ -85,15 +85,34 @@ from app.services.trial_turn_service import TrialContext, TrialGuardFailure, Utt
 
 logger = get_logger(__name__)
 
-def require_trial_enabled(settings: Settings = Depends(get_settings)) -> None:
-    """Feature flag TRIAL_ENABLED. Router-level, so it runs before authentication: with the flag
-    off even an anonymous request gets the same 404 as an unknown path, and the response never
-    reveals that the feature exists."""
+def allowed_emails(settings: Settings) -> frozenset[str]:
+    """TRIAL_ALLOWED_EMAILS as a set: comma-separated, blanks dropped, compared case-insensitively."""
+    raw = getattr(settings, "trial_allowed_emails", "") or ""
+    return frozenset(e.strip().casefold() for e in raw.split(",") if e.strip())
+
+
+def _hidden() -> StarletteHTTPException:
+    # Starlette's own HTTPException, not FastAPI's: the app's handler (core/middleware.py) only
+    # catches the FastAPI subclass, so this one renders exactly like an unknown path -
+    # {"detail": "Not Found"} - instead of the app's {"error": ...} envelope.
+    return StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+
+def require_trial_enabled(request: Request, authorization: str | None = Header(default=None, alias="Authorization"),
+                          settings: Settings = Depends(get_settings)) -> None:
+    """Feature flag TRIAL_ENABLED plus the staged-rollout allowlist TRIAL_ALLOWED_EMAILS. Router-level,
+    so it runs before the routes' own authentication: with the flag off, and while the allowlist is
+    set for anyone not on it (anonymous, bad token, unlisted email), the answer is the same 404 as
+    an unknown path, so the response never reveals that the feature exists. The email comes only
+    from the verified JWT (verified once per request; the route reuses it) and is never logged."""
     if not getattr(settings, "trial_enabled", False):
-        # Starlette's own HTTPException, not FastAPI's: the app's handler (core/middleware.py) only
-        # catches the FastAPI subclass, so this one renders exactly like an unknown path -
-        # {"detail": "Not Found"} - instead of the app's {"error": ...} envelope.
-        raise StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        raise _hidden()
+    allowed = allowed_emails(settings)
+    if not allowed:
+        return
+    user = verified_user_or_none(request, authorization, settings)
+    if user is None or (user.email or "").strip().casefold() not in allowed:
+        raise _hidden()
 
 
 router = APIRouter(prefix="/api/trials", tags=["trials"], dependencies=[Depends(require_trial_enabled)])
@@ -274,12 +293,14 @@ async def list_trials(request: Request, current_user: AuthUser = Depends(require
     user_id = current_user.user_id
     await asyncio.to_thread(repo.abandon_stale, user_id, _stale_cutoff())
     rows = await asyncio.to_thread(repo.list_sessions, user_id)
+    usage_available = True
     try:
         cases_today = await asyncio.to_thread(repo.count_usage_since, user_id, _today_start_utc())
     except DataUnavailable:
-        # Fail closed (migration 0014 missing or Supabase down): show no quota left; POST answers 503.
+        # Fail closed (migration 0014 missing or Supabase down): no quota left, and say why, so the
+        # client does not report "5 cases used"; POST answers 503.
         logger.warning("Trial usage log unreadable; reporting no remaining cases")
-        cases_today = MAX_CASES_PER_DAY
+        cases_today, usage_available = MAX_CASES_PER_DAY, False
     active = sum(1 for r in rows if r["status"] == "active")
     config = TrialConfigOut(
         crimes=[TrialCrimeOut(crime_key=c.key, crime_name=c.crime_name, dieu=c.dieu, allowed_khoan=list(c.allowed_khoan))
@@ -288,7 +309,8 @@ async def list_trials(request: Request, current_user: AuthUser = Depends(require
         limits=TrialLimitsOut(max_cases_per_day=MAX_CASES_PER_DAY, max_active_sessions=MAX_ACTIVE_SESSIONS,
                               max_witnesses=MAX_WITNESSES, abandon_after_days=ABANDON_AFTER_DAYS),
         remaining=TrialRemainingOut(cases_today=max(0, MAX_CASES_PER_DAY - cases_today),
-                                    active_sessions=max(0, MAX_ACTIVE_SESSIONS - active)),
+                                    active_sessions=max(0, MAX_ACTIVE_SESSIONS - active),
+                                    usage_available=usage_available),
     )
     return TrialListResponse(sessions=[summary_out(r) for r in rows], config=config)
 

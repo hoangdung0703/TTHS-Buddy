@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+import uuid
+from unittest import mock
 from collections import defaultdict
 from datetime import timedelta
 from types import SimpleNamespace
@@ -23,6 +25,8 @@ try:
     from app.main import app
 except Exception as error:  # no .env in a fresh clone: app.main cannot build its settings
     raise unittest.SkipTest(f"app not importable here: {type(error).__name__}")
+
+from fastapi import HTTPException
 
 from app.models.auth import AuthUser
 from app.services import trial_metrics
@@ -473,11 +477,11 @@ class TrialRouteTests(unittest.TestCase):
         self.assertEqual(config["user_roles"], ["ksv", "luat_su", "nguoi_xem"])
         self.assertEqual(config["limits"], {"max_cases_per_day": 5, "max_active_sessions": 3, "max_witnesses": 2,
                                             "abandon_after_days": 14})
-        self.assertEqual(config["remaining"], {"cases_today": 5, "active_sessions": 3})
+        self.assertEqual(config["remaining"], {"cases_today": 5, "active_sessions": 3, "usage_available": True})
         self.create()
         self.create()
         self.assertEqual(self.client.get("/api/trials").json()["config"]["remaining"],
-                         {"cases_today": 3, "active_sessions": 1})
+                         {"cases_today": 3, "active_sessions": 1, "usage_available": True})
 
     def test_lazy_abandon_and_hard_delete(self):
         sid, state = self.create()
@@ -610,6 +614,51 @@ class TrialRouteTests(unittest.TestCase):
         from app.core.config import Settings
         self.assertEqual(Settings.model_fields["trial_global_daily_case_limit"].default, 100)
 
+
+    # --- chặng R1c: rollout allowlist, usage_available ------------------------------------------
+    def _allowlist(self, emails: str):
+        app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
+            gemini_chat_model="fake", trial_court_name=None, trial_enabled=True, trial_allowed_emails=emails)
+
+    def _as(self, token: str | None, method: str = "get", path: str = "/api/trials", **kw):
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        return getattr(self.client, method)(path, headers=headers, **kw)
+
+    def _verify(self, token, settings):
+        emails = {"tok-listed": "Tester.One@Example.com", "tok-other": "someone@example.com", "tok-noemail": None}
+        if token not in emails:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return AuthUser(user_id=self.user, email=emails[token], claims={})
+
+    def test_allowlist_hides_the_feature_from_everyone_not_listed(self):
+        self._allowlist(" tester.one@example.com , ,second@example.com")
+        flag_off = self.client.get("/api/no-such-route")
+        with mock.patch("app.core.security.verify_supabase_jwt", self._verify):
+            self.assertEqual(self._as("tok-listed").status_code, 200)            # case-insensitive, trimmed
+            self.assertEqual(self._as("tok-listed", "head").status_code, 204)
+            for token in ("tok-other", "tok-noemail", "tok-bad", None):          # unlisted, no email, bad, anonymous
+                for method, path, body in (("get", "/api/trials", None), ("head", "/api/trials", None),
+                                           ("post", "/api/trials", {"crime_key": "blhs_173", "user_role": "ksv"}),
+                                           ("get", f"/api/trials/{uuid.uuid4()}", None)):
+                    response = self._as(token, method, path, **({"json": body} if body else {}))
+                    self.assertEqual(response.status_code, 404, (token, method, path))
+                    if method != "head":
+                        self.assertEqual(response.json(), flag_off.json())
+        self.assertEqual(self.fake.calls, [])
+
+    def test_empty_allowlist_keeps_every_signed_in_user(self):
+        for emails in ("", " , "):
+            self._allowlist(emails)
+            self.assertEqual(self.client.get("/api/trials").status_code, 200)
+            self.assertEqual(self.client.head("/api/trials").status_code, 204)
+        del app.dependency_overrides[require_supabase_user]
+        self.assertEqual(self.client.get("/api/trials").status_code, 401)        # flag on, no list: auth as before
+
+    def test_list_says_when_the_usage_log_is_unreadable(self):
+        self.assertTrue(self.client.get("/api/trials").json()["config"]["remaining"]["usage_available"])
+        self.repo.usage_available = False
+        remaining = self.client.get("/api/trials").json()["config"]["remaining"]
+        self.assertEqual((remaining["cases_today"], remaining["usage_available"]), (0, False))
 
 if __name__ == "__main__":
     unittest.main()

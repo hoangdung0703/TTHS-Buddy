@@ -33,13 +33,21 @@ Code thay đổi thì sửa file này cùng commit. Thiết kế tổng thể: `
 | `NEXT_PUBLIC_API_BASE_URL` | `frontend/.env.local` (đã có) | Gốc URL backend. Code hiện mặc định `http://localhost:8000` (`lib/api.ts`) |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `frontend/.env.local` (đã có) | Đăng nhập Supabase, lấy access token |
 | `TRIAL_ENABLED` | backend (`.env`, Render) | `true` mới bật tính năng. Mặc định tắt |
+| `TRIAL_ALLOWED_EMAILS` | backend | Danh sách email được dùng tính năng khi mở dần (phân tách bằng dấu phẩy, không phân biệt hoa thường, bỏ khoảng trắng). **Khác rỗng**: chỉ người dùng đã đăng nhập có email trong danh sách mới dùng được `/api/trials*`; mọi người khác (kể cả chưa đăng nhập, token sai) nhận **đúng** 404 như khi cờ tắt. **Rỗng**: mọi người dùng đã đăng nhập. Email lấy từ JWT đã xác thực |
 | `TRIAL_COURT_NAME` | backend | Tên Tòa án dùng trong vụ án, lời thoại và biên bản. Mặc định `Tòa án nhân dân khu vực 1, tỉnh X`. Tên Viện kiểm sát suy ra từ đó (`Viện kiểm sát nhân dân khu vực 1, tỉnh X`). Frontend lấy tên từ `court.name` / `record.court_name`, không hardcode |
 | `TRIAL_GLOBAL_DAILY_CASE_LIMIT` | backend | Số vụ tối đa toàn hệ thống mỗi ngày (giờ Việt Nam, mọi người dùng cộng lại). Mặc định 100. Frontend không cần biết, chỉ cần xử lý mã lỗi `trial_global_daily_limit` |
 | `TRIAL_CASE_MODEL` | backend | Tùy chọn: model riêng chỉ cho bước tạo vụ án. Chưa đặt thì dùng `GEMINI_CHAT_MODEL`. Frontend không cần biết |
 
-**Frontend không có biến cờ riêng.** Để biết tính năng có bật không, gọi `GET /api/trials`: nhận 404 thì ẩn mục "Phiên tòa giả định" khỏi sidebar và chặn truy cập các trang `/trial*`.
+**Frontend không có biến cờ riêng.** Để biết tính năng có bật **cho người dùng hiện tại** không, dò bằng `HEAD /api/trials` (Mục 3.0, là cách chuẩn): `204` thì hiện mục "Phiên tòa giả định"; `404` thì ẩn mục đó khỏi sidebar và chặn truy cập các trang `/trial*`. Kết quả dò phụ thuộc người dùng (danh sách email), nên phải dò lại khi đăng nhập, đăng xuất hoặc đổi tài khoản; không dò khi chưa có token rồi giữ kết quả.
 
-Mọi route cần header `Authorization: Bearer <supabase access token>`. Riêng khi cờ tắt thì 404 đến trước, kể cả khi không có token.
+Mọi route cần header `Authorization: Bearer <supabase access token>`. Khi cờ tắt, hoặc khi `TRIAL_ALLOWED_EMAILS` khác rỗng mà người gọi không có trong danh sách, thì 404 đến trước, kể cả khi không có token.
+
+**Quy trình bật cờ theo từng bước (backend, làm tay):**
+1. Chạy migration 0012, 0013, 0014 trong Supabase SQL Editor của đúng project mà Render dùng (0014 bắt buộc: thiếu thì không tạo được vụ, 503 `trial_usage_log_unavailable`).
+2. Đặt `TRIAL_ALLOWED_EMAILS` trên Render gồm vài email thử nghiệm.
+3. Đặt `TRIAL_ENABLED=true` và deploy. Chỉ những email trong danh sách thấy tính năng; người khác thấy như cờ tắt.
+4. Mở rộng: thêm email vào danh sách; khi sẵn sàng cho mọi người thì xóa giá trị `TRIAL_ALLOWED_EMAILS` (để rỗng).
+Tắt khẩn cấp: `TRIAL_ENABLED=false`.
 
 ---
 
@@ -58,7 +66,7 @@ Lỗi 409 của phiên tòa có thêm trường `state` (xem Mục 6).
 | 400 | `http_error` (message `Unknown crime_key`) | `crime_key` không có trong danh sách cho phép |
 | 401 | `http_error` | Thiếu, sai hoặc hết hạn token |
 | 404 | `http_error` (message `Trial not found`) | Phiên không tồn tại **hoặc thuộc người khác**. Hai trường hợp không phân biệt được, có chủ đích |
-| 404 | *(body `{"detail": "Not Found"}`)* | Cờ `TRIAL_ENABLED` tắt (y hệt đường dẫn lạ) |
+| 404 | *(body `{"detail": "Not Found"}`)* | Cờ `TRIAL_ENABLED` tắt, hoặc người gọi không có trong `TRIAL_ALLOWED_EMAILS` khi danh sách khác rỗng (y hệt đường dẫn lạ) |
 | 409 | `trial_<mã>` | Hành động không hợp lệ ở trạng thái hiện tại, xem Mục 6 |
 | 422 | `validation_error` | Body sai schema: thiếu trường, sai kiểu, **có trường thừa**, `user_role` không có trong `config.user_roles` (ví dụ `bi_cao`, `thu_ky`, `chu_toa` khi chặng của vai đó chưa bật), `witness_count` ngoài 0–2, `text` dài hơn 6000 ký tự, `session_id` không phải UUID |
 | 429 | `rate_limit_exceeded` | Quá giới hạn tần suất: 10 request/phút/user với `POST /api/trials` và `POST /turn`; 60/phút với các route khác |
@@ -77,7 +85,7 @@ Lỗi xảy ra **sau khi** SSE đã bắt đầu thì không có mã HTTP: serve
 
 ### 3.0 `HEAD /api/trials` — dò cờ tính năng
 
-Trả `204` (không có body) khi tính năng bật và token hợp lệ; `404` khi `TRIAL_ENABLED` tắt (giống route không tồn tại, có hay không có token); `401` khi tính năng bật nhưng thiếu hoặc sai token. Route này **không** chạy bước dọn phiên quá hạn và **không** đếm hạn mức, nên rẻ hơn `GET`. Dùng để quyết định có hiện mục "Phiên tòa giả định" trong sidebar.
+Trả `204` (không có body) khi tính năng bật cho người gọi và token hợp lệ; `404` khi `TRIAL_ENABLED` tắt, hoặc khi `TRIAL_ALLOWED_EMAILS` khác rỗng mà người gọi không có trong danh sách hay không có token hợp lệ (giống route không tồn tại); `401` chỉ khi tính năng bật cho mọi người (danh sách rỗng) mà thiếu hoặc sai token. Route này **không** chạy bước dọn phiên quá hạn và **không** đếm hạn mức, nên rẻ hơn `GET`. Dùng để quyết định có hiện mục "Phiên tòa giả định" trong sidebar.
 
 ### 3.1 `GET /api/trials` — danh sách phiên + cấu hình
 
@@ -105,14 +113,14 @@ Gọi route này cũng tự chuyển sang `abandoned` mọi phiên `active` khô
     ],
     "user_roles": ["ksv", "luat_su", "nguoi_xem"],
     "limits": { "max_cases_per_day": 5, "max_active_sessions": 3, "max_witnesses": 2, "abandon_after_days": 14 },
-    "remaining": { "cases_today": 3, "active_sessions": 1 }
+    "remaining": { "cases_today": 3, "active_sessions": 1, "usage_available": true }
   }
 }
 ```
 
 - `sessions` sắp xếp theo `updated_at` mới nhất trước. `status`: `active` | `completed` | `abandoned`.
 - `config.crimes` lấy từ cấu hình server. **Không hardcode** danh sách tội trong frontend.
-- `remaining.cases_today` = số vụ còn được tạo hôm nay: 5 trừ số lần tạo vụ thành công từ 0 giờ (giờ Việt Nam). Tạo thất bại không tính; xóa phiên không trả lại lượt. Khi server không đọc được sổ hạn mức thì trả 0. `remaining.active_sessions` = số phiên dở dang còn được mở thêm. Bằng 0 thì khóa nút "Phiên tòa mới" và hiện lý do.
+- `remaining.cases_today` = số vụ còn được tạo hôm nay: 5 trừ số lần tạo vụ thành công từ 0 giờ (giờ Việt Nam). Tạo thất bại không tính; xóa phiên không trả lại lượt. Khi server không đọc được sổ hạn mức thì `cases_today = 0` **và** `usage_available = false`: lúc đó **không** được báo "đã tạo đủ 5 vụ"; hãy báo "Tạm thời chưa tạo được vụ án mới, bạn vui lòng thử lại sau" (khóa nút tạo vụ như khi hết lượt). `usage_available = true` là bình thường. `remaining.active_sessions` = số phiên dở dang còn được mở thêm. Bằng 0 thì khóa nút "Phiên tòa mới" và hiện lý do.
 - Bộ chọn vai chỉ hiện các vai trong `config.user_roles` (nguồn duy nhất; server từ chối 422 mọi vai khác). Các vai chưa bật (Chủ tọa, Thư ký, Bị cáo) nếu muốn hiện thì để mờ, nhãn "Sắp có". Thẻ "Người xem": mô tả "Theo dõi trọn một phiên tòa do hệ thống đóng mọi vai"; không có pill Điều.
 
 ### 3.2 `POST /api/trials` — tạo vụ án và phiên (SSE)
@@ -431,7 +439,7 @@ Các bước không có ★ do AI làm hết. Người dùng chỉ thấy `advan
 | `step`, `title` | Trùng `current_step`, `step_title` |
 | `text` | Văn bản thuần, một đoạn, cố định (không do AI sinh) |
 | `legal_basis` | Số Điều **Bộ luật Tố tụng hình sự**; có thể hiện bằng pill mở `ArticleModal` |
-| `reviewed` | `false` = bản nháp chưa được nhóm luật duyệt. Khi `false` nên hiện nhãn nhỏ "Bản nháp, đang chờ duyệt" |
+| `reviewed` | `false` = bản nháp chưa được nhóm luật duyệt. Khi `false` hiện nhãn nhỏ "Bản nháp, đang chờ nhóm luật duyệt" |
 
 - `state` mới đến sau mỗi `advance` (sự kiện `state` cuối stream) đã mang chú giải của bước mới; không cần gọi thêm route nào.
 - Panel hồ sơ vụ án giữ nguyên như các vai khác (đầy đủ, đã ẩn danh, không có thẻ nhân vật).

@@ -1045,3 +1045,9 @@ Theo số câu hỏi ở 11.7:
 
 **Tên luật trong tóm tắt IV.2/IV.3.** R1: 1/3 phiên IV.3 về nguyên văn vì tóm tắt viết "Điều 65" không nêu luật (guard cặp chặn đúng; lần sinh lại kèm phản hồi vẫn sai y như vậy, nên sửa prompt không đủ chắc). Chọn cách code: `attach_law_names` ghi tên luật sau "Điều N" thiếu luật **chỉ khi** diễn biến phiên tòa và hồ sơ viện dẫn Điều đó với đúng một bộ luật; Điều không có trong nguồn, hoặc nguồn viện dẫn với cả hai bộ luật, thì để nguyên và guard vẫn chặn. Guard không đổi, chạy sau bước này.
 - Đo (16 lời gọi): một phiên Người xem trên vụ đã lưu (seed 9110, Điều 174 khoản 1) tới hết bước 9, rồi 6 lần tóm tắt một lượt, mỗi kết quả kiểm hai lần (nguyên như model viết / sau khi gắn tên luật): 0/6 về nguyên văn ở cả hai cách, nghĩa là phiên mới không tái hiện lỗi. Kiểm ngoại tuyến trên biên bản phiên 9203 của R1: nguồn IV.3 chỉ viện dẫn Điều 65 với Bộ luật Hình sự, nên lỗi `ambiguous_law: Điều 65` của phiên đó được sửa. Còn cần đo thêm khi có nhiều phiên hơn.
+
+### 11.11 Chặng R1c — mở dần theo danh sách email, 29/10/2026
+
+- `TRIAL_ALLOWED_EMAILS` (phân tách bằng dấu phẩy, không phân biệt hoa thường). Khác rỗng khi `TRIAL_ENABLED=true`: chỉ người có email trong danh sách (lấy từ JWT đã xác thực, không ghi log) dùng được `/api/trials*`; người khác, kể cả chưa đăng nhập hay token sai, nhận đúng 404 như cờ tắt, cả với `HEAD`. Rỗng: mọi người dùng đã đăng nhập (như trước). Kiểm ở dependency cấp router, trước xác thực của route; việc xác thực token dùng chung bộ nhớ đệm trong request nên không xác thực hai lần.
+- `GET /api/trials`: thêm `config.remaining.usage_available` (`false` khi không đọc được sổ hạn mức) để frontend không báo nhầm "đã đủ 5 vụ".
+- Quy trình bật: chạy 0012–0014 → đặt `TRIAL_ALLOWED_EMAILS` → bật `TRIAL_ENABLED` → mở rộng danh sách, cuối cùng để rỗng (API-CONTRACT Mục 1).
