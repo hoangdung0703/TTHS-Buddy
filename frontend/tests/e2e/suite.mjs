@@ -526,6 +526,28 @@ for (const role of ["ksv", "nguoi_xem"]) {
 
 const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || /Uncaught|TypeError/.test(m));
 if (process.env.E2E_DEBUG) badConsole.forEach((m) => console.log(`  console: ${m.slice(0, 200)}`));
+// Regression: nothing may stretch the document past the record (absolutely positioned sr-only labels
+// used to resolve against <body>, leaving hundreds of px of empty page under the h-screen frame).
+for (const [width, height] of [[1440, 900], [1920, 1080]]) {
+  resetWorld();
+  ({ context, page } = await open({ viewport: { width, height } }));
+  await page.goto(`${BASE}/trial/${FAKE}/record`);
+  await page.getByTestId("trial-record").waitFor({ timeout: 20000 });
+  await page.waitForTimeout(500);
+  const gap = await page.evaluate(() => {
+    const card = document.querySelector('[data-testid="trial-record"]');
+    let scroller = card.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    scroller.scrollTop = scroller.scrollHeight;
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    const cardBottom = card.getBoundingClientRect().bottom + window.scrollY;
+    return { docOverCard: document.documentElement.scrollHeight - cardBottom, docOverViewport: document.documentElement.scrollHeight - window.innerHeight };
+  });
+  check(`record ${width}x${height}: document ends ≤ 120px below the record (${Math.round(gap.docOverCard)}px), no page scroll (${gap.docOverViewport}px)`,
+    gap.docOverCard <= 120 && gap.docOverViewport <= 0);
+  await context.close();
+}
+
 check("console: no transcript text, no page errors", badConsole.length === 0);
 await browser.close();
 console.log(failureCount() === 0 ? "ALL PASS" : `${failureCount()} FAILED`);

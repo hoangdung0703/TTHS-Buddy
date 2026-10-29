@@ -75,7 +75,11 @@ export function AuthenticatedLayout({ title, children }: AuthenticatedLayoutProp
         <div className="contents print:hidden">
           <TopBar title={title} userLabel={email} onMenuClick={() => setIsMobileNavOpen(true)} />
         </div>
-        <div className="flex-1 overflow-y-auto print:overflow-visible">{children}</div>
+        {/* relative: absolutely positioned content (e.g. Tailwind's sr-only labels) must use this scroll
+            area as its containing block. Otherwise it resolves against <body>, escapes the
+            overflow clipping and stretches the document below the h-screen frame (empty space
+            under a long page such as the trial record). */}
+        <div className="relative flex-1 overflow-y-auto print:static print:overflow-visible">{children}</div>
       </div>
     </div>
   );
