@@ -151,3 +151,36 @@ export const recordText = ({ observer = false } = {}) =>
   [`*** ${DISCLAIMER.toUpperCase()} ***`, ...(observer ? [OBSERVER_PREAMBLE] : []), COURT_NAME.toUpperCase(), "BIÊN BẢN",
     "PHIÊN TÒA HÌNH SỰ SƠ THẨM", "Vào hồi: 08 giờ 05 phút", "Vụ án hình sự thụ lý số: ......", "", "I. NHỮNG NGƯỜI TIẾN HÀNH TỐ TỤNG",
     "Thư ký phiên tòa: Bà Tạ Phương Yến", `*** ${DISCLAIMER.toUpperCase()} ***`].join("\n");
+
+// --- Clerk role (contract 5.2, 3.7-3.10) ---------------------------------------------------------
+export const CLERK_NAME = "Tạ Phương Yến";
+export const CLERK_PREFILL = `Thưa Hội đồng xét xử, theo giấy triệu tập của Tòa án, tại phiên tòa hôm nay có mặt: Kiểm sát viên Vũ Xuân Việt; bị cáo ${FULL.BI_CAO}; luật sư bào chữa Trịnh Thị Thảo; người làm chứng ${FULL.NLC_1}. Vắng mặt: bị hại ${FULL.BI_HAI}, có đơn đề nghị xét xử vắng mặt. Thư ký phiên tòa đã phổ biến nội quy phiên tòa. Báo cáo Hội đồng xét xử.`;
+export const clerkReport = () => ({
+  prefill: CLERK_PREFILL,
+  attendance: [
+    { speaker_id: "KSV", role: "Kiểm sát viên", name: "Vũ Xuân Việt", present: true },
+    { speaker_id: "BI_CAO", role: "Bị cáo", name: FULL.BI_CAO, present: true },
+    { speaker_id: "LUAT_SU", role: "Luật sư bào chữa", name: "Trịnh Thị Thảo", present: true },
+    { speaker_id: "BI_HAI", role: "Bị hại", name: FULL.BI_HAI, present: false },
+    { speaker_id: "NLC_1", role: "Người làm chứng", name: FULL.NLC_1, present: true }
+  ]
+});
+export const clerkPrompt = (step, reviewed = false) => ({ step, text: `Câu nhắc ghi chép mẫu cho bước ${step}: ghi ai nói và nội dung chính.`, reviewed });
+export const CLERK_DRAFT_PREAMBLE = "Bản nháp: Thư ký chưa chốt biên bản.";
+export const CLERK_AUTHOR_NOTE = "Do Thư ký (người học) ghi";
+
+// The record of a clerk session: IV.2 and IV.3 are the student's text (content "user").
+export function clerkRecordDoc({ iv2 = "", iv3 = "", finalized = false } = {}) {
+  const doc = recordDoc();
+  doc.preamble = finalized ? [] : [CLERK_DRAFT_PREAMBLE];
+  doc.draft = !finalized;
+  const partIv = doc.sections[3];
+  partIv.subsections[1] = { heading: "2. Hỏi và trả lời tại phiên tòa", content: "user", summary: iv2 || null, author_note: CLERK_AUTHOR_NOTE, fields: [], notes: [], subsections: [], entries: [] };
+  partIv.subsections[2] = { heading: "3. Tranh luận tại phiên tòa", content: "user", summary: iv3 || null, author_note: CLERK_AUTHOR_NOTE, fields: [], notes: [], subsections: [], entries: [] };
+  return doc;
+}
+
+export const clerkRecordText = ({ iv2 = "", iv3 = "", finalized = false } = {}) =>
+  [`*** ${DISCLAIMER.toUpperCase()} ***`, ...(finalized ? [] : [CLERK_DRAFT_PREAMBLE]), COURT_NAME.toUpperCase(), "BIÊN BẢN",
+    "2. Hỏi và trả lời tại phiên tòa", `(${CLERK_AUTHOR_NOTE})`, iv2 || "......", "3. Tranh luận tại phiên tòa", `(${CLERK_AUTHOR_NOTE})`, iv3 || "......",
+    `*** ${DISCLAIMER.toUpperCase()} ***`].join("\n");

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, FileText, Lock, Play, Send, Trash2, XCircle } from "lucide-react";
+import { ArrowRight, FileText, Lock, Play, RotateCcw, Send, Trash2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 
@@ -11,14 +11,15 @@ import {
   composerMode,
   endSlotLabel,
   GUARD_EXHAUSTED_MESSAGE,
-  isObserverRole,
+  isClerkRole,
   parseAllowedActions,
   TRIAL_TEXT_DEFAULT_MAX,
   stepHint,
   textLimitsForState,
+  usesObserverControls,
   validateTrialText
 } from "@/lib/trialRules";
-import type { TrialParticipant, TrialState, TrialStepInfo } from "@/lib/types";
+import type { TrialAttendanceEntry, TrialParticipant, TrialState, TrialStepInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export type ComposerAction =
@@ -85,9 +86,9 @@ export function TrialComposer({
   const hint = stepHint(state.current_step, userRole, mode === "speak");
   const nextStepTitle = actions.advanceTo !== null ? steps.find((step) => step.number === actions.advanceTo)?.title : undefined;
 
-  // Observer (contract 5.1): no input at all; the end-of-hearing bar and the guard fuse below are
-  // shared with the other roles.
-  if (isObserverRole(userRole) && (busy || (mode !== "finished" && mode !== "exhausted"))) {
+  // Observer (contract 5.1), and the clerk outside the step-1 report (5.2): no input at all; the
+  // end-of-hearing bar and the guard fuse below are shared with the other roles.
+  if (usesObserverControls(userRole, mode) && (busy || (mode !== "finished" && mode !== "exhausted"))) {
     return (
       <ObserverControls
         state={state}
@@ -133,6 +134,7 @@ export function TrialComposer({
       >
         <p className="min-w-0 text-sm text-foreground">
           <span className="font-medium">Phiên tòa đã kết thúc.</span>
+          {isClerkRole(userRole) ? <span className="ml-1 text-xs text-muted-foreground">Bạn viết mục IV.2, IV.3 và chốt biên bản.</span> : null}
           {recordPending ? (
             <span className="ml-1 text-xs text-muted-foreground">Biên bản đang được hoàn thiện; mở ngay thì mục tóm tắt có thể là nguyên văn.</span>
           ) : null}
@@ -140,7 +142,7 @@ export function TrialComposer({
         <Button asChild size="sm" className="h-9 rounded-full">
           <Link href={`/trial/${sessionId}/record`}>
             <FileText className="h-4 w-4" />
-            Xem biên bản
+            {isClerkRole(userRole) ? "Mở biên bản" : "Xem biên bản"}
           </Link>
         </Button>
       </div>
@@ -219,6 +221,9 @@ export function TrialComposer({
   const trimmedLength = draft.trim().length;
   const belowMin = limits.min > 1 && trimmedLength < limits.min;
   const showIndictmentFill = state.current_step === 3 && userRole === "ksv" && indictmentText !== null && indictmentText.length > 0;
+  // Clerk step-1 report (contract 5.2): the template is prefilled by the hearing screen; the
+  // attendance list sits next to it for checking, and the template can be put back.
+  const clerkReport = isClerkRole(userRole) ? (state.clerk_report ?? null) : null;
 
   function submit(): void {
     setTouched(true);
@@ -258,6 +263,7 @@ export function TrialComposer({
               </select>
             </div>
           ) : null}
+          {clerkReport !== null && clerkReport.attendance.length > 0 ? <AttendanceList entries={clerkReport.attendance} /> : null}
           <label htmlFor={textareaId} className="sr-only">
             {limits.label}
           </label>
@@ -296,6 +302,12 @@ export function TrialComposer({
                 Điền sẵn cáo trạng từ hồ sơ
               </Button>
             ) : null}
+            {clerkReport !== null && draft !== clerkReport.prefill ? (
+              <Button type="button" variant="outline" size="sm" data-testid="trial-clerk-refill" onClick={() => onDraftChange(clerkReport.prefill)}>
+                <RotateCcw className="h-4 w-4" />
+                Điền lại lời mẫu
+              </Button>
+            ) : null}
           </div>
           {/* An empty box only disables "Gửi"; the message appears once there is text to judge. */}
           {((touched && length > 0) || overMax) && validation !== null ? (
@@ -311,7 +323,7 @@ export function TrialComposer({
             ) : null}
             <Button type="submit" size="sm" className="rounded-full" disabled={!canSend} data-testid="trial-send">
               <Send className="h-4 w-4" />
-              {state.current_step === 6 || state.current_step === 7 ? "Trình bày" : "Gửi"}
+              {state.current_step === 6 || state.current_step === 7 ? "Trình bày" : clerkReport !== null ? "Báo cáo" : "Gửi"}
             </Button>
           </div>
           <p className="hidden text-right text-[0.7rem] text-muted-foreground md:block">Ctrl/⌘ + Enter để gửi</p>
@@ -325,6 +337,26 @@ export function TrialComposer({
         </div>
       ) : null}
     </Frame>
+  );
+}
+
+// The summoned people per the case file, to check the report against (present: false = absent,
+// with a request to be tried in absence).
+function AttendanceList({ entries }: { entries: TrialAttendanceEntry[] }) {
+  return (
+    <div data-testid="trial-attendance" className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+      <p className="mb-1 text-xs font-medium text-foreground">Danh sách triệu tập theo hồ sơ</p>
+      <ul className="grid max-h-28 grid-cols-1 gap-x-4 gap-y-0.5 overflow-y-auto text-xs sm:max-h-none sm:grid-cols-2 [@media(max-height:640px)]:max-h-16">
+        {entries.map((entry) => (
+          <li key={entry.speaker_id} className="flex min-w-0 items-baseline justify-between gap-2">
+            <span className="min-w-0 break-words text-foreground">
+              <span className="text-muted-foreground">{entry.role}:</span> {entry.name}
+            </span>
+            <span className={cn("shrink-0", entry.present ? "text-emerald-700" : "font-medium text-foreground")}>{entry.present ? "Có mặt" : "Vắng mặt"}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

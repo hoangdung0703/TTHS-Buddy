@@ -6,7 +6,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { config, FAKE, caseFile, participants, steps, makeUtterances, recordDoc, recordText, COURT_NAME, DISCLAIMER } from "./fixtures.mjs";
+import { config, FAKE, caseFile, participants, steps, makeUtterances, recordDoc, recordText, clerkRecordDoc, clerkRecordText, COURT_NAME, DISCLAIMER } from "./fixtures.mjs";
 
 export const PORT = Number(process.env.E2E_PORT ?? 3011);
 export const BASE = `http://localhost:${PORT}`;
@@ -86,8 +86,11 @@ const STORAGE_KEY = `sb-${new URL(SUPABASE_ORIGIN).hostname.split(".")[0]}-auth-
 
 export const baseState = (overrides = {}) => ({
   session_id: FAKE, current_step: 6, step_title: "Kiểm sát viên luận tội", status: "active", awaiting: "user",
-  allowed_actions: ["speak"], version: 10, text_limits: null, procedure_note: null, ...overrides
+  allowed_actions: ["speak"], version: 10, text_limits: null, procedure_note: null, clerk_prompt: null, clerk_report: null, ...overrides
 });
+
+// What the server keeps for a clerk session (user_work): notes and the IV.2/IV.3 draft.
+export const baseClerk = () => ({ notes: "", notesUpdatedAt: null, iv2: "", iv3: "", draftUpdatedAt: null, finalized: false, finalizedAt: null });
 
 // Mutable world the routes answer from. Tests set what they need before navigating.
 export const world = {
@@ -107,11 +110,19 @@ export const world = {
   // (route, body) => Promise; null answers 404.
   turn: null,
   create: null,
+  clerk: baseClerk(),
+  // Optional overrides for the clerk routes: (route, body) => Promise, or a falsy return to fall through.
+  notesPut: null,
+  draftPut: null,
+  finalize: null,
+  // Request bodies the clerk routes received, in order: { method, path, body }.
+  clerkBodies: [],
   requests: []
 };
 
 export function resetWorld() {
-  Object.assign(world, { flag: "on", allowedEmails: null, head: null, delay: 0, config: config(), role: "ksv", state: baseState(), utterances: makeUtterances(), turn: null, create: null, requests: [] });
+  Object.assign(world, { flag: "on", allowedEmails: null, head: null, delay: 0, config: config(), role: "ksv", state: baseState(), utterances: makeUtterances(), turn: null, create: null,
+    clerk: baseClerk(), notesPut: null, draftPut: null, finalize: null, clerkBodies: [], requests: [] });
 }
 
 export const detail = () => ({
@@ -123,7 +134,7 @@ export const detail = () => ({
 const cors = {
   "access-control-allow-origin": BASE,
   "access-control-allow-headers": "authorization, content-type",
-  "access-control-allow-methods": "GET, POST, HEAD, DELETE, OPTIONS"
+  "access-control-allow-methods": "GET, POST, PUT, HEAD, DELETE, OPTIONS"
 };
 const json = (status, body) => ({ status, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify(body) });
 const notFound = () => json(404, { detail: "Not Found" });
@@ -171,7 +182,13 @@ async function handleApi(route) {
     }
     return route.fulfill(notFound());
   }
+  if (path.startsWith(`/api/trials/${FAKE}`) && /\/(notes|record|record\/draft|record\/finalize)$/.test(path) && world.role === "thu_ky") {
+    return handleClerk(route, method, path);
+  }
   if (path.startsWith(`/api/trials/${FAKE}`)) {
+    if (/\/(notes|record\/draft|record\/finalize)$/.test(path)) {
+      return fulfillError(route, 409, "trial_not_clerk", { state: world.state });
+    }
     if (path.endsWith("/record")) {
       const observer = world.role === "nguoi_xem";
       return route.fulfill(json(200, { session_id: FAKE, text: recordText({ observer }), record: recordDoc({ observer }) }));
@@ -184,6 +201,95 @@ async function handleApi(route) {
     }
   }
   return route.fulfill(json(404, { error: { code: "http_error", message: "Trial not found" } }));
+}
+
+// --- Clerk routes (contract 3.8-3.10), answered like the backend: same codes, same shapes. ---
+const CLERK_LIMITS = { min: 200, max: 4000, hard_max: 6000 };
+const NOW = () => new Date().toISOString();
+const clean = (text) => text.replace(/\r\n/g, "\n").replace(/\*\*|__|`/g, "").replace(/\n{3,}/g, "\n\n").trim();
+const KNOWN_AMOUNTS = ["15.000.000 đồng", "12.000.000 đồng", "2.000.000 đồng"];
+
+// The "Lưu ý" of one section: a subset of the real checks, enough to exercise the screen.
+function clerkNotices() {
+  const notices = [];
+  for (const [key, n] of [["iv2", 2], ["iv3", 3]]) {
+    const text = world.clerk[key];
+    const add = (code, message) => notices.push({ section: key, code, message });
+    if (text.trim().length === 0) {
+      add("empty", `Mục ${n} chưa có nội dung.`);
+      continue;
+    }
+    if (text.trim().length < CLERK_LIMITS.min) add("too_short", `Mục ${n} ngắn hơn ${CLERK_LIMITS.min} ký tự.`);
+    if (text.trim().length > CLERK_LIMITS.max) add("too_long", `Mục ${n} dài hơn ${CLERK_LIMITS.max.toLocaleString("vi-VN")} ký tự.`);
+    for (const match of text.matchAll(/\d{1,3}(?:\.\d{3})+ đồng/g)) {
+      if (!KNOWN_AMOUNTS.includes(match[0])) add("unknown_amount", `Mục ${n} nêu ${match[0]}; con số này không xuất hiện trong lời nói của mục này.`);
+    }
+    for (const match of text.matchAll(/\p{Lu}\p{Ll}+ \p{Lu}\.(?=\s|$|[,;])/gu)) {
+      add("unknown_name", `Mục ${n} có tên "${match[0]}"; tên này không có trong phiên tòa.`);
+    }
+  }
+  return notices;
+}
+
+const clerkDraft = () => ({
+  iv2: world.clerk.iv2, iv3: world.clerk.iv3, updated_at: world.clerk.draftUpdatedAt, finalized: world.clerk.finalized,
+  finalized_at: world.clerk.finalizedAt, notices: clerkNotices(), limits: CLERK_LIMITS
+});
+const clerkRecord = () => {
+  const parts = { iv2: world.clerk.iv2, iv3: world.clerk.iv3, finalized: world.clerk.finalized };
+  return { session_id: FAKE, text: clerkRecordText(parts), record: clerkRecordDoc(parts), clerk: clerkDraft() };
+};
+
+async function handleClerk(route, method, path) {
+  const body = method === "PUT" ? JSON.parse(route.request().postData() ?? "{}") : null;
+  world.clerkBodies.push({ method, path: path.slice(`/api/trials/${FAKE}`.length), body });
+  const conflict = (code) => fulfillError(route, 409, code, { state: world.state });
+  const extra = (allowed) => body !== null && Object.keys(body).some((key) => !allowed.includes(key));
+  if (path.endsWith("/notes")) {
+    if (method === "PUT" && world.notesPut) {
+      const answered = await world.notesPut(route, body);
+      if (answered !== false) return answered;
+    }
+    if (method === "GET") {
+      return route.fulfill(json(200, { notes: world.clerk.notes, updated_at: world.clerk.notesUpdatedAt, max_chars: 20000 }));
+    }
+    if (world.state.status === "abandoned") return conflict("trial_not_active");
+    if (extra(["text"]) || typeof body.text !== "string" || body.text.length > 20000) {
+      return route.fulfill(json(422, { error: { code: "validation_error", message: "m" } }));
+    }
+    world.clerk.notes = body.text.replace(/\r\n/g, "\n");
+    world.clerk.notesUpdatedAt = NOW();
+    return route.fulfill(json(200, { notes: world.clerk.notes, updated_at: world.clerk.notesUpdatedAt, max_chars: 20000 }));
+  }
+  if (world.state.status !== "completed") return conflict("trial_not_completed");
+  if (path.endsWith("/record/draft")) {
+    if (world.draftPut) {
+      const answered = await world.draftPut(route, body);
+      if (answered !== false) return answered;
+    }
+    if (world.clerk.finalized) return conflict("trial_record_finalized");
+    if (extra(["iv2", "iv3"]) || ["iv2", "iv3"].some((key) => typeof body[key] === "string" && body[key].length > CLERK_LIMITS.hard_max)) {
+      return route.fulfill(json(422, { error: { code: "validation_error", message: "m" } }));
+    }
+    for (const key of ["iv2", "iv3"]) {
+      if (typeof body[key] === "string") world.clerk[key] = clean(body[key]);
+    }
+    world.clerk.draftUpdatedAt = NOW();
+    return route.fulfill(json(200, clerkDraft()));
+  }
+  if (path.endsWith("/record/finalize")) {
+    if (world.finalize) {
+      const answered = await world.finalize(route);
+      if (answered !== false) return answered;
+    }
+    if (!world.clerk.finalized) {
+      if (!world.clerk.iv2.trim() || !world.clerk.iv3.trim()) return conflict("trial_record_section_empty");
+      world.clerk.finalized = true;
+      world.clerk.finalizedAt = NOW();
+    }
+    return route.fulfill(json(200, clerkRecord()));
+  }
+  return route.fulfill(json(200, clerkRecord()));
 }
 
 // One browser context with the fake session, the mocked origins and console capture.

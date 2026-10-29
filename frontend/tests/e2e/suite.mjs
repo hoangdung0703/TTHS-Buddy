@@ -4,7 +4,9 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { FAKE, FULL, SHORT, OBSERVER_PREAMBLE, TRANSCRIPT_MARKER, config, makeUtterances, procedureNote, recordText, utt } from "./fixtures.mjs";
+import {
+  FAKE, FULL, SHORT, OBSERVER_PREAMBLE, TRANSCRIPT_MARKER, CLERK_PREFILL, clerkPrompt, clerkRecordText, clerkReport, config, makeUtterances, procedureNote, recordText, utt
+} from "./fixtures.mjs";
 import {
   BASE, baseState, check, chromium, failureCount, fulfillError, fulfillSse, installStreamingTurn, newPage, noPageOverflow, signIn, signOut,
   openHearing, resetWorld, scrollInfo, sseEvent, world
@@ -524,7 +526,371 @@ for (const role of ["ksv", "nguoi_xem"]) {
   await context.close();
 }
 
-const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || /Uncaught|TypeError/.test(m));
+// =============================== Thư ký (clerk, contract 5.2, 3.7-3.10) ===============================
+const CLERK_MARK = "Ghi chép mẫu số";
+const clerkState = (o = {}) => baseState({
+  current_step: 1, step_title: "Thư ký báo cáo sự có mặt", allowed_actions: ["speak"], version: 1, text_limits: { min: 100, max: 3000 },
+  clerk_prompt: clerkPrompt(1), clerk_report: clerkReport(), ...o
+});
+const clerkStep = (step, o = {}) => clerkState({ current_step: step, step_title: `Bước ${step}`, allowed_actions: [`advance:${step + 1}`], version: 20 + step, text_limits: null, clerk_report: null, clerk_prompt: clerkPrompt(step), ...o });
+const clerkDone = (o = {}) => clerkStep(11, { status: "completed", awaiting: "none", allowed_actions: [], ...o });
+const notesPuts = () => world.clerkBodies.filter((b) => b.method === "PUT" && b.path === "/notes");
+const notesGets = () => world.requests.filter((r) => r.method === "GET" && r.path.endsWith("/notes")).length;
+const notesStatus = (scope) => scope.getByTestId("trial-notes-status");
+const waitStatus = (scope, status, timeout = 6000) =>
+  scope.locator(`[data-testid="trial-notes-status"][data-status="${status}"]`).waitFor({ timeout }).then(() => true, () => false);
+// Confirm dialogs ("Chốt biên bản?") answer `dialogAnswer`; beforeunload is always accepted so a
+// navigation never hangs on unsaved text.
+let dialogAnswer = true;
+const answerDialogs = (page) => page.on("dialog", (dialog) => (dialog.type() === "confirm" && !dialogAnswer ? dialog.dismiss() : dialog.accept()));
+
+// /trial/new: the card is selectable once thu_ky is in config.user_roles, and the case is created.
+resetWorld();
+world.config = config({ user_roles: ["ksv", "luat_su", "nguoi_xem", "thu_ky"] });
+({ context, page } = await open());
+await page.goto(`${BASE}/trial/new`);
+await page.getByTestId("role-thu_ky").waitFor({ timeout: 20000 });
+const clerkCard = page.getByTestId("role-thu_ky");
+check("clerk new: card enabled with the contract description, pills Điều 47 and 258, no 'Sắp có'",
+  (await clerkCard.getByRole("radio").isEnabled()) && (await clerkCard.innerText()).includes("Báo cáo sự có mặt, ghi chép và tự viết biên bản phiên tòa")
+  && (await clerkCard.getByRole("button", { name: "Xem toàn văn Điều 47" }).count()) === 1
+  && (await clerkCard.getByRole("button", { name: "Xem toàn văn Điều 258 BLTTHS" }).count()) === 1 && !(await clerkCard.innerText()).includes("Sắp có"));
+check("clerk new: Bị cáo and Chủ tọa still 'Sắp có'", (await page.getByTestId("role-bi_cao").getByRole("radio").isDisabled()) && (await page.getByTestId("role-chu_toa").getByRole("radio").isDisabled()));
+let clerkCreateBody = null;
+world.create = (route, body) => {
+  clerkCreateBody = body;
+  return fulfillSse(route, sseEvent("status", { message: "Đang dựng hồ sơ vụ án giả định..." }) + sseEvent("session", { session_id: FAKE, title: "Vụ mẫu" })
+    + sseEvent("state", clerkState()) + sseEvent("done", {}));
+};
+await clerkCard.getByRole("radio").click();
+await page.getByRole("radio", { name: /Tội trộm cắp tài sản/ }).click();
+await shot(page, "clerk-new-desktop");
+world.role = "thu_ky";
+world.state = clerkState();
+await page.getByRole("button", { name: "Tạo vụ án" }).click();
+check("clerk new: created, navigated to the hearing", await page.waitForURL(`**/trial/${FAKE}`, { timeout: 15000 }).then(() => true, () => false));
+check("clerk new: POST body has exactly the 5 fields, user_role thu_ky",
+  clerkCreateBody !== null && Object.keys(clerkCreateBody).sort().join() === "crime_key,has_related_party,user_role,victim_present,witness_count" && clerkCreateBody.user_role === "thu_ky");
+
+// Step 1: the report, prefilled, with the attendance list and the 100-3000 counter.
+await page.getByTestId("trial-input").waitFor({ timeout: 20000 });
+await page.waitForTimeout(600);
+const reportBox = page.getByTestId("trial-input");
+check("clerk step 1: textarea prefilled with clerk_report.prefill", (await reportBox.inputValue()) === CLERK_PREFILL);
+check("clerk step 1: header 'Vai của bạn: Thư ký phiên tòa', attendance list with one 'Vắng mặt'",
+  (await page.getByText("Vai của bạn: Thư ký phiên tòa").count()) === 1 && (await page.getByTestId("trial-attendance").innerText()).includes(FULL.BI_HAI)
+  && (await page.getByTestId("trial-attendance").getByText("Vắng mặt", { exact: true }).count()) === 1);
+check("clerk step 1: counter shows the server limits (/3.000, tối thiểu 100), no end-slot",
+  /\/3\.000 ký tự · tối thiểu 100/.test(await page.getByTestId("trial-counter").innerText()) && (await page.getByTestId("trial-end-slot").count()) === 0);
+await shot(page, "clerk-step1-desktop");
+await reportBox.fill("a".repeat(99));
+const sendBlocked99 = await page.getByTestId("trial-send").isDisabled();
+await reportBox.fill("a".repeat(3001));
+check("clerk step 1: 99 and 3001 characters blocked", sendBlocked99 && (await page.getByTestId("trial-send").isDisabled()));
+await page.getByTestId("trial-clerk-refill").click();
+check("clerk step 1: 'Điền lại lời mẫu' restores the template", (await reportBox.inputValue()) === CLERK_PREFILL && (await page.getByTestId("trial-send").isEnabled()));
+let reportBody = null;
+world.turn = (route, body) => {
+  reportBody = body;
+  world.state = clerkState({ allowed_actions: ["advance:2"], version: 2, text_limits: null, clerk_report: null });
+  return fulfillSse(route, sseEvent("utterance", utt(2, 1, "THU_KY", body.text, { is_user: true, kind: "speech" })) + sseEvent("state", world.state) + sseEvent("done", {}));
+};
+await page.getByTestId("trial-send").click();
+await page.getByTestId("trial-advance").waitFor({ timeout: 10000 });
+check("clerk step 1: 'Báo cáo' sends exactly {expected_step 1, expected_version 1, action speak, text}",
+  JSON.stringify(reportBody) === JSON.stringify({ expected_step: 1, expected_version: 1, action: "speak", text: CLERK_PREFILL }));
+check("clerk after the report: no input left, only 'Sang bước tiếp theo'", (await page.getByTestId("trial-input").count()) === 0 && (await page.getByTestId("trial-send").count()) === 0);
+check("clerk: notes read once with GET /notes when the session opened", notesGets() === 1);
+await context.close();
+
+// Notes: loaded on open, prompt labelled neutrally, autosave after 2 s of quiet, one PUT, reload keeps them.
+resetWorld();
+world.role = "thu_ky";
+world.clerk.notes = `${CLERK_MARK} 1: Chủ tọa khai mạc phiên tòa.`;
+world.clerk.notesUpdatedAt = "2026-10-29T01:05:00.000000+00:00";
+({ context, page } = await open());
+answerDialogs(page);
+await openHearing(page, clerkStep(4));
+const sidePanel = page.locator('aside[aria-label="Ghi chép và hồ sơ vụ án"]');
+const notesBox = sidePanel.getByTestId("trial-notes-input");
+await notesBox.waitFor({ timeout: 10000 });
+await page.waitForFunction(() => !document.querySelector('aside [data-testid="trial-notes-input"]')?.disabled, null, { timeout: 10000 });
+check("clerk notes: GET /notes text shown, 'Đã lưu lúc' from updated_at", (await notesBox.inputValue()) === world.clerk.notes && /Đã lưu lúc \d{2}:\d{2}/.test(await notesStatus(sidePanel).innerText()));
+const promptCard = sidePanel.getByTestId("trial-clerk-prompt");
+check("clerk notes: 'Gợi ý ghi chép' with the step prompt, no 'đang chờ nhóm luật duyệt' label anywhere",
+  (await promptCard.innerText()).includes("Gợi ý ghi chép") && (await promptCard.innerText()).includes("Câu nhắc ghi chép mẫu cho bước 4")
+  && !/đang chờ nhóm luật duyệt/.test(await page.locator("body").innerText()));
+check("clerk step 4: observer-style controls (advance only, no input, no procedure note)",
+  (await page.getByTestId("trial-advance").isEnabled()) && (await page.getByTestId("trial-input").count()) === 0 && (await page.getByTestId("trial-procedure-note").count()) === 0);
+check("clerk side panel: 'Ghi chép' tab first and selected, case file one click away",
+  (await sidePanel.getByRole("tab", { name: "Ghi chép" }).getAttribute("aria-selected")) === "true" && (await sidePanel.getByRole("tab", { name: "Hồ sơ vụ án" }).count()) === 1);
+await shot(page, "clerk-notes-desktop");
+await notesBox.click();
+await page.keyboard.press("End");
+await notesBox.pressSequentially(" Thêm.", { delay: 120 });
+await page.waitForTimeout(1200);
+const putsWhileTyping = notesPuts().length;
+const savingShown = await waitStatus(sidePanel, "pending", 500);
+await page.waitForTimeout(2200);
+const typed = `${CLERK_MARK} 1: Chủ tọa khai mạc phiên tòa. Thêm.`;
+check(`clerk notes: no PUT while typing (${putsWhileTyping}), 'Đang lưu...' shown`, putsWhileTyping === 0 && savingShown);
+check("clerk notes: exactly one PUT after 2 s of quiet, body {text} only", notesPuts().length === 1 && JSON.stringify(notesPuts()[0].body) === JSON.stringify({ text: typed }));
+check("clerk notes: 'Đã lưu' after the save", await waitStatus(sidePanel, "saved"));
+await sidePanel.getByRole("tab", { name: "Hồ sơ vụ án" }).click();
+check("clerk side panel: case file tab shows the panel and 'Mở rộng'", (await sidePanel.getByRole("tablist", { name: "Hồ sơ vụ án" }).count()) === 1 && (await page.getByRole("button", { name: "Mở rộng hồ sơ vụ án" }).count()) === 1);
+await sidePanel.getByRole("tab", { name: "Ghi chép" }).click();
+await page.reload();
+await notesBox.waitFor({ timeout: 15000 });
+await page.waitForFunction(() => !document.querySelector('aside [data-testid="trial-notes-input"]')?.disabled, null, { timeout: 10000 });
+check("clerk notes: reopening the session shows the saved notes", (await notesBox.inputValue()) === typed);
+
+// A failed save: "Lỗi lưu" with "Thử lại", which then saves.
+world.notesPut = (route) => fulfillError(route, 503, "data_unavailable");
+await notesBox.fill(`${typed} Lỗi.`);
+check("clerk notes: failed save shows 'Lỗi lưu' and 'Thử lại'", (await waitStatus(sidePanel, "error")) && (await notesStatus(sidePanel).innerText()).includes("Lỗi lưu")
+  && (await sidePanel.getByTestId("trial-notes-retry").isVisible()));
+world.notesPut = null;
+await sidePanel.getByTestId("trial-notes-retry").click();
+check("clerk notes: 'Thử lại' saves, status back to 'Đã lưu'", (await waitStatus(sidePanel, "saved")) && world.clerk.notes === `${typed} Lỗi.`);
+let clerkAdvanceBody = null;
+world.turn = (route, body) => {
+  clerkAdvanceBody = JSON.stringify(body);
+  world.state = clerkStep(5);
+  return fulfillSse(route, sseEvent("utterance", aiUtt(400, 5)) + sseEvent("state", world.state) + sseEvent("done", {}));
+};
+await page.getByTestId("trial-advance").click();
+await page.waitForFunction(() => document.querySelector('[data-testid="trial-clerk-prompt"]')?.innerText.includes("bước 5"), null, { timeout: 10000 }).catch(() => {});
+check("clerk advance: notes never sent with /turn; the prompt follows the new step",
+  clerkAdvanceBody === JSON.stringify({ expected_step: 4, expected_version: 24, action: "advance", target_step: 5 }) && (await promptCard.innerText()).includes("bước 5"));
+
+// Completed: notes still saved. Abandoned: read only, nothing sent.
+await openHearing(page, clerkDone());
+await page.waitForFunction(() => !document.querySelector('aside [data-testid="trial-notes-input"]')?.disabled, null, { timeout: 10000 });
+check("clerk completed: finished bar with 'Mở biên bản'", (await page.getByTestId("trial-finished").isVisible()) && (await page.getByRole("link", { name: "Mở biên bản" }).count()) >= 1);
+const putsBefore = notesPuts().length;
+await notesBox.fill(`${typed} Sau tuyên án.`);
+check("clerk completed: notes still autosave", (await waitStatus(sidePanel, "saved")) && notesPuts().length === putsBefore + 1);
+await openHearing(page, clerkStep(6, { status: "abandoned", awaiting: "none", allowed_actions: [] }));
+await page.waitForFunction(() => !document.querySelector('aside [data-testid="trial-notes-input"]')?.disabled, null, { timeout: 10000 });
+const putsAbandoned = notesPuts().length;
+check("clerk abandoned: notes shown read only, 'Chỉ xem'", !(await notesBox.isEditable()) && (await notesBox.inputValue()).includes("Sau tuyên án")
+  && (await notesStatus(sidePanel).innerText()).includes("Chỉ xem"));
+await page.waitForTimeout(2500);
+check("clerk abandoned: no PUT", notesPuts().length === putsAbandoned);
+for (const [width, height] of [[1280, 600], [1920, 1080]]) {
+  await page.setViewportSize({ width, height });
+  await openHearing(page, clerkStep(5));
+  const box = await sidePanel.boundingBox();
+  check(`clerk hearing ${width}x${height}: no page overflow, side panel inside the viewport`, (await noPageOverflow(page)) && box !== null && box.y + box.height <= height + 1);
+  await shot(page, `clerk-hearing-${width}x${height}`);
+}
+await context.close();
+
+// Phone: notes in a drawer, still one source of saving (the hidden side panel is a view of the same hook).
+resetWorld();
+world.role = "thu_ky";
+world.clerk.notes = `${CLERK_MARK} 2: ghi trên điện thoại.`;
+({ context, page } = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }));
+answerDialogs(page);
+await openHearing(page, clerkState());
+info = await scrollInfo(page);
+check(`clerk 390px step 1: no page overflow, dock ${info.dockH}px ≤ 70% of the screen`, (await noPageOverflow(page)) && info.dockH <= 590);
+await shot(page, "clerk-step1-mobile");
+await openHearing(page, clerkStep(5));
+await page.getByTestId("trial-notes-open").click();
+const notesDrawer = page.getByRole("dialog", { name: "Ghi chép" });
+const drawerBox = notesDrawer.getByTestId("trial-notes-input");
+await page.waitForFunction(() => !document.querySelector('[role="dialog"] [data-testid="trial-notes-input"]')?.disabled, null, { timeout: 10000 });
+check("clerk 390px: 'Ghi chép' drawer with the prompt and the saved notes",
+  (await drawerBox.inputValue()) === world.clerk.notes && (await notesDrawer.getByTestId("trial-clerk-prompt").isVisible()));
+await drawerBox.fill(`${CLERK_MARK} 2: ghi trên điện thoại, thêm.`);
+await page.waitForTimeout(2800);
+check("clerk 390px: one PUT for one edit (single saving source), hidden side panel in sync",
+  notesPuts().length === 1 && (await page.locator('aside [data-testid="trial-notes-input"]').inputValue()) === `${CLERK_MARK} 2: ghi trên điện thoại, thêm.`);
+check("clerk 390px: no page overflow with the drawer open", await noPageOverflow(page));
+await shot(page, "clerk-notes-mobile");
+await page.keyboard.press("Escape");
+await context.close();
+
+// Other roles never touch the clerk routes and keep their panel.
+resetWorld();
+({ context, page } = await open());
+await openHearing(page, baseState(), "ksv");
+await openHearing(page, baseState({ current_step: 5, allowed_actions: ["advance:6"], procedure_note: procedureNote(5) }), "nguoi_xem");
+await page.waitForTimeout(800);
+check("KSV/Người xem: no /notes request, no notes panel, case file aside unchanged",
+  !world.requests.some((r) => r.path.endsWith("/notes")) && (await page.getByTestId("trial-notes").count()) === 0
+  && (await page.locator('aside[aria-label="Hồ sơ vụ án"]').count()) === 1);
+await context.close();
+
+// Record, "Soạn": two sections, "Lưu ý" after saving, counters, finalise saves first.
+resetWorld();
+world.role = "thu_ky";
+world.state = clerkDone();
+world.clerk.notes = `${CLERK_MARK} 3: Chủ tọa hỏi bị cáo ${FULL.BI_CAO}; bị cáo khai đã lấy máy tính vì cần tiền.`;
+({ context, page } = await open({ permissions: ["clipboard-read", "clipboard-write"] }));
+answerDialogs(page);
+await page.goto(`${BASE}/trial/${FAKE}/record`);
+await page.getByTestId("clerk-section-iv2").waitFor({ timeout: 20000 });
+const iv2 = page.getByTestId("clerk-input-iv2");
+const iv3 = page.getByTestId("clerk-input-iv3");
+const finalizeButton = page.getByTestId("clerk-finalize");
+check("clerk record: opens in 'Soạn' with two empty sections, copy/print hidden",
+  (await page.getByTestId("clerk-mode-compose").getAttribute("aria-selected")) === "true" && (await iv2.inputValue()) === "" && (await iv3.inputValue()) === ""
+  && (await page.getByRole("button", { name: "In / lưu PDF" }).count()) === 0);
+check("clerk record: 'Chốt biên bản' locked while a section is empty", await finalizeButton.isDisabled());
+check("clerk record: GET's notices shown under 'Lưu ý' (not an error)",
+  (await page.getByTestId("clerk-notices-iv2").innerText()).includes("Lưu ý") && (await page.getByTestId("clerk-notices-iv2").innerText()).includes("Mục 2 chưa có nội dung.")
+  && !((await page.getByTestId("clerk-notices-iv2").getAttribute("class")) ?? "").includes("red"));
+await page.waitForFunction(() => document.querySelector('[data-testid="clerk-copy-notes-iv2"]'), null, { timeout: 10000 }).catch(() => {});
+await page.getByTestId("clerk-copy-notes-iv2").click();
+check("clerk record: 'Chép từ ghi chép' fills the empty section with the notes", (await iv2.inputValue()) === world.clerk.notes);
+check("clerk record: one section empty, still locked", await finalizeButton.isDisabled());
+const IV3_TEXT = `Kiểm sát viên Vũ Xuân Việt trình bày luận tội, đề nghị xử bị cáo theo khoản 1 Điều 173 Bộ luật Hình sự. Luật sư Trịnh Thị Thảo bào chữa, nêu bị cáo đã bồi thường 5.000.000 đồng. Trần H. đồng ý với luật sư. Hai bên đối đáp một vòng về tình tiết giảm nhẹ của bị cáo.`;
+await iv3.fill(IV3_TEXT);
+check("clerk record: both sections written, 'Chốt biên bản' enabled", await finalizeButton.isEnabled());
+await page.getByTestId("clerk-save").click();
+await page.waitForFunction(() => document.querySelector('[data-testid="clerk-notices-iv3"]')?.innerText.includes("Trần H."), null, { timeout: 10000 }).catch(() => {});
+const draftPuts = () => world.clerkBodies.filter((b) => b.method === "PUT" && b.path === "/record/draft");
+check("clerk record: PUT /record/draft body is exactly {iv2, iv3}",
+  draftPuts().length === 1 && JSON.stringify(draftPuts()[0].body) === JSON.stringify({ iv2: world.clerk.notes, iv3: IV3_TEXT }));
+const iv3Notices = page.getByTestId("clerk-notices-iv3");
+check("clerk record: notices after saving - unknown_name (with the full-name hint) and unknown_amount, as 'Lưu ý'",
+  (await iv3Notices.locator('[data-code="unknown_name"]').count()) === 1 && (await iv3Notices.innerText()).includes("tên đầy đủ")
+  && (await iv3Notices.locator('[data-code="unknown_amount"]').count()) === 1 && (await iv3Notices.innerText()).includes("Lưu ý"));
+check("clerk record: 'Đã lưu lúc' after the save", /Đã lưu lúc/.test(await page.getByTestId("clerk-save-status").innerText()));
+await shot(page, "clerk-record-compose-desktop");
+await iv2.fill(`**Chủ tọa** hỏi bị cáo ${FULL.BI_CAO} về diễn biến; bị cáo khai đã lấy máy tính xách tay vì cần tiền trả nợ và thừa nhận hành vi. Người làm chứng ${FULL.NLC_1} xác nhận đã nhìn thấy bị cáo rời khỏi nhà bị hại vào buổi tối hôm đó.`);
+check("clerk record: edits after saving mark the notices as stale", (await page.getByTestId("clerk-notices-iv3").count()) === 1 && (await page.getByTestId("clerk-save-status").innerText()).includes("chưa lưu"));
+await page.getByTestId("clerk-save").click();
+await page.waitForFunction(() => !document.querySelector('[data-testid="clerk-input-iv2"]').value.includes("**"), null, { timeout: 10000 }).catch(() => {});
+check("clerk record: the server's cleaned text replaces the textarea", !(await iv2.inputValue()).includes("**") && (await iv2.inputValue()).startsWith("Chủ tọa hỏi"));
+const savedIv2 = await iv2.inputValue();
+await iv2.fill("a".repeat(4001));
+const longCounter = page.getByTestId("clerk-counter-iv2");
+const longOk = (await longCounter.getAttribute("data-length")) === "long" && ((await longCounter.getAttribute("class")) ?? "").includes("amber") && (await page.getByTestId("clerk-save").isEnabled());
+await iv2.fill("a".repeat(6001));
+check("clerk record: > 4000 soft warning (saving allowed); > 6000 hard cap blocks save and finalise",
+  longOk && (await longCounter.getAttribute("data-length")) === "over" && (await page.getByTestId("clerk-save").isDisabled()) && (await finalizeButton.isDisabled()));
+await iv2.fill(savedIv2);
+await page.getByTestId("clerk-mode-preview").click();
+await page.getByTestId("trial-record").waitFor({ timeout: 10000 });
+const preview = page.getByTestId("trial-record");
+check("clerk preview: draft line, the saved IV.2/IV.3 with the author note and 'Người học soạn'",
+  (await page.getByTestId("record-preamble").innerText()).includes("Bản nháp") && (await preview.getByTestId("record-user-text").first().innerText()).includes("Chủ tọa hỏi bị cáo")
+  && (await preview.getByTestId("record-author-note").count()) === 2 && (await preview.getByText("Người học soạn").count()) === 2);
+await page.getByTestId("clerk-mode-compose").click();
+check("clerk record: back to 'Soạn' keeps the text", (await iv2.inputValue()) === savedIv2 && (await iv3.inputValue()) === IV3_TEXT);
+// Cancelled confirm: nothing is sent.
+dialogAnswer = false;
+const bodiesBefore = world.clerkBodies.length;
+await finalizeButton.click();
+await page.waitForTimeout(500);
+check("clerk finalise: cancelling the confirm sends nothing", world.clerkBodies.length === bodiesBefore);
+dialogAnswer = true;
+const FINAL_IV3 = `${IV3_TEXT} Bị cáo xin giảm nhẹ.`;
+await iv3.fill(FINAL_IV3);
+await finalizeButton.click();
+await page.getByTestId("trial-record").waitFor({ timeout: 10000 });
+await page.waitForTimeout(300);
+const lastTwo = world.clerkBodies.slice(-2).map((b) => `${b.method} ${b.path}`);
+check("clerk finalise: saves the draft first (latest text), then POST /record/finalize",
+  lastTwo.join() === "PUT /record/draft,POST /record/finalize" && world.clerkBodies.at(-2).body.iv3 === FINAL_IV3);
+check("clerk finalised: view only - no textarea, no mode tabs, no draft line, 'Đã chốt'",
+  (await page.locator("textarea").count()) === 0 && (await page.getByTestId("clerk-mode-compose").count()) === 0
+  && (await page.getByTestId("record-preamble").count()) === 0 && (await page.getByTestId("clerk-record-status").innerText()).includes("Đã chốt"));
+check("clerk finalised: IV.2/IV.3 labelled 'Người học soạn' with the author note, other sections as before",
+  (await page.getByTestId("record-author-note").first().innerText()).includes("Do Thư ký (người học) ghi")
+  && (await page.getByTestId("record-content-label").allInnerTexts()).join() === "Nguyên văn,Người học soạn,Người học soạn,Nguyên văn");
+await page.getByRole("button", { name: "Sao chép văn bản" }).click();
+await page.waitForTimeout(300);
+check("clerk finalised: copy gives the server text", (await page.evaluate(() => navigator.clipboard.readText())) === clerkRecordText({ iv2: world.clerk.iv2, iv3: world.clerk.iv3, finalized: true }));
+await shot(page, "clerk-record-final-desktop");
+await page.goto(`${BASE}/trial/${FAKE}/record`);
+await page.getByTestId("trial-record").waitFor({ timeout: 20000 });
+check("clerk finalised: reopening shows the view directly", (await page.locator("textarea").count()) === 0 && (await page.getByTestId("clerk-record-status").innerText()).includes("Đã chốt"));
+for (const [width, height] of [[1440, 900], [1920, 1080]]) {
+  await page.setViewportSize({ width, height });
+  await page.waitForTimeout(300);
+  const gap = await page.evaluate(() => {
+    const card = document.querySelector('[data-testid="trial-record"]');
+    let scroller = card.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    scroller.scrollTop = scroller.scrollHeight;
+    return document.documentElement.scrollHeight - window.innerHeight;
+  });
+  check(`clerk record ${width}x${height}: no page scroll below the frame (${gap}px), no overflow`, gap <= 0 && (await noPageOverflow(page)));
+}
+await context.close();
+
+// Record conflicts: every refusal is a Vietnamese message on the same screen, never a blank page.
+async function openClerkRecord(viewport = { width: 1440, height: 900 }) {
+  resetWorld();
+  world.role = "thu_ky";
+  world.state = clerkDone();
+  world.clerk.iv2 = "Mục hai đã lưu từ trước, đủ dài để không bị coi là trống.";
+  world.clerk.draftUpdatedAt = "2026-10-29T02:00:00.000000+00:00";
+  const opened = await open({ viewport, ...(viewport.width < 500 ? { isMobile: true, hasTouch: true } : {}) });
+  answerDialogs(opened.page);
+  await opened.page.goto(`${BASE}/trial/${FAKE}/record`);
+  await opened.page.getByTestId("clerk-section-iv2").waitFor({ timeout: 20000 });
+  return opened;
+}
+const clerkErrorText = (page) => page.getByTestId("clerk-error").waitFor({ timeout: 10000 }).then(() => page.getByTestId("clerk-error").innerText(), () => "");
+
+({ context, page } = await openClerkRecord());
+check("clerk record: saved draft loaded into the editor", (await page.getByTestId("clerk-input-iv2").inputValue()) === world.clerk.iv2);
+await page.getByTestId("clerk-input-iv3").fill("Mục ba viết trên màn hình.");
+world.finalize = (route) => fulfillError(route, 409, "trial_record_section_empty", { state: world.state });
+await page.getByTestId("clerk-finalize").click();
+check("clerk 409 trial_record_section_empty: Vietnamese message, editor still there", (await clerkErrorText(page)).includes("còn trống") && (await page.getByTestId("clerk-input-iv3").isVisible()));
+world.finalize = null;
+world.draftPut = (route) => fulfillError(route, 409, "trial_not_clerk", { state: world.state });
+await page.getByTestId("clerk-input-iv3").fill("Mục ba sửa lần hai.");
+await page.getByTestId("clerk-save").click();
+await page.waitForFunction(() => document.querySelector('[data-testid="clerk-error"]')?.innerText.includes("Thư ký"), null, { timeout: 10000 }).catch(() => {});
+check("clerk 409 trial_not_clerk: Vietnamese message", (await page.getByTestId("clerk-error").innerText()).includes("không phải vai Thư ký"));
+world.draftPut = (route) => fulfillError(route, 422, "validation_error");
+await page.getByTestId("clerk-save").click();
+await page.waitForFunction(() => document.querySelector('[data-testid="clerk-error"]')?.innerText.includes("6.000"), null, { timeout: 10000 }).catch(() => {});
+check("clerk 422: clear message about the 6.000 cap", (await page.getByTestId("clerk-error").innerText()).includes("tối đa 6.000 ký tự"));
+world.draftPut = (route) => route.abort("failed");
+await page.getByTestId("clerk-save").click();
+await page.waitForFunction(() => document.querySelector('[data-testid="clerk-error"]')?.innerText.includes("Mất kết nối"), null, { timeout: 10000 }).catch(() => {});
+check("clerk network error: 'Mất kết nối', text kept", (await page.getByTestId("clerk-error").innerText()).includes("Mất kết nối") && (await page.getByTestId("clerk-input-iv3").inputValue()) === "Mục ba sửa lần hai.");
+world.draftPut = (route) => {
+  world.clerk.finalized = true;
+  world.clerk.iv3 = "Mục ba đã chốt ở cửa sổ khác.";
+  return fulfillError(route, 409, "trial_record_finalized", { state: world.state });
+};
+await page.getByTestId("clerk-save").click();
+await page.getByTestId("trial-record").waitFor({ timeout: 10000 });
+check("clerk 409 trial_record_finalized: switches to the view with a notice",
+  (await page.getByTestId("clerk-record-notice").innerText()).includes("đã được chốt") && (await page.locator("textarea").count()) === 0
+  && (await page.getByTestId("trial-record").innerText()).includes("Mục ba đã chốt ở cửa sổ khác."));
+await context.close();
+
+// Record before the hearing ends: the existing "chưa hoàn thành" message.
+resetWorld();
+world.role = "thu_ky";
+world.state = clerkStep(6);
+({ context, page } = await open());
+await page.goto(`${BASE}/trial/${FAKE}/record`);
+check("clerk record before completion: 'chỉ có khi phiên tòa đã hoàn thành', not blank",
+  await page.getByText("Biên bản chỉ có khi phiên tòa đã hoàn thành.").waitFor({ timeout: 15000 }).then(() => true, () => false));
+await context.close();
+
+// Phone and a short laptop screen: the editor fits, no horizontal scroll.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 600 }]) {
+  ({ context, page } = await openClerkRecord(viewport));
+  const actions = await page.getByTestId("clerk-actions").boundingBox();
+  check(`clerk record ${viewport.width}x${viewport.height}: no page overflow, action bar on screen`,
+    (await noPageOverflow(page)) && actions !== null && actions.y + actions.height <= viewport.height + 1 && actions.x >= -1);
+  await shot(page, `clerk-record-compose-${viewport.width}x${viewport.height}`);
+  await context.close();
+}
+
+const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || m.includes(CLERK_MARK) || m.includes(CLERK_PREFILL.slice(0, 40)) || /Uncaught|TypeError/.test(m));
 if (process.env.E2E_DEBUG) badConsole.forEach((m) => console.log(`  console: ${m.slice(0, 200)}`));
 // Regression: nothing may stretch the document past the record (absolutely positioned sr-only labels
 // used to resolve against <body>, leaving hundreds of px of empty page under the h-screen frame).

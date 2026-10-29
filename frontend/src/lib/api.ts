@@ -37,9 +37,11 @@ import type {
   QuizStatsV2,
   QuizSubmitRequest,
   QuizSubmitResponse,
+  TrialClerkDraft,
   TrialCreateRequest,
   TrialDetail,
   TrialListResponse,
+  TrialNotes,
   TrialRecord,
   TrialState,
   TrialUtterance,
@@ -568,6 +570,29 @@ export async function deleteTrial(sessionId: string): Promise<void> {
 
 export async function getTrialRecord(sessionId: string): Promise<TrialRecord> {
   return trialJson<TrialRecord>(`/${encodeURIComponent(sessionId)}/record`);
+}
+
+// --- Clerk routes (contract 3.8-3.10): not speech, so not /turn; state and version never change ---
+
+export async function getTrialNotes(sessionId: string): Promise<TrialNotes> {
+  return trialJson<TrialNotes>(`/${encodeURIComponent(sessionId)}/notes`);
+}
+
+// Replaces the whole notes text (not an append).
+export async function putTrialNotes(sessionId: string, text: string): Promise<TrialNotes> {
+  return trialJson<TrialNotes>(`/${encodeURIComponent(sessionId)}/notes`, { method: "PUT", body: JSON.stringify({ text }) });
+}
+
+export async function putTrialRecordDraft(sessionId: string, draft: { iv2: string; iv3: string }): Promise<TrialClerkDraft> {
+  return trialJson<TrialClerkDraft>(`/${encodeURIComponent(sessionId)}/record/draft`, {
+    method: "PUT",
+    body: JSON.stringify({ iv2: draft.iv2, iv3: draft.iv3 })
+  });
+}
+
+// Finalises the saved draft; answers like GET /record. Idempotent.
+export async function finalizeTrialRecord(sessionId: string): Promise<TrialRecord> {
+  return trialJson<TrialRecord>(`/${encodeURIComponent(sessionId)}/record/finalize`, { method: "POST" });
 }
 
 // --- Streaming routes ----------------------------------------------------------------------------------

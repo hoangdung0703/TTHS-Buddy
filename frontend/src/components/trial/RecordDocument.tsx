@@ -4,8 +4,8 @@ import { TrialText } from "@/components/trial/TrialText";
 import type { TrialRecordDocument, TrialRecordEntry, TrialRecordField, TrialRecordSection } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// The record laid out as Mẫu số 22-HS (contract 3.7). Order: disclaimer, preamble (outside the form,
-// observer sessions only), court name | national header, title, opening, sections, closing,
+// The record laid out as Mẫu số 22-HS (contract 3.7). Order: disclaimer, preamble (outside the form:
+// observer sessions, an unfinalised clerk draft), court name | national header, title, opening, sections, closing,
 // signatures, appendix (outside the form), disclaimer.
 // Every string is shown as sent - nothing is edited, shortened or filled in: a null field is the
 // form's dotted blank.
@@ -48,13 +48,13 @@ function Entry({ entry }: { entry: TrialRecordEntry }) {
   );
 }
 
-function ContentLabel({ kind }: { kind: "summary" | "verbatim" }) {
+function ContentLabel({ kind }: { kind: "summary" | "verbatim" | "user" }) {
   return (
     <span
       data-testid="record-content-label"
       className="ml-2 inline-flex items-center rounded-full border border-border bg-secondary px-2 py-0.5 align-middle text-[0.7rem] font-medium text-secondary-foreground print:bg-transparent"
     >
-      {kind === "summary" ? "Tóm tắt" : "Nguyên văn"}
+      {kind === "summary" ? "Tóm tắt" : kind === "user" ? "Người học soạn" : "Nguyên văn"}
     </span>
   );
 }
@@ -72,17 +72,36 @@ function Section({ section, level, notesFirst = false }: { section: TrialRecordS
     </p>
   ));
   const isSummary = section.content === "summary" && (section.summary ?? "").length > 0;
+  // Clerk sessions (contract 3.7): IV.2 and IV.3 are the student's own text, labelled as such; an
+  // empty one is the form's dotted blank.
+  const isUser = section.content === "user";
   const Heading = level === 1 ? "h2" : "h3";
   return (
     <section className="flex flex-col gap-3">
       <Heading className={cn("break-after-avoid font-bold", level === 1 ? "mt-4 text-base" : "mt-2 text-[0.95rem]")}>
         {section.heading}
         {/* Subsections that carry speech say whether it is the clerk's summary or verbatim. */}
-        {level === 2 && hasBody(section) ? <ContentLabel kind={isSummary ? "summary" : "verbatim"} /> : null}
+        {level === 2 && isUser ? <ContentLabel kind="user" /> : null}
+        {level === 2 && !isUser && hasBody(section) ? <ContentLabel kind={isSummary ? "summary" : "verbatim"} /> : null}
       </Heading>
+      {isUser && section.author_note ? (
+        <p data-testid="record-author-note" className="-mt-2 text-xs italic text-muted-foreground print:text-black">
+          ({section.author_note})
+        </p>
+      ) : null}
       {section.fields?.map((field, index) => <FieldLine key={index} field={field} />)}
       {notesFirst ? notes : null}
-      {isSummary ? (
+      {isUser ? (
+        (section.summary ?? "").length > 0 ? (
+          <div data-testid="record-user-text">
+            <TrialText text={section.summary ?? ""} />
+          </div>
+        ) : (
+          <p>
+            <Blank />
+          </p>
+        )
+      ) : isSummary ? (
         <TrialText text={section.summary ?? ""} />
       ) : (
         section.entries?.map((entry) => <Entry key={entry.seq} entry={entry} />)

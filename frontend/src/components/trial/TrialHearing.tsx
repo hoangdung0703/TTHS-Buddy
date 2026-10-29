@@ -1,20 +1,23 @@
 "use client";
 
-import { AlertCircle, ArrowDown, ArrowLeft, FileText, FolderOpen, Maximize2, MoreHorizontal, RefreshCw, Trash2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowLeft, FileText, FolderOpen, Maximize2, MoreHorizontal, NotebookPen, RefreshCw, Trash2, X, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CaseFilePanel, type CaseFileTab } from "@/components/trial/CaseFilePanel";
+import { ClerkNotesPanel } from "@/components/trial/ClerkNotesPanel";
 import { StepBar } from "@/components/trial/StepBar";
 import { TrialComposer, type ComposerAction } from "@/components/trial/TrialComposer";
 import { Transcript } from "@/components/trial/Transcript";
 import { Button } from "@/components/ui/button";
+import { useClerkNotes } from "@/hooks/useClerkNotes";
 import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
 import { abandonTrial, deleteTrial, getTrial, sendTrialTurn, TrialApiError } from "@/lib/api";
 import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
-import { isResyncConflict, mergeUtterances, messageForTrialError, TRIAL_ROLE_LABELS } from "@/lib/trialRules";
+import { isClerkRole, isResyncConflict, mergeUtterances, messageForTrialError, TRIAL_ROLE_LABELS } from "@/lib/trialRules";
 import type { TrialDetail, TrialState, TrialUtterance } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 // Auto-follow only when the reader is this close to the bottom; further up they are re-reading.
 const NEAR_BOTTOM_PX = 80;
@@ -38,7 +41,10 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const [turnError, setTurnError] = useState<string | null>(null);
   const [softNotice, setSoftNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // Phone drawer: the case file, or the clerk's notes.
+  const [drawer, setDrawer] = useState<"case" | "notes" | null>(null);
+  // Clerk sessions: which view the desktop side panel shows (THIET-KE 11.3.7: notes are its second tab).
+  const [sideTab, setSideTab] = useState<"notes" | "case">("notes");
   const [menuOpen, setMenuOpen] = useState(false);
   const [expandedOpen, setExpandedOpen] = useState(false);
   const [caseTab, setCaseTab] = useState<CaseFileTab>("summary");
@@ -57,6 +63,18 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const slowRequest = useSlowRequestNotice();
   const { start: startSlow, stop: stopSlow } = slowRequest;
+  const isClerk = detail !== null && isClerkRole(detail.user_role);
+  // The one owner of the clerk's notes on this page; every notes editor below is a view of it.
+  const clerkNotes = useClerkNotes(sessionId, isClerk, state?.status === "abandoned");
+  // The step-1 report template goes into the composer once; after that the box is the student's.
+  const prefilledRef = useRef(false);
+  const reportPrefill = state?.clerk_report?.prefill ?? null;
+  useEffect(() => {
+    if (reportPrefill !== null && !prefilledRef.current) {
+      prefilledRef.current = true;
+      setDraft((current) => (current.length === 0 ? reportPrefill : current));
+    }
+  }, [reportPrefill]);
 
   const reload = useCallback(async (): Promise<boolean> => {
     try {
@@ -185,18 +203,18 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   }, [scrollToLatest]);
 
   useEffect(() => {
-    if (!drawerOpen) {
+    if (drawer === null) {
       return;
     }
     drawerCloseRef.current?.focus();
     function onKey(event: KeyboardEvent): void {
       if (event.key === "Escape") {
-        setDrawerOpen(false);
+        setDrawer(null);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [drawerOpen]);
+  }, [drawer]);
 
   useEffect(() => {
     if (!expandedOpen) {
@@ -423,7 +441,14 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <Button variant="outline" size="sm" className="lg:hidden" onClick={() => setDrawerOpen(true)} aria-haspopup="dialog">
+              {isClerk ? (
+                <Button variant="outline" size="sm" className="lg:hidden" onClick={() => setDrawer("notes")} aria-haspopup="dialog" data-testid="trial-notes-open">
+                  <NotebookPen className="h-4 w-4" />
+                  <span className="hidden sm:inline">Ghi chép</span>
+                  <span className="sr-only sm:hidden">Ghi chép</span>
+                </Button>
+              ) : null}
+              <Button variant="outline" size="sm" className="lg:hidden" onClick={() => setDrawer("case")} aria-haspopup="dialog">
                 <FolderOpen className="h-4 w-4" />
                 <span className="hidden sm:inline">Hồ sơ vụ án</span>
                 <span className="sr-only sm:hidden">Hồ sơ vụ án</span>
@@ -540,10 +565,35 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
-      <aside aria-label="Hồ sơ vụ án" className="hidden min-w-0 lg:sticky lg:top-12 lg:block lg:max-h-[calc(100vh-8rem)] lg:self-start lg:overflow-hidden">
-        <div className="flex max-h-[calc(100vh-8rem)] flex-col rounded-xl border border-primary/[0.08] bg-card p-4 shadow-[0_2px_20px_rgba(30,36,96,0.05)]">
+      <aside
+        aria-label={isClerk ? "Ghi chép và hồ sơ vụ án" : "Hồ sơ vụ án"}
+        className="hidden min-w-0 lg:sticky lg:top-12 lg:block lg:max-h-[calc(100vh-8rem)] lg:self-start lg:overflow-hidden"
+      >
+        <div className={cn("flex max-h-[calc(100vh-8rem)] flex-col rounded-xl border border-primary/[0.08] bg-card p-4 shadow-[0_2px_20px_rgba(30,36,96,0.05)]", isClerk && sideTab === "notes" && "h-[calc(100vh-8rem)]")}>
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-foreground">Hồ sơ vụ án</h2>
+            {isClerk ? (
+              <div role="tablist" aria-label="Khung bên" className="flex gap-1 rounded-full bg-muted p-0.5">
+                {(["notes", "case"] as const).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={sideTab === key}
+                    data-testid={`trial-side-${key}`}
+                    onClick={() => setSideTab(key)}
+                    className={cn(
+                      "min-h-9 rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      sideTab === key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {key === "notes" ? "Ghi chép" : "Hồ sơ vụ án"}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <h2 className="text-sm font-semibold text-foreground">Hồ sơ vụ án</h2>
+            )}
+            {isClerk && sideTab === "notes" ? null : (
             <button
               ref={expandButtonRef}
               type="button"
@@ -555,8 +605,9 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
               <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
               Mở rộng
             </button>
+            )}
           </div>
-          {caseFilePanel}
+          {isClerk && sideTab === "notes" ? <ClerkNotesPanel notes={clerkNotes} prompt={state.clerk_prompt} fill /> : caseFilePanel}
         </div>
       </aside>
 
@@ -586,23 +637,25 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
         </div>
       ) : null}
 
-      {drawerOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Hồ sơ vụ án">
-          <button type="button" aria-label="Đóng hồ sơ (nhấn ra ngoài)" onClick={() => setDrawerOpen(false)} className="absolute inset-0 bg-black/40" />
+      {drawer !== null ? (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label={drawer === "notes" ? "Ghi chép" : "Hồ sơ vụ án"}>
+          <button type="button" aria-label={drawer === "notes" ? "Đóng ghi chép (nhấn ra ngoài)" : "Đóng hồ sơ (nhấn ra ngoài)"} onClick={() => setDrawer(null)} className="absolute inset-0 bg-black/40" />
           <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-card p-4 shadow-xl">
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-foreground">Hồ sơ vụ án</h2>
+              <h2 className="text-sm font-semibold text-foreground">{drawer === "notes" ? "Ghi chép" : "Hồ sơ vụ án"}</h2>
               <button
                 ref={drawerCloseRef}
                 type="button"
-                aria-label="Đóng hồ sơ vụ án"
-                onClick={() => setDrawerOpen(false)}
+                aria-label={drawer === "notes" ? "Đóng ghi chép" : "Đóng hồ sơ vụ án"}
+                onClick={() => setDrawer(null)}
                 className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-accent/20 hover:text-foreground"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{caseFilePanel}</div>
+            <div className={cn("flex min-h-0 flex-1 flex-col", drawer === "notes" ? "overflow-y-auto" : "overflow-hidden")}>
+              {drawer === "notes" ? <ClerkNotesPanel notes={clerkNotes} prompt={state.clerk_prompt} fill /> : caseFilePanel}
+            </div>
           </div>
         </div>
       ) : null}

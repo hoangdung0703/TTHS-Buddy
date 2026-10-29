@@ -4,7 +4,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  applyClerkDraft,
+  canFinalizeClerkDraft,
   caseCreationBlockedReason,
+  clerkNoticeHint,
+  clerkSectionLength,
+  clerkSubsection,
+  isClerkRole,
+  usesObserverControls,
   composerMode,
   GLOBAL_DAILY_LIMIT_MESSAGE,
   isCaseLimitCode,
@@ -212,4 +219,81 @@ test("usage log unreadable: 'tạm thời chưa tạo được', never 'đã t�
   assert.match(reason({ cases_today: 0, active_sessions: 2 }), /đã tạo đủ 5 vụ án/);
   assert.equal(reason({ cases_today: 3, active_sessions: 2 }), null);
   assert.match(reason({ cases_today: 3, active_sessions: 0, usage_available: true }), /3 phiên dở dang/);
+});
+
+// --- Clerk role (contract 5.2, 3.8-3.10) ---
+
+test("clerk: role label, and the observer controls everywhere but the step-1 report", () => {
+  assert.equal(isClerkRole("thu_ky"), true);
+  assert.equal(isClerkRole("nguoi_xem"), false);
+  assert.equal(TRIAL_ROLE_LABELS.thu_ky, "Thư ký phiên tòa");
+  assert.equal(usesObserverControls("thu_ky", "speak"), false);
+  for (const mode of ["advance", "paused", "waiting"]) {
+    assert.equal(usesObserverControls("thu_ky", mode), true);
+  }
+  assert.equal(usesObserverControls("nguoi_xem", "advance"), true);
+  assert.equal(usesObserverControls("ksv", "advance"), false);
+});
+
+test("clerk step 1: speak with the server's 100-3000 limits, labelled as a report", () => {
+  const state = { ...baseState, current_step: 1, allowed_actions: ["speak"], text_limits: { min: 100, max: 3000 } };
+  assert.equal(composerMode(state), "speak");
+  const limits = textLimitsForState(state);
+  assert.deepEqual([limits.min, limits.max, limits.label], [100, 3000, "Báo cáo"]);
+  assert.match(validateTrialText("a".repeat(99), limits), /ít nhất 100/);
+  assert.equal(validateTrialText("a".repeat(100), limits), null);
+  assert.match(validateTrialText("a".repeat(3001), limits), /dài quá 3\.000/);
+  assert.match(stepHint(1, "thu_ky", true), /Lời mẫu đã điền sẵn/);
+  assert.equal(stepHint(5, "thu_ky", false), stepHint(5, "nguoi_xem", false));
+});
+
+test("clerk 409 codes have their own Vietnamese messages", () => {
+  for (const code of ["trial_not_clerk", "trial_record_finalized", "trial_record_section_empty"]) {
+    const message = messageForTrialError({ status: 409, code });
+    assert.notEqual(message, messageForTrialError({ status: 409, code: "something_else" }));
+  }
+  assert.match(messageForTrialError({ status: 409, code: "trial_record_section_empty" }), /còn trống/);
+});
+
+test("clerk section length: suggested range is soft, hard cap blocks", () => {
+  const limits = { min: 200, max: 4000, hard_max: 6000 };
+  assert.equal(clerkSectionLength("   ", limits), "empty");
+  assert.equal(clerkSectionLength("a".repeat(199), limits), "short");
+  assert.equal(clerkSectionLength("a".repeat(200), limits), "ok");
+  assert.equal(clerkSectionLength("a".repeat(4001), limits), "long");
+  assert.equal(clerkSectionLength("a".repeat(6000), limits), "long");
+  assert.equal(clerkSectionLength("a".repeat(6001), limits), "over");
+});
+
+test("clerk finalize: both sections written and within the hard cap; notices do not matter", () => {
+  const limits = { hard_max: 6000 };
+  assert.equal(canFinalizeClerkDraft({ iv2: "x", iv3: "y" }, limits), true);
+  assert.equal(canFinalizeClerkDraft({ iv2: "x", iv3: "  " }, limits), false);
+  assert.equal(canFinalizeClerkDraft({ iv2: "", iv3: "y" }, limits), false);
+  assert.equal(canFinalizeClerkDraft({ iv2: "x", iv3: "y".repeat(6001) }, limits), false);
+});
+
+test("clerk notices: every documented code has a hint, unknown codes none", () => {
+  for (const code of ["empty", "too_short", "too_long", "unknown_amount", "unknown_percent", "citation_missing_law", "citation_not_in_section", "unknown_name"]) {
+    assert.equal(typeof clerkNoticeHint(code), "string", code);
+  }
+  assert.match(clerkNoticeHint("unknown_name"), /tên đầy đủ/);
+  assert.equal(clerkNoticeHint("new_code"), null);
+});
+
+test("clerk draft preview: saved text goes into the 'user' subsections only, input untouched", () => {
+  const sub = (heading, content, summary = null) => ({ heading, content, summary, entries: [] });
+  const record = {
+    sections: [
+      { heading: "III. Phần thủ tục", entries: [] },
+      { heading: "IV. Phần tranh tụng", subsections: [sub("1. Cáo trạng", "verbatim"), sub("2. Hỏi và trả lời", "user"), sub("3. Tranh luận", "user"), sub("4. Lời nói sau cùng", "verbatim")] }
+    ]
+  };
+  const preview = applyClerkDraft(record, { iv2: "Mục hai.", iv3: "" });
+  const [, iv2, iv3, iv4] = preview.sections[1].subsections;
+  assert.equal(iv2.summary, "Mục hai.");
+  assert.equal(iv3.summary, null);
+  assert.equal(iv4.summary, null);
+  assert.equal(record.sections[1].subsections[1].summary, null);
+  assert.equal(clerkSubsection(record, "iv3").heading, "3. Tranh luận");
 });

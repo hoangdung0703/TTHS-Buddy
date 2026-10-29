@@ -3,7 +3,7 @@
 // Everything that decides WHAT the student may do comes from state.allowed_actions; the helpers
 // here only translate that list into UI pieces and pre-check text the server would reject anyway.
 
-import type { TrialConfig, TrialState, TrialUtterance } from "./types";
+import type { TrialClerkDraft, TrialClerkSection, TrialConfig, TrialRecordDocument, TrialRecordSection, TrialState, TrialUtterance } from "./types";
 
 // --- Text limits --------------------------------------------------------------------------------
 // The server sends the limits of the current slot in state.text_limits (contract Mục 3.4/5); that is
@@ -20,6 +20,7 @@ export interface TrialTextLimits {
 }
 
 const STEP_TEXT_LABELS: Record<number, string> = {
+  1: "Báo cáo",
   3: "Cáo trạng",
   5: "Câu hỏi",
   6: "Bản luận tội",
@@ -162,11 +163,30 @@ export function isObserverRole(role: string): boolean {
   return role === OBSERVER_ROLE;
 }
 
+// The clerk role (contract 5.2) speaks once, the step-1 report; from step 2 the AI plays every
+// other role and the student takes notes, then writes IV.2 and IV.3 of the record.
+export const CLERK_ROLE = "thu_ky";
+
+export function isClerkRole(role: string): boolean {
+  return role === CLERK_ROLE;
+}
+
+// Roles with no speaking turn in the current state: the composer area is the observer's (advance,
+// continue, progress) rather than an input.
+export function usesObserverControls(role: string, mode: ComposerMode): boolean {
+  return isObserverRole(role) || (isClerkRole(role) && mode !== "speak");
+}
+
 // One line telling the student what this step expects of them. Purely explanatory: it never
 // decides which buttons exist.
 export function stepHint(step: number, role: string, isUserTurn: boolean): string {
   if (isObserverRole(role)) {
     return observerStepHint(step);
+  }
+  if (isClerkRole(role)) {
+    return step === 1 && isUserTurn
+      ? "Báo cáo Hội đồng xét xử sự có mặt của những người được triệu tập. Lời mẫu đã điền sẵn: đối chiếu với danh sách rồi sửa nếu cần."
+      : observerStepHint(step);
   }
   const isKsv = role === "ksv";
   switch (step) {
@@ -327,6 +347,12 @@ export function messageForTrialError(error: Pick<ParsedTrialError, "status" | "c
       return "Biên bản chỉ có khi phiên tòa đã hoàn thành.";
     case "trial_guard_exhausted":
       return GUARD_EXHAUSTED_MESSAGE;
+    case "trial_not_clerk":
+      return "Phiên tòa này không phải vai Thư ký nên không có ghi chép hay phần biên bản để soạn.";
+    case "trial_record_finalized":
+      return "Biên bản đã được chốt nên không sửa được nữa. Đã chuyển sang chế độ xem.";
+    case "trial_record_section_empty":
+      return "Chưa chốt được: mục 2 hoặc mục 3 của phần IV còn trống. Bạn viết đủ hai mục rồi chốt lại nhé.";
     case "data_unavailable":
       return "Máy chủ dữ liệu đang tạm gián đoạn. Bạn thử lại sau ít phút nhé.";
     default:
@@ -397,7 +423,8 @@ export function formatVnd(amount: number): string {
 export const TRIAL_ROLE_LABELS: Record<string, string> = {
   ksv: "Kiểm sát viên",
   luat_su: "Luật sư bào chữa",
-  nguoi_xem: "Người xem"
+  nguoi_xem: "Người xem",
+  thu_ky: "Thư ký phiên tòa"
 };
 
 export const TRIAL_STATUS_LABELS: Record<string, string> = {
@@ -431,3 +458,91 @@ export function roleLabelForId(id: string): string {
 // open the existing ArticleModal. Step legal_basis numbers are BLTTHS; charge, Điều 51/52 are BLHS.
 export const LAW_VERSION_BLTTHS = "BLTTHS 2015 (số 101/2015/QH13, sửa đổi bổ sung 2021)";
 export const LAW_VERSION_BLHS = "BLHS - Văn bản hợp nhất năm 2025";
+
+// --- Clerk: notes and record draft (contract 3.8-3.10) -------------------------------------------------
+
+export const CLERK_NOTES_DEFAULT_MAX = 20000;
+// Fallback for a draft response without `limits`; the server's values win.
+export const CLERK_SECTION_DEFAULT_LIMITS = { min: 200, max: 4000, hard_max: 6000 };
+export const CLERK_SECTIONS: readonly TrialClerkSection[] = ["iv2", "iv3"];
+export const CLERK_SECTION_TITLES: Record<TrialClerkSection, string> = {
+  iv2: "2. Hỏi và trả lời tại phiên tòa",
+  iv3: "3. Tranh luận tại phiên tòa"
+};
+// The transcript steps each section reports on (contract 3.7: IV.2 = steps 4-5, IV.3 = steps 6-8).
+export const CLERK_SECTION_STEPS: Record<TrialClerkSection, readonly number[]> = { iv2: [4, 5], iv3: [6, 7, 8] };
+
+// "ok" inside the suggested range; "short"/"long" outside it (a "Lưu ý", saving still works);
+// "over" above the hard cap (the server answers 422, so saving is blocked); "empty" no text.
+export type ClerkLengthStatus = "empty" | "short" | "ok" | "long" | "over";
+
+export function clerkSectionLength(text: string, limits: { min: number; max: number; hard_max: number }): ClerkLengthStatus {
+  if (text.length > limits.hard_max) {
+    return "over";
+  }
+  const trimmed = text.trim().length;
+  if (trimmed === 0) {
+    return "empty";
+  }
+  if (trimmed < limits.min) {
+    return "short";
+  }
+  return trimmed > limits.max ? "long" : "ok";
+}
+
+// "Chốt biên bản" needs both sections written and within the hard cap; notices never block it.
+export function canFinalizeClerkDraft(draft: Record<TrialClerkSection, string>, limits: { hard_max: number }): boolean {
+  return CLERK_SECTIONS.every((key) => draft[key].trim().length > 0 && draft[key].length <= limits.hard_max);
+}
+
+// One plain sentence per notice code, shown under the server's own message: what the student can
+// do about it. Feedback only; nothing here is a score.
+const CLERK_NOTICE_HINTS: Record<string, string> = {
+  empty: "Mục này cần có nội dung trước khi chốt biên bản.",
+  too_short: "Mục này hơi ngắn so với gợi ý; bạn có thể ghi thêm ý chính của từng người.",
+  too_long: "Mục này dài hơn gợi ý; biên bản chỉ cần ghi tóm tắt ý chính.",
+  unknown_amount: "Kiểm tra lại số tiền: biên bản chỉ ghi con số đã được nêu tại phiên tòa.",
+  unknown_percent: "Kiểm tra lại tỷ lệ: biên bản chỉ ghi con số đã được nêu tại phiên tòa.",
+  citation_missing_law: "Khi viện dẫn Điều luật, ghi rõ là Bộ luật Hình sự hay Bộ luật Tố tụng hình sự.",
+  citation_not_in_section: "Điều luật này không ai viện dẫn trong phần tương ứng; kiểm tra lại số Điều.",
+  unknown_name: "Nếu bạn viết tắt hoặc gõ khác tên, hãy ghi tên đầy đủ như trong diễn biến phiên tòa."
+};
+
+export function clerkNoticeHint(code: string): string | null {
+  return CLERK_NOTICE_HINTS[code] ?? null;
+}
+
+// The record subsection the clerk writes (content "user"), found by its place in part IV.
+export function clerkSubsection(record: TrialRecordDocument, key: TrialClerkSection): TrialRecordSection | null {
+  const partIv = record.sections.find((section) => section.heading.startsWith("IV."));
+  const wanted = key === "iv2" ? "2." : "3.";
+  return partIv?.subsections?.find((sub) => sub.heading.startsWith(wanted)) ?? null;
+}
+
+// The draft preview: the record with the clerk's saved text in IV.2 and IV.3, so "Xem" shows what
+// was last saved without another request. Returns a new object; the input is not changed.
+export function applyClerkDraft(record: TrialRecordDocument, draft: Pick<TrialClerkDraft, "iv2" | "iv3">): TrialRecordDocument {
+  const fill = (sub: TrialRecordSection): TrialRecordSection => {
+    if (sub.content !== "user") {
+      return sub;
+    }
+    const key: TrialClerkSection | null = sub.heading.startsWith("2.") ? "iv2" : sub.heading.startsWith("3.") ? "iv3" : null;
+    if (key === null) {
+      return sub;
+    }
+    return { ...sub, summary: draft[key].length > 0 ? draft[key] : null };
+  };
+  return {
+    ...record,
+    sections: record.sections.map((section) => (section.subsections ? { ...section, subsections: section.subsections.map(fill) } : section))
+  };
+}
+
+// "08:12" from an ISO timestamp, in the reader's local time; "" when missing or unreadable.
+export function formatSavedTime(iso: string | null | undefined): string {
+  if (!iso) {
+    return "";
+  }
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+}

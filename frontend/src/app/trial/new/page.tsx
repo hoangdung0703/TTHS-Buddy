@@ -19,7 +19,7 @@ interface RoleCard {
   key: string;
   label: string;
   description: string;
-  basis?: { dieu: string; label: string };
+  basis?: { dieu: string; label: string }[];
 }
 
 // The six roles of the design (THIET-KE Mục 7, màn 2A). Only the ones listed in config.user_roles
@@ -30,17 +30,26 @@ const ROLE_CARDS: RoleCard[] = [
     key: "ksv",
     label: "Kiểm sát viên",
     description: "Công bố cáo trạng, xét hỏi, luận tội và đối đáp để bảo vệ quan điểm truy tố.",
-    basis: { dieu: "42", label: "Điều 42 BLTTHS" }
+    basis: [{ dieu: "42", label: "Điều 42 BLTTHS" }]
   },
   {
     key: "luat_su",
     label: "Luật sư bào chữa",
     description: "Xét hỏi, trình bày bài bào chữa và đối đáp để bảo vệ quyền lợi của bị cáo.",
-    basis: { dieu: "73", label: "Điều 73 BLTTHS" }
+    basis: [{ dieu: "73", label: "Điều 73 BLTTHS" }]
   },
   { key: "bi_cao", label: "Bị cáo", description: "Trả lời xét hỏi, tự bào chữa và nói lời sau cùng." },
   { key: "chu_toa", label: "Chủ tọa", description: "Điều khiển phiên tòa theo đúng trình tự tố tụng." },
-  { key: "thu_ky", label: "Thư ký", description: "Báo cáo sự có mặt và ghi biên bản phiên tòa." },
+  // Contract 3.1: "Điều 47, 258 BLTTHS", one pill per article so each opens its own text.
+  {
+    key: "thu_ky",
+    label: "Thư ký phiên tòa",
+    description: "Báo cáo sự có mặt, ghi chép và tự viết biên bản phiên tòa.",
+    basis: [
+      { dieu: "47", label: "Điều 47" },
+      { dieu: "258", label: "Điều 258 BLTTHS" }
+    ]
+  },
   // Contract 3.1: no article pill on this card.
   { key: "nguoi_xem", label: "Người xem", description: "Theo dõi trọn một phiên tòa do hệ thống đóng mọi vai." }
 ];
@@ -298,8 +307,10 @@ export default function NewTrialPage() {
                       </div>
                       <p className="pointer-events-none text-xs leading-relaxed text-muted-foreground">{card.description}</p>
                       {enabled && card.basis ? (
-                        <div className="relative z-10 self-start">
-                          <ArticlePill dieu={card.basis.dieu} lawVersion={LAW_VERSION_BLTTHS} label={card.basis.label} />
+                        <div className="relative z-10 flex flex-wrap gap-1.5 self-start">
+                          {card.basis.map((basis) => (
+                            <ArticlePill key={basis.dieu} dieu={basis.dieu} lawVersion={LAW_VERSION_BLTTHS} label={basis.label} />
+                          ))}
                         </div>
                       ) : null}
                     </div>

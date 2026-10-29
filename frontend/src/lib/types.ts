@@ -230,7 +230,7 @@ export interface NoteUpsertRequest {
 // ============================================================================
 
 // The roles the client knows how to present. Which ones may be chosen comes from config.user_roles.
-export type TrialUserRole = "ksv" | "luat_su" | "nguoi_xem";
+export type TrialUserRole = "ksv" | "luat_su" | "nguoi_xem" | "thu_ky";
 export type TrialStatus = "active" | "completed" | "abandoned";
 export type TrialAwaiting = "user" | "ai" | "none";
 export type TrialUtteranceKind = "speech" | "procedural" | "notice";
@@ -287,6 +287,30 @@ export interface TrialState {
   text_limits?: { min: number; max: number } | null;
   // Observer role only (contract 5.1): the static procedure note of current_step; null otherwise.
   procedure_note?: TrialProcedureNote | null;
+  // Clerk role only (contract 5.2): what to note down at current_step; null otherwise.
+  clerk_prompt?: TrialClerkPrompt | null;
+  // Clerk role only, while the step-1 report waits for the student: template text and the summoned
+  // people to check it against; null at any other time.
+  clerk_report?: TrialClerkReport | null;
+}
+
+export interface TrialClerkPrompt {
+  step: number;
+  text: string;
+  reviewed: boolean;
+}
+
+export interface TrialAttendanceEntry {
+  speaker_id: string;
+  role: string;
+  name: string;
+  // false = absent, with a request to be tried in absence.
+  present: boolean;
+}
+
+export interface TrialClerkReport {
+  prefill: string;
+  attendance: TrialAttendanceEntry[];
 }
 
 export interface TrialProcedureNote {
@@ -423,8 +447,10 @@ export interface TrialRecordEntry {
 
 export interface TrialRecordSection {
   heading: string;
-  content?: "verbatim" | "summary" | null;
+  // "user": written by the student clerk (contract 3.7); `summary` is their text, null when empty.
+  content?: "verbatim" | "summary" | "user" | null;
   summary?: string | null;
+  author_note?: string | null;
   summary_fallback?: boolean;
   fields?: TrialRecordField[];
   entries?: TrialRecordEntry[];
@@ -446,10 +472,41 @@ export interface TrialRecordDocument {
   closing: TrialRecordField[];
   signatures: { title: string; note: string; name: string }[];
   appendix?: TrialRecordSection[];
+  // true = the student clerk has not finalised the record yet.
+  draft?: boolean;
 }
 
 export interface TrialRecord {
   session_id: string;
   text: string;
   record?: TrialRecordDocument;
+  // Clerk sessions only (contract 3.7/3.9); null for every other role.
+  clerk?: TrialClerkDraft | null;
+}
+
+// GET/PUT /api/trials/{id}/notes (contract 3.8). Stored on the server only, never in the browser.
+export interface TrialNotes {
+  notes: string;
+  updated_at: string | null;
+  max_chars: number;
+}
+
+export type TrialClerkSection = "iv2" | "iv3";
+
+export interface TrialClerkNotice {
+  section: TrialClerkSection;
+  code: string;
+  // Vietnamese, shown as sent.
+  message: string;
+}
+
+// PUT /record/draft response, also `clerk` of GET /record (contract 3.9).
+export interface TrialClerkDraft {
+  iv2: string;
+  iv3: string;
+  updated_at: string | null;
+  finalized: boolean;
+  finalized_at: string | null;
+  notices: TrialClerkNotice[];
+  limits: { min: number; max: number; hard_max: number };
 }
