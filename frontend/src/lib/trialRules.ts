@@ -3,7 +3,7 @@
 // Everything that decides WHAT the student may do comes from state.allowed_actions; the helpers
 // here only translate that list into UI pieces and pre-check text the server would reject anyway.
 
-import type { TrialClerkDraft, TrialClerkSection, TrialConfig, TrialRecordDocument, TrialRecordSection, TrialState, TrialUtterance } from "./types";
+import type { TrialClerkDraft, TrialClerkSection, TrialConfig, TrialPresiding, TrialPresidingItem, TrialRecordDocument, TrialRecordSection, TrialState, TrialUtterance } from "./types";
 
 // --- Text limits --------------------------------------------------------------------------------
 // The server sends the limits of the current slot in state.text_limits (contract Mục 3.4/5); that is
@@ -137,8 +137,9 @@ export function parseAllowedActions(actions: readonly string[]): ParsedActions {
 //  - "paused": the AI owes a turn (guard pause, lost connection, reload) - only "Tiếp tục"
 //  - "exhausted": guard fuse tripped (awaiting ai, no actions) - only abandon/delete
 //  - "waiting": awaiting user/ai with nothing actionable (should not happen; shown as locked)
+//  - "preside": presiding judge role (contract 5.4), the step's checklist actions
 //  - "finished": completed or abandoned
-export type ComposerMode = "speak" | "advance" | "paused" | "exhausted" | "waiting" | "finished";
+export type ComposerMode = "speak" | "advance" | "paused" | "exhausted" | "waiting" | "preside" | "finished";
 
 export function composerMode(state: TrialState): ComposerMode {
   if (state.status !== "active" || state.awaiting === "none") {
@@ -153,6 +154,9 @@ export function composerMode(state: TrialState): ComposerMode {
   }
   if (parsed.canSpeak || parsed.canEndSlot) {
     return "speak";
+  }
+  if (hasPresidingAction(state.allowed_actions)) {
+    return "preside";
   }
   if (parsed.advanceTo !== null) {
     return "advance";
@@ -330,6 +334,8 @@ export interface ParsedTrialError {
   // "Trial not found" (missing or someone else's session) is NOT this.
   featureDisabled: boolean;
   state: TrialState | null;
+  // Presiding judge, 409 trial_procedure_incomplete: the required items still to do ([] otherwise).
+  missingItems: string[];
   // error.message of the envelope. Shown verbatim only for the codes whose message the contract
   // says is student-facing (see messageForTrialError).
   serverMessage: string | null;
@@ -352,7 +358,8 @@ export function parseTrialErrorBody(status: number, bodyText: string): ParsedTri
     ? (record.state as TrialState)
     : null;
   const featureDisabled = status === 404 && envelope === undefined && record.detail === "Not Found";
-  return { status, code, featureDisabled, state, serverMessage };
+  const missingItems = Array.isArray(record.missing_items) ? record.missing_items.filter((key): key is string => typeof key === "string") : [];
+  return { status, code, featureDisabled, state, missingItems, serverMessage };
 }
 
 // Fallbacks for the two case-creation refusals whose server message is shown verbatim.
@@ -407,6 +414,26 @@ export function messageForTrialError(error: Pick<ParsedTrialError, "status" | "c
       return "Biên bản đã được chốt nên không sửa được nữa. Đã chuyển sang chế độ xem.";
     case "trial_record_section_empty":
       return "Chưa chốt được: mục 2 hoặc mục 3 của phần IV còn trống. Bạn viết đủ hai mục rồi chốt lại nhé.";
+    case "trial_procedure_incomplete":
+      return "Chưa chuyển bước được: còn mục bắt buộc chưa làm. Các mục đó đã được đánh dấu trong khung Điều hành.";
+    case "trial_item_not_available":
+      return "Mục này chưa làm được lúc này (chưa đúng thứ tự hoặc chưa đủ điều kiện). Đã tải lại trạng thái phiên tòa.";
+    case "trial_item_done":
+      return "Mục này đã làm rồi. Muốn nói thêm, bạn dùng “Phát biểu khác”.";
+    case "trial_return_not_allowed":
+      return "Chưa trở lại xét hỏi được lúc này: chỉ ở bước 8, sau ít nhất một vòng đối đáp và trước khi kết thúc tranh luận.";
+    case "trial_return_used":
+      return "Phiên này đã trở lại xét hỏi một lần; không dùng lại được.";
+    case "trial_decision_missing":
+      return "Bạn lưu bản nháp quyết định trước đã.";
+    case "trial_decision_invalid":
+      return "Bản nháp quyết định còn lỗi cần sửa trước khi chốt.";
+    case "trial_decision_locked":
+      return "Quyết định đã chốt nên không sửa được nữa.";
+    case "trial_pronouncement_missing":
+      return "Chưa có lời tuyên soạn sẵn. Bạn soạn lời tuyên trước đã.";
+    case "trial_not_presiding":
+      return "Phiên tòa này không phải vai Chủ tọa.";
     case "data_unavailable":
       return "Máy chủ dữ liệu đang tạm gián đoạn. Bạn thử lại sau ít phút nhé.";
     default:
@@ -462,7 +489,9 @@ export function isCaseLimitCode(code: string | null): boolean {
 export function isResyncConflict(code: string | null): boolean {
   return code === "trial_version_mismatch" || code === "trial_step_mismatch" || code === "trial_not_your_turn"
     || code === "trial_not_ai_turn" || code === "trial_action_not_allowed" || code === "trial_turn_limit"
-    || code === "trial_skip_not_allowed" || code === "trial_not_active" || code === "trial_busy";
+    || code === "trial_skip_not_allowed" || code === "trial_not_active" || code === "trial_busy"
+    || code === "trial_item_not_available" || code === "trial_item_done" || code === "trial_return_not_allowed"
+    || code === "trial_return_used" || code === "trial_decision_locked" || code === "trial_pronouncement_missing";
 }
 
 export const GUARD_EXHAUSTED_MESSAGE =
@@ -479,7 +508,8 @@ export const TRIAL_ROLE_LABELS: Record<string, string> = {
   luat_su: "Luật sư bào chữa",
   nguoi_xem: "Người xem",
   thu_ky: "Thư ký phiên tòa",
-  bi_cao: "Bị cáo"
+  bi_cao: "Bị cáo",
+  chu_toa: "Chủ tọa phiên tòa"
 };
 
 export const TRIAL_STATUS_LABELS: Record<string, string> = {
@@ -638,3 +668,239 @@ export function legalBasisArticle(citation: string): { dieu: string; lawVersion:
 
 export const DECLINE_CONFIRM_MESSAGE =
   "Từ chối trả lời câu hỏi này? Biên bản sẽ ghi “Bị cáo không trả lời câu hỏi này.” và Hội đồng xét xử có thể công bố lời khai của bạn ở giai đoạn điều tra.";
+
+// --- Presiding judge (contract 5.4) --------------------------------------------------------------------
+
+// The student runs the hearing from step 2: a checklist per step (state.presiding), the AI speaking
+// only when asked or invited. Which item is done, required or available, and when the step may
+// move on, is read from state.presiding and state.allowed_actions only (contract Mục 9.15).
+export const CHAIR_ROLE = "chu_toa";
+
+export function isChairRole(role: string): boolean {
+  return role === CHAIR_ROLE;
+}
+
+const PRESIDING_ACTION_PREFIXES = ["item:", "ask:", "invite:"];
+const PRESIDING_ACTIONS = ["remark", "return_to_questioning", "decide", "prepare_pronouncement", "pronounce"];
+
+export function hasPresidingAction(actions: readonly string[]): boolean {
+  return actions.some((action) => PRESIDING_ACTIONS.includes(action) || PRESIDING_ACTION_PREFIXES.some((prefix) => action.startsWith(prefix)));
+}
+
+export interface ChairActions {
+  // Keys listed in "item:k1|k2" / "invite:k1|k2".
+  items: string[];
+  invites: string[];
+  // Who may be questioned now ("ask:ID1|ID2"); [] when no question may be put.
+  askTo: string[];
+  canRemark: boolean;
+  canReturn: boolean;
+  advanceTo: number | null;
+}
+
+export function parseChairActions(actions: readonly string[]): ChairActions {
+  const parsed: ChairActions = { items: [], invites: [], askTo: [], canRemark: false, canReturn: false, advanceTo: null };
+  const list = (action: string, prefix: string) => action.slice(prefix.length).split("|").filter((key) => key.length > 0);
+  for (const action of actions) {
+    if (action.startsWith("item:")) {
+      parsed.items = list(action, "item:");
+    } else if (action.startsWith("invite:")) {
+      parsed.invites = list(action, "invite:");
+    } else if (action.startsWith("ask:")) {
+      parsed.askTo = list(action, "ask:");
+    } else if (action === "remark") {
+      parsed.canRemark = true;
+    } else if (action === "return_to_questioning") {
+      parsed.canReturn = true;
+    } else if (action.startsWith("advance:")) {
+      const target = Number(action.slice("advance:".length));
+      parsed.advanceTo = Number.isInteger(target) ? target : null;
+    }
+  }
+  return parsed;
+}
+
+// Who a question of this ask item may go to (contract 5.4: hoi_bi_cao is the defendant,
+// hoi_nguoi_khac everyone else, hoi_lai anyone), within the server's current list.
+export function askAddresseesForItem(key: string, askTo: readonly string[]): string[] {
+  if (key === "hoi_bi_cao") {
+    return askTo.filter((id) => id === "BI_CAO");
+  }
+  if (key === "hoi_nguoi_khac") {
+    return askTo.filter((id) => id !== "BI_CAO");
+  }
+  return [...askTo];
+}
+
+// Whether the item can be acted on now: the server marks it available AND its action is listed.
+export function chairItemActionable(item: TrialPresidingItem, actions: ChairActions): boolean {
+  if (!item.available) {
+    return false;
+  }
+  switch (item.kind) {
+    case "item":
+      return actions.items.includes(item.key);
+    case "invite":
+      return actions.invites.includes(item.key);
+    case "ask":
+      return askAddresseesForItem(item.key, actions.askTo).length > 0;
+    case "return":
+      return actions.canReturn;
+    default:
+      return false;
+  }
+}
+
+// "Dùng lời mẫu" is one click when the template says everything the action needs: items and
+// invitations (empty text = template), and a question that can only go to one person.
+export function chairOneClickTemplate(item: TrialPresidingItem, actions: ChairActions): boolean {
+  if (item.template === null || item.template.trim().length === 0 || !chairItemActionable(item, actions)) {
+    return false;
+  }
+  if (item.kind === "ask") {
+    return askAddresseesForItem(item.key, actions.askTo).length === 1;
+  }
+  return item.kind === "item" || item.kind === "invite";
+}
+
+// What the composer sends: one checklist item ("item:<key>" / "invite:<key>"), a question, a
+// "phát biểu khác", or the Điều 323 return.
+export type ChairTarget = string;
+
+export interface ChairTargetOption {
+  value: ChairTarget;
+  label: string;
+}
+
+export function chairTargetOptions(presiding: TrialPresiding, actions: ChairActions): ChairTargetOption[] {
+  const options: ChairTargetOption[] = [];
+  for (const item of presiding.items) {
+    if ((item.kind === "item" || item.kind === "invite") && chairItemActionable(item, actions)) {
+      options.push({ value: `${item.kind}:${item.key}`, label: item.label });
+    }
+  }
+  if (actions.askTo.length > 0) {
+    options.push({ value: "ask", label: "Đặt câu hỏi" });
+  }
+  if (actions.canRemark) {
+    options.push({ value: "remark", label: "Phát biểu khác" });
+  }
+  if (actions.canReturn) {
+    options.push({ value: "return", label: "Trở lại xét hỏi (Điều 323)" });
+  }
+  return options;
+}
+
+// The chosen target if still offered; otherwise a question when one may be put, then the first
+// required item not done yet, then whatever is first.
+export function resolveChairTarget(current: ChairTarget, presiding: TrialPresiding, options: readonly ChairTargetOption[]): ChairTarget | null {
+  if (options.some((option) => option.value === current)) {
+    return current;
+  }
+  if (options.some((option) => option.value === "ask")) {
+    return "ask";
+  }
+  const required = presiding.items.find((item) => item.required && !item.done && options.some((option) => option.value === `${item.kind}:${item.key}`));
+  if (required !== undefined) {
+    return `${required.kind}:${required.key}`;
+  }
+  return options[0]?.value ?? null;
+}
+
+// The checklist item behind an "item:<key>" / "invite:<key>" target.
+export function chairTargetItem(target: ChairTarget, presiding: TrialPresiding): TrialPresidingItem | null {
+  const [kind, key] = target.split(":");
+  if (key === undefined || (kind !== "item" && kind !== "invite")) {
+    return null;
+  }
+  return presiding.items.find((item) => item.key === key && item.kind === kind) ?? null;
+}
+
+// Length limits of a target (from presiding.limits); `optional` = an empty box sends the template.
+export function chairTextLimits(target: ChairTarget, presiding: TrialPresiding): TrialTextLimits & { optional: boolean } {
+  if (target === "ask") {
+    return { ...presiding.limits.ask, label: "Câu hỏi", optional: false };
+  }
+  if (target === "remark") {
+    return { ...presiding.limits.remark, label: "Phát biểu", optional: false };
+  }
+  const item = target === "return" ? null : chairTargetItem(target, presiding);
+  const hasTemplate = target === "return" || (item?.template ?? "").trim().length > 0;
+  return { ...presiding.limits.item, label: "Lời điều hành", optional: hasTemplate };
+}
+
+// Null when the text can be sent; an empty box is fine where the template stands in.
+export function validateChairText(text: string, limits: TrialTextLimits & { optional: boolean }): string | null {
+  if (limits.optional && text.trim().length === 0) {
+    return text.length > limits.max ? validateTrialText(text, limits) : null;
+  }
+  return validateTrialText(text, limits);
+}
+
+// Labels of every checklist item (backend trial_presiding.STEP_ITEMS), for lines of earlier steps
+// in the transcript; the current step's labels come from state.presiding and win.
+const CHAIR_ITEM_LABELS: Record<string, string> = {
+  khai_mac: "Khai mạc, đọc quyết định đưa vụ án ra xét xử",
+  kiem_tra_can_cuoc: "Kiểm tra căn cước bị cáo",
+  kiem_tra_co_mat: "Kiểm tra sự có mặt, giới thiệu thành phần",
+  giai_thich_quyen: "Phổ biến quyền và nghĩa vụ",
+  hoi_thay_doi: "Hỏi đề nghị thay đổi người tiến hành tố tụng",
+  cam_doan_nlc: "Người làm chứng cam đoan, cách ly người làm chứng",
+  hoi_yeu_cau: "Hỏi yêu cầu triệu tập thêm, xem xét chứng cứ, hoãn phiên tòa",
+  moi_cong_bo_cao_trang: "Mời Kiểm sát viên công bố cáo trạng",
+  hoi_bi_cao: "Hỏi bị cáo",
+  cong_bo_loi_khai_bi_hai: "Công bố lời khai của bị hại vắng mặt",
+  hoi_nguoi_khac: "Hỏi người tham gia tố tụng khác",
+  moi_hoi_tham_hoi: "Mời Hội thẩm hỏi",
+  moi_ksv_hoi: "Mời Kiểm sát viên xét hỏi",
+  moi_ls_hoi: "Mời luật sư xét hỏi",
+  ket_thuc_xet_hoi: "Kết thúc xét hỏi",
+  hoi_lai: "Hỏi lại",
+  moi_luan_toi: "Mời Kiểm sát viên trình bày luận tội",
+  moi_bao_chua: "Mời luật sư bào chữa",
+  moi_bi_hai_trinh_bay: "Mời bị hại trình bày",
+  hoi_bi_cao_bo_sung: "Hỏi bị cáo có bổ sung ý kiến bào chữa",
+  moi_doi_dap: "Mời đối đáp (vòng 1)",
+  vong_2: "Mời đối đáp thêm (vòng 2)",
+  tro_lai_xet_hoi: "Trở lại việc xét hỏi",
+  ket_thuc_tranh_luan: "Kết thúc tranh luận",
+  moi_loi_sau_cung: "Cho bị cáo nói lời sau cùng",
+  vao_nghi_an: "Vào phòng nghị án",
+  tuyen_an: "Tuyên án",
+  remark: "Phát biểu khác"
+};
+
+export function chairItemLabel(key: string | null | undefined, presiding?: TrialPresiding | null): string | null {
+  if (!key) {
+    return null;
+  }
+  return presiding?.items.find((item) => item.key === key)?.label ?? CHAIR_ITEM_LABELS[key] ?? null;
+}
+
+// One line on what the student does at this step. Explanatory only.
+export function chairStepHint(step: number, presiding: TrialPresiding | null | undefined): string {
+  if (presiding?.in_return) {
+    return "Trở lại xét hỏi (Điều 323): hỏi thêm nếu cần, có thể mời Kiểm sát viên, luật sư hỏi, rồi kết thúc xét hỏi để về lại bước 8.";
+  }
+  switch (step) {
+    case 1:
+      return "Thư ký báo cáo sự có mặt. Từ bước 2 bạn điều hành phiên tòa.";
+    case 2:
+      return "Khai mạc trước tiên, rồi làm các mục còn lại. AI chỉ nói khi bạn hỏi hoặc mời.";
+    case 4:
+      return "Hỏi bị cáo ít nhất một câu; có thể hỏi người khác hoặc mời Hội thẩm hỏi.";
+    case 5:
+      return "Mời Kiểm sát viên, luật sư xét hỏi, rồi kết thúc xét hỏi.";
+    case 8:
+      return "Mời đối đáp; kết thúc tranh luận sau cùng.";
+    case 9:
+      return presiding?.items.some((item) => item.key === "moi_loi_sau_cung" && item.done)
+        ? "Bị cáo đã nói lời sau cùng: không ai được hỏi thêm bị cáo (khoản 2 Điều 324 BLTTHS)."
+        : "Cho bị cáo nói lời sau cùng.";
+    default:
+      return "Làm các mục bắt buộc trong khung Điều hành, rồi bấm “Sang bước tiếp theo”.";
+  }
+}
+
+export const CHAIR_RETURN_CONFIRM_MESSAGE =
+  "Trở lại xét hỏi (Điều 323 BLTTHS)? Mỗi phiên chỉ dùng được một lần. Phiên tòa quay về bước 5 thu gọn: bạn hỏi tối đa 3 câu, có thể mời Kiểm sát viên, luật sư hỏi, rồi kết thúc xét hỏi để về lại bước 8 và đối đáp lại.";

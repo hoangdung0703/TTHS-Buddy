@@ -32,7 +32,12 @@ export type ComposerAction =
   | { action: "end_slot" }
   | { action: "continue" }
   | { action: "decline" }
-  | { action: "advance"; target_step: number };
+  | { action: "advance"; target_step: number }
+  // Presiding judge (contract 5.4): no text = the item's template.
+  | { action: "item" | "invite"; item: string; text?: string }
+  | { action: "ask"; addressee: string; text: string }
+  | { action: "remark"; text: string; addressee?: string }
+  | { action: "return_to_questioning"; text?: string };
 
 interface TrialComposerProps {
   // The session is completed but the record summary is still being written (final turn).

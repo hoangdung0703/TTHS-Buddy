@@ -12,6 +12,7 @@ import {
   BASE, baseState, check, chromium, failureCount, fulfillError, fulfillSse, installStreamingTurn, newPage, noPageOverflow, signIn, signOut,
   openHearing, resetWorld, scrollInfo, sseEvent, world
 } from "./lib.mjs";
+import { CHAIR_MARK, DEBATE_NOTE, chairState, chairTurn, newChair } from "./chair.mjs";
 
 const SHOTS = process.env.E2E_SHOTS ?? null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
@@ -1169,7 +1170,420 @@ for (const [width, height] of [[1280, 600], [1440, 900], [1920, 1080]]) {
   await context.close();
 }
 
-const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || m.includes(CLERK_MARK) || m.includes(DEF_MARK) || m.includes(IDENTITY_PREFILL.slice(0, 30)) || m.includes(CLERK_PREFILL.slice(0, 40)) || /Uncaught|TypeError/.test(m));
+// =============================== Chủ tọa (presiding judge, contract 5.4) ===============================
+const ALL_ROLES = ["bi_cao", "chu_toa", "ksv", "luat_su", "nguoi_xem", "thu_ky"];
+const chairBodies = [];
+const chairAside = (page) => page.locator('aside[aria-label="Điều hành và hồ sơ vụ án"]');
+const chairRow = (scope, key) => scope.getByTestId(`chair-item-${key}`);
+const settle = async (page) => {
+  await page.waitForTimeout(250);
+  await page.waitForFunction(() => !document.querySelector('[data-testid="trial-status"]'), null, { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(150);
+};
+const oneClick = async (page, key, scope = chairAside(page)) => {
+  await chairRow(scope, key).getByTestId("chair-use-template").click();
+  await settle(page);
+};
+const advanceChair = async (page) => {
+  await page.getByTestId("trial-advance").click();
+  await settle(page);
+};
+const lastBody = () => chairBodies[chairBodies.length - 1];
+const thuKyLine = () => utt(1, 1, "THU_KY", "Báo cáo Hội đồng xét xử, những người được triệu tập đều có mặt.", { kind: "procedural" });
+// A presiding session already at `step` (every earlier step done), the simulator answering /turn.
+async function openChair(page, o = {}, lines = [thuKyLine()]) {
+  const c = newChair(o);
+  world.role = "chu_toa";
+  world.utterances = [...lines];
+  world.turn = chairTurn(world, c, chairBodies);
+  await openHearing(page, chairState(c), "chu_toa");
+  return c;
+}
+
+// /trial/new: the card is selectable once chu_toa is in config.user_roles.
+resetWorld();
+chairBodies.length = 0;
+world.config = config({ user_roles: ALL_ROLES });
+({ context, page } = await open());
+answerDialogs(page);
+await page.goto(`${BASE}/trial/new`);
+const chairCard = page.getByTestId("role-chu_toa");
+await chairCard.waitFor({ timeout: 20000 });
+check("chair new: card enabled, 'Chủ tọa phiên tòa', contract description, pill Điều 45 BLTTHS, no 'Sắp có'",
+  (await chairCard.getByRole("radio").isEnabled()) && (await chairCard.innerText()).includes("Chủ tọa phiên tòa")
+  && (await chairCard.innerText()).includes("Điều hành phiên tòa, tự quyết định hình phạt và tuyên án")
+  && (await chairCard.getByRole("button", { name: "Xem toàn văn Điều 45 BLTTHS" }).count()) === 1 && !(await chairCard.innerText()).includes("Sắp có"));
+check("chair new: every other role card still enabled", (await Promise.all(["ksv", "luat_su", "bi_cao", "thu_ky", "nguoi_xem"].map((key) => page.getByTestId(`role-${key}`).getByRole("radio").isEnabled()))).every(Boolean));
+let chairCreateBody = null;
+const chairSession = newChair();
+world.create = (route, body) => {
+  chairCreateBody = body;
+  return fulfillSse(route, sseEvent("session", { session_id: FAKE, title: "Vụ mẫu" }) + sseEvent("utterance", thuKyLine()) + sseEvent("state", chairState(chairSession)) + sseEvent("done", {}));
+};
+await chairCard.getByRole("radio").click();
+await page.getByRole("radio", { name: /Tội trộm cắp tài sản/ }).click();
+await shot(page, "chair-new-desktop");
+world.role = "chu_toa";
+world.utterances = [thuKyLine()];
+world.state = chairState(chairSession);
+world.turn = chairTurn(world, chairSession, chairBodies);
+await page.getByRole("button", { name: "Tạo vụ án" }).click();
+check("chair new: created with exactly the 5 fields, user_role chu_toa",
+  (await page.waitForURL(`**/trial/${FAKE}`, { timeout: 15000 }).then(() => true, () => false))
+  && Object.keys(chairCreateBody).sort().join() === "crime_key,has_related_party,user_role,victim_present,witness_count" && chairCreateBody.user_role === "chu_toa");
+await page.getByTestId("trial-advance").waitFor({ timeout: 20000 });
+check("chair step 1: the clerk (AI) reported; only 'Sang bước tiếp theo', no checklist, header 'Vai của bạn: Chủ tọa phiên tòa'",
+  (await page.locator('[data-seq="1"]').innerText()).includes("Thư ký") && (await page.getByTestId("chair-checklist").count()) === 0
+  && (await page.getByTestId("chair-composer").count()) === 0 && (await page.getByText("Vai của bạn: Chủ tọa phiên tòa").count()) === 1);
+await advanceChair(page);
+check("chair step 1: advance body exactly {expected_step 1, expected_version 20, advance, target_step 2}",
+  JSON.stringify(chairBodies[0]) === JSON.stringify({ expected_step: 1, expected_version: 20, action: "advance", target_step: 2 }));
+
+// Step 2: the checklist from state.presiding.
+await chairAside(page).getByTestId("chair-checklist").waitFor({ timeout: 10000 });
+const chairPanel = chairAside(page);
+check("chair step 2: side panel opens on 'Điều hành', 7 items, 6 required, hoi_yeu_cau optional",
+  (await chairPanel.getByRole("tab", { name: "Điều hành" }).getAttribute("aria-selected")) === "true"
+  && (await chairPanel.locator('[data-testid^="chair-item-"]').count()) === 7 && (await chairPanel.locator('[data-testid^="chair-item-"][data-required]').count()) === 6
+  && (await chairRow(chairPanel, "hoi_yeu_cau").innerText()).includes("Tùy chọn") && (await chairRow(chairPanel, "khai_mac").innerText()).includes("Bắt buộc"));
+check("chair step 2: khai mạc first - only it has buttons; the others 'Chưa làm được lúc này'",
+  (await chairRow(chairPanel, "khai_mac").getByTestId("chair-use-template").count()) === 1
+  && (await chairRow(chairPanel, "kiem_tra_can_cuoc").getByTestId("chair-use-template").count()) === 0
+  && (await chairRow(chairPanel, "kiem_tra_can_cuoc").innerText()).includes("Chưa làm được lúc này"));
+const khaiMacTemplate = chairRow(chairPanel, "khai_mac").getByTestId("chair-template");
+check("chair step 2: template previewed as 'Lời mẫu gợi ý' (long one clamped, 'Xem đủ'), basis pills, no review badge",
+  (await khaiMacTemplate.innerText()).includes("Lời mẫu gợi ý") && (await khaiMacTemplate.getByRole("button", { name: "Xem đủ" }).count()) === 1
+  && (await chairRow(chairPanel, "khai_mac").getByRole("button", { name: "Xem toàn văn Điều 301" }).count()) === 1
+  && !(await page.locator("body").innerText()).includes("chờ nhóm luật duyệt"));
+check("chair step 2: before khai mạc no remark target either; step button not ready",
+  (await page.getByTestId("chair-composer").count()) === 1 && (await page.getByTestId("chair-target").count()) === 1
+  && !(await page.getByTestId("chair-target").innerText()).includes("Phát biểu khác") && (await page.getByTestId("trial-advance").getAttribute("data-ready")) === null);
+await shot(page, "chair-step2-desktop");
+
+// The step button with required items left: nothing is sent, the missing items are listed and flash.
+let sentBefore = chairBodies.length;
+await page.getByTestId("trial-advance").click();
+await page.waitForTimeout(200);
+const missingLine = page.getByTestId("chair-missing");
+check("chair missing (local): no request sent, list names the 6 required items",
+  chairBodies.length === sentBefore && (await missingLine.innerText()).includes("Khai mạc, đọc quyết định") && (await missingLine.innerText()).includes("Người làm chứng cam đoan")
+  && !(await missingLine.innerText()).includes("Hỏi yêu cầu triệu tập thêm"));
+check("chair missing (local): required rows flash, the optional one does not",
+  (await chairRow(chairPanel, "khai_mac").getAttribute("data-flash")) === "true" && (await chairRow(chairPanel, "cam_doan_nlc").getAttribute("data-flash")) === "true"
+  && (await chairRow(chairPanel, "hoi_yeu_cau").getAttribute("data-flash")) === null);
+await shot(page, "chair-step2-missing-flash");
+
+// "Dùng lời mẫu": one click, item key only (empty text = template).
+await page.getByTestId("chair-input").fill("");
+await oneClick(page, "khai_mac");
+check("chair one-click template: body exactly {expected_step 2, expected_version 21, item, khai_mac}, no text",
+  JSON.stringify(lastBody()) === JSON.stringify({ expected_step: 2, expected_version: 21, action: "item", item: "khai_mac" }));
+const khaiMacLine = page.locator('[data-testid="trial-user-utterance"]').last();
+check("chair transcript: the student's line on their side, 'Bạn · Chủ tọa', procedure_item label shown",
+  (await khaiMacLine.innerText()).includes("Bạn · Chủ tọa") && (await khaiMacLine.getByTestId("trial-procedure-item").innerText()).includes("Khai mạc"));
+check("chair: khai mạc marked done, the missing list cleared, remark now offered",
+  (await chairRow(chairPanel, "khai_mac").getAttribute("data-done")) === "true" && (await missingLine.count()) === 0
+  && (await page.getByTestId("chair-target").innerText()).includes("Phát biểu khác"));
+
+// A draft in the box survives a one-click template; the identity answer comes back.
+await page.getByTestId("chair-target").selectOption("remark");
+await page.getByTestId("chair-input").fill("Bản nháp phát biểu đang gõ");
+await oneClick(page, "kiem_tra_can_cuoc");
+check("chair: a typed draft is kept across a one-click template; the defendant's identity answer appears",
+  (await page.getByTestId("chair-input").inputValue()) === "Bản nháp phát biểu đang gõ" && lastBody().item === "kiem_tra_can_cuoc"
+  && (await page.locator('[data-testid="trial-ai-utterance"]').last().innerText()).includes("Bị cáo"));
+
+// Remark without and with an addressee.
+await page.getByTestId("chair-send").click();
+await settle(page);
+check("chair remark: body {remark, text} without addressee by default; box cleared",
+  JSON.stringify(lastBody()) === JSON.stringify({ expected_step: 2, expected_version: 23, action: "remark", text: "Bản nháp phát biểu đang gõ" })
+  && (await page.getByTestId("chair-input").inputValue()) === "");
+await page.getByTestId("chair-target").selectOption("remark");
+await page.getByTestId("chair-remark-addressee").selectOption("KSV");
+await page.getByTestId("chair-input").fill("Đề nghị Kiểm sát viên cho biết ý kiến.");
+await page.getByTestId("chair-send").click();
+await settle(page);
+check("chair remark: addressee sent, the answer appears, counter 'Còn 3 lần phát biểu khác'",
+  lastBody().action === "remark" && lastBody().addressee === "KSV" && (await page.locator('[data-testid="trial-ai-utterance"]').last().innerText()).includes("Kiểm sát viên")
+  && (await chairPanel.getByTestId("chair-counters").innerText()).includes("Còn 3 lần phát biểu khác"));
+check("chair remark: the 1.500 cap from presiding.limits", (await (async () => {
+  await page.getByTestId("chair-target").selectOption("remark");
+  await page.getByTestId("chair-input").fill("a".repeat(1501));
+  const ok = (await page.getByTestId("chair-send").isDisabled()) && (await page.getByTestId("chair-validation").innerText()).includes("1.500")
+    && (await page.getByTestId("chair-counter").innerText()).includes("1.501/1.500");
+  await page.getByTestId("chair-input").fill("");
+  return ok;
+})()));
+
+// "Tự soạn": the item into the composer with its template, edited, sent with text.
+await chairRow(chairPanel, "kiem_tra_co_mat").getByTestId("chair-compose").click();
+await page.waitForTimeout(200);
+const coMatTemplate = await page.getByTestId("chair-input").inputValue();
+check("chair 'Tự soạn': the target is the item, its template is in the box, focus on the box",
+  (await page.getByTestId("chair-target").inputValue()) === "item:kiem_tra_co_mat" && coMatTemplate.includes(CHAIR_MARK)
+  && (await page.evaluate(() => document.activeElement?.getAttribute("data-testid"))) === "chair-input");
+await page.getByTestId("chair-input").fill(`${coMatTemplate} Bổ sung của tôi.`);
+await page.getByTestId("chair-send").click();
+await settle(page);
+check("chair 'Tự soạn': body {item, kiem_tra_co_mat, text} with the edited text; label 'Thực hiện' path",
+  lastBody().action === "item" && lastBody().item === "kiem_tra_co_mat" && lastBody().text === `${coMatTemplate} Bổ sung của tôi.`);
+for (const key of ["giai_thich_quyen", "hoi_thay_doi", "cam_doan_nlc"]) await oneClick(page, key);
+check("chair step 2: all required done -> the step button is ready, 'Đủ mục bắt buộc'",
+  (await page.getByTestId("trial-advance").getAttribute("data-ready")) === "true" && (await page.getByTestId("chair-composer").innerText()).includes("Đủ mục bắt buộc"));
+await advanceChair(page);
+check("chair advance: body {advance, target_step 3}", lastBody().action === "advance" && lastBody().target_step === 3);
+
+// Step 3: invite, the KSV reads.
+await oneClick(page, "moi_cong_bo_cao_trang");
+check("chair invite: body {invite, moi_cong_bo_cao_trang}; KSV answers", JSON.stringify(Object.keys(lastBody())) === JSON.stringify(["expected_step", "expected_version", "action", "item"])
+  && lastBody().action === "invite" && (await page.locator('[data-testid="trial-ai-utterance"]').last().innerText()).includes("Kiểm sát viên"));
+await advanceChair(page);
+
+// Step 4: questions.
+check("chair step 4: composer defaults to 'Đặt câu hỏi', addressees from ask:, counter 'Còn 10 câu hỏi'",
+  (await page.getByTestId("chair-target").inputValue()) === "ask" && (await page.getByTestId("chair-ask-addressee").locator("option").count()) === 3
+  && (await chairPanel.getByTestId("chair-counters").innerText()).includes("Còn 10 câu hỏi"));
+check("chair step 4: 'Hỏi bị cáo' one-click template; 'Hỏi người khác' needs a chosen addressee (no one-click)",
+  (await chairRow(chairPanel, "hoi_bi_cao").getByTestId("chair-use-template").count()) === 1 && (await chairRow(chairPanel, "hoi_nguoi_khac").getByTestId("chair-use-template").count()) === 0
+  && (await chairRow(chairPanel, "hoi_nguoi_khac").getByTestId("chair-compose").innerText()).includes("Soạn câu hỏi"));
+await page.getByTestId("chair-input").fill("a".repeat(1501));
+check("chair ask: over 1.500 blocks 'Hỏi'", (await page.getByTestId("chair-send").isDisabled()) && (await page.getByTestId("chair-validation").innerText()).includes("1.500"));
+await page.getByTestId("chair-ask-addressee").selectOption("NLC_1");
+await page.getByTestId("chair-input").fill("Người làm chứng thấy sự việc lúc mấy giờ?");
+await page.getByTestId("chair-send").click();
+await settle(page);
+check("chair ask: body exactly {ask, addressee NLC_1, text}; 'Còn 9 câu hỏi'; line shows who was asked",
+  JSON.stringify(Object.keys(lastBody())) === JSON.stringify(["expected_step", "expected_version", "action", "addressee", "text"]) && lastBody().addressee === "NLC_1"
+  && (await chairPanel.getByTestId("chair-counters").innerText()).includes("Còn 9 câu hỏi")
+  && (await page.locator('[data-testid="trial-user-utterance"]').last().innerText()).includes("→ hỏi Người làm chứng"));
+check("chair step 4: hỏi bị cáo still missing -> step button not ready", (await page.getByTestId("trial-advance").getAttribute("data-ready")) === null);
+await oneClick(page, "hoi_bi_cao");
+check("chair ask one-click: {ask, BI_CAO, template text}", lastBody().action === "ask" && lastBody().addressee === "BI_CAO" && lastBody().text.includes(CHAIR_MARK));
+await shot(page, "chair-step4-desktop");
+await advanceChair(page);
+
+// Step 5: closing only after both invitations (order from the server).
+check("chair step 5: 'Kết thúc xét hỏi' not available before the invitations", (await chairRow(chairPanel, "ket_thuc_xet_hoi").getByTestId("chair-use-template").count()) === 0);
+for (const key of ["moi_ksv_hoi", "moi_ls_hoi", "ket_thuc_xet_hoi"]) await oneClick(page, key);
+await advanceChair(page);
+await oneClick(page, "moi_luan_toi");
+await advanceChair(page);
+for (const key of ["moi_bao_chua", "moi_bi_hai_trinh_bay"]) await oneClick(page, key);
+await advanceChair(page);
+
+// Step 8: round 2 note, Điều 323 once.
+check("chair step 8: the 2-round note (Q12) next to 'vòng 2'", (await chairRow(chairPanel, "vong_2").getByTestId("chair-item-note").innerText()).trim() === DEBATE_NOTE);
+check("chair step 8: no return before the first round", (await chairRow(chairPanel, "tro_lai_xet_hoi").getByTestId("chair-return").count()) === 0
+  && (await chairRow(chairPanel, "tro_lai_xet_hoi").innerText()).includes("Một lần mỗi phiên"));
+await oneClick(page, "moi_doi_dap");
+check("chair debate: one invitation, KSV then luật sư answer", lastBody().item === "moi_doi_dap"
+  && (await page.locator('[data-testid="trial-ai-utterance"]').nth(-2).innerText()).includes("Kiểm sát viên") && (await page.locator('[data-testid="trial-ai-utterance"]').last().innerText()).includes("Luật sư"));
+check("chair Điều 323: after a round the return is offered, 'còn lượt' and its consequence shown",
+  (await chairRow(chairPanel, "tro_lai_xet_hoi").getByTestId("chair-return").count()) === 1 && (await chairRow(chairPanel, "tro_lai_xet_hoi").innerText()).includes("còn lượt")
+  && (await chairRow(chairPanel, "tro_lai_xet_hoi").innerText()).includes("về lại bước 8"));
+await shot(page, "chair-step8-desktop");
+dialogAnswer = false;
+sentBefore = chairBodies.length;
+await chairRow(chairPanel, "tro_lai_xet_hoi").getByTestId("chair-return").click();
+await page.waitForTimeout(300);
+check("chair Điều 323: cancelling the confirm sends nothing", chairBodies.length === sentBefore);
+dialogAnswer = true;
+await chairRow(chairPanel, "tro_lai_xet_hoi").getByTestId("chair-return").click();
+await settle(page);
+check("chair Điều 323: body exactly {return_to_questioning}", JSON.stringify(Object.keys(lastBody())) === JSON.stringify(["expected_step", "expected_version", "action"]) && lastBody().action === "return_to_questioning");
+check("chair in return: step bar 'Trở lại xét hỏi', banner, short checklist (hỏi lại, mời, kết thúc)",
+  (await page.getByRole("navigation", { name: "Tiến trình phiên tòa" }).innerText()).includes("Trở lại xét hỏi") && (await chairPanel.getByTestId("chair-in-return").count()) === 1
+  && (await chairPanel.locator('[data-testid^="chair-item-"]').count()) === 4 && (await chairPanel.getByTestId("chair-counters").innerText()).includes("Còn 3 câu hỏi"));
+await shot(page, "chair-return-desktop");
+await oneClick(page, "ket_thuc_xet_hoi");
+check("chair in return: step button reads 'Về lại bước 8'", (await page.getByTestId("trial-advance").innerText()).includes("Về lại bước 8"));
+await advanceChair(page);
+check("chair back at 8: target_step 8 sent; return used shown; no return item; round 1 required again",
+  lastBody().target_step === 8 && (await chairPanel.getByTestId("chair-return-used").count()) === 1 && (await chairRow(chairPanel, "tro_lai_xet_hoi").count()) === 0
+  && (await chairRow(chairPanel, "moi_doi_dap").getAttribute("data-done")) === null);
+await oneClick(page, "moi_doi_dap");
+await oneClick(page, "ket_thuc_tranh_luan");
+await advanceChair(page);
+
+// Step 9: after the last word nobody may question the defendant.
+await oneClick(page, "moi_loi_sau_cung");
+await page.getByTestId("chair-target").selectOption("remark");
+const remarkOptions = await page.getByTestId("chair-remark-addressee").locator("option").allInnerTexts();
+check("chair step 9: after the last word, remark addressees exclude the defendant; hint cites Điều 324",
+  remarkOptions.length === 5 && !remarkOptions.some((text) => text.startsWith("Bị cáo")) && (await page.getByTestId("trial-step-hint").innerText()).includes("Điều 324"));
+await advanceChair(page);
+check("chair step 10: 'Sắp có' placeholder, no error, no composer", (await page.getByTestId("chair-coming-soon").count()) === 1
+  && (await page.getByTestId("trial-error").count()) === 0 && (await page.getByTestId("chair-composer").count()) === 0);
+await shot(page, "chair-step10-soon");
+await context.close();
+
+// 409 trial_procedure_incomplete from the server (a stale state offered the step button).
+resetWorld();
+chairBodies.length = 0;
+({ context, page } = await open());
+answerDialogs(page);
+{
+  const c = newChair({ step: 2, done: ["khai_mac"] });
+  world.role = "chu_toa";
+  world.utterances = [thuKyLine()];
+  world.turn = chairTurn(world, c, chairBodies);
+  const stale = chairState(c);
+  await openHearing(page, { ...stale, allowed_actions: [...stale.allowed_actions, "advance:3"] }, "chu_toa");
+}
+await page.getByTestId("trial-advance").click();
+await settle(page);
+check("chair 409 procedure_incomplete: advance sent, missing items listed from missing_items, rows flash, no error box",
+  lastBody()?.action === "advance" && (await page.getByTestId("chair-missing").innerText()).includes("Kiểm tra căn cước bị cáo")
+  && (await chairRow(chairAside(page), "kiem_tra_can_cuoc").getAttribute("data-flash")) === "true" && (await page.getByTestId("trial-error").count()) === 0
+  && (await page.getByTestId("trial-advance").getAttribute("data-ready")) === null);
+await context.close();
+
+// Version mismatch: re-sync and keep the question being typed.
+resetWorld();
+chairBodies.length = 0;
+({ context, page } = await open());
+{
+  const c = await openChair(page, { step: 4, version: 30 });
+  c.version = 31; // another tab moved the session on
+  world.state = chairState(c);
+}
+let chairGets = world.requests.filter((r) => r.method === "GET" && r.path.endsWith(FAKE)).length;
+await page.getByTestId("chair-input").fill("Câu hỏi đang gõ dở của tôi");
+await page.getByTestId("chair-send").click();
+await settle(page);
+check("chair 409 version mismatch: soft notice, GET re-read, the typed question kept",
+  (await page.getByTestId("trial-soft-notice").count()) === 1 && world.requests.filter((r) => r.method === "GET" && r.path.endsWith(FAKE)).length > chairGets
+  && (await page.getByTestId("chair-input").inputValue()) === "Câu hỏi đang gõ dở của tôi");
+await page.getByTestId("chair-send").click();
+await settle(page);
+check("chair after re-sync: the same question goes through with the new version", lastBody().expected_version === 31 && (await page.getByTestId("chair-input").inputValue()) === "");
+
+// Every 409 of contract 6 for this role, and the HTTP errors: a Vietnamese line, the screen stays.
+const CHAIR_409 = {
+  trial_item_not_available: "chưa làm được lúc này", trial_item_done: "đã làm rồi", trial_return_not_allowed: "Chưa trở lại xét hỏi được",
+  trial_return_used: "đã trở lại xét hỏi một lần", trial_decision_missing: "lưu bản nháp quyết định", trial_decision_invalid: "còn lỗi cần sửa",
+  trial_decision_locked: "đã chốt", trial_pronouncement_missing: "Chưa có lời tuyên", trial_not_presiding: "không phải vai Chủ tọa",
+  trial_turn_limit: "vừa thay đổi trạng thái", trial_missing_addressee: "chọn người được hỏi", trial_text_too_long: "dài quá", trial_text_too_short: "ngắn hơn",
+  trial_empty_text: "chưa nhập", trial_action_not_allowed: "vừa thay đổi trạng thái", trial_not_active: "đã kết thúc hoặc đã bị bỏ", trial_guard_exhausted: null
+};
+const errorLine = async (page) => ((await page.getByTestId("trial-soft-notice").count()) ? page.getByTestId("trial-soft-notice") : page.getByTestId("trial-error")).innerText().catch(() => "");
+let codesOk = true;
+const failedCodes = [];
+for (const [code, expected] of Object.entries(CHAIR_409)) {
+  resetWorld();
+  ({ context, page } = await open());
+  const c = await openChair(page, { step: 4, version: 40 });
+  world.turn = (route) => fulfillError(route, 409, code, { state: chairState(c), fields: code.startsWith("trial_item") ? { item: "moi_hoi_tham_hoi" } : undefined });
+  await oneClick(page, "moi_hoi_tham_hoi");
+  const text = await errorLine(page);
+  const ok = (expected === null ? (await page.getByTestId("trial-error").count()) === 0 : text.includes(expected)) && (await page.getByTestId("trial-composer-dock").isVisible());
+  if (!ok) failedCodes.push(code);
+  codesOk = codesOk && ok;
+  await context.close();
+}
+check(`chair: every 409 code gives its Vietnamese line, the screen stays (${failedCodes.join(", ") || "all"})`, codesOk);
+const HTTP_ERRORS = [[401, "http_error", "Phiên đăng nhập đã hết hạn"], [404, "http_error", "Không tìm thấy phiên tòa"], [422, "validation_error", "không hợp lệ"],
+  [429, "rate_limit_exceeded", "thao tác hơi nhanh"], [503, "data_unavailable", "tạm gián đoạn"], [0, "network", "Mất kết nối"]];
+let httpOk = true;
+const failedHttp = [];
+for (const [status, code, expected] of HTTP_ERRORS) {
+  resetWorld();
+  ({ context, page } = await open());
+  await openChair(page, { step: 4, version: 40 });
+  world.turn = (route) => (status === 0 ? route.abort("failed") : fulfillError(route, status, code));
+  await oneClick(page, "moi_hoi_tham_hoi");
+  const ok = (await page.getByTestId("trial-error").innerText().catch(() => "")).includes(expected) && (await page.getByTestId("trial-composer-dock").isVisible());
+  if (!ok) failedHttp.push(status);
+  httpOk = httpOk && ok;
+  await context.close();
+}
+check(`chair: 401/404/422/429/503/network each show a Vietnamese error, no blank page (${failedHttp.join(", ") || "all"})`, httpOk);
+
+// The guard pause in a presiding session is the system's, never the presiding judge's.
+resetWorld();
+({ context, page } = await open());
+{
+  const c = newChair({ step: 4, version: 40 });
+  const pause = utt(5, 4, "HE_THONG", "Hội đồng xét xử tạm nghỉ để kiểm tra lại nội dung.", { kind: "notice", speaker_role: "Hệ thống", speaker_name: "" });
+  world.role = "chu_toa";
+  world.utterances = [thuKyLine(), pause];
+  await openHearing(page, chairState(c, { awaiting: "ai", allowed_actions: ["continue"] }), "chu_toa");
+}
+check("chair guard pause: notice speaker 'Hệ thống', 'Tiếp tục' offered, no chair composer",
+  (await page.getByTestId("trial-notice").innerText()).trim().startsWith("Hệ thống:") && (await page.getByTestId("trial-paused").count()) === 1
+  && (await page.getByTestId("chair-composer").count()) === 0);
+await context.close();
+
+// Minimum operations, steps 2-9, one click each (templates) and the step button.
+resetWorld();
+chairBodies.length = 0;
+({ context, page } = await open());
+await openChair(page, { step: 2, version: 21 });
+let chairClicks = 0;
+for (let guard = 0; guard < 40 && (await page.getByTestId("chair-coming-soon").count()) === 0; guard++) {
+  if ((await page.getByTestId("trial-advance").getAttribute("data-ready")) === "true") {
+    await advanceChair(page);
+  } else {
+    const next = chairAside(page).locator('[data-testid^="chair-item-"][data-required]:not([data-done])').getByTestId("chair-use-template").first();
+    await next.click();
+    await settle(page);
+  }
+  chairClicks++;
+}
+check(`chair minimum: steps 2-9 in ${chairClicks} clicks (backend minimum 25 for this case shape), reaches step 10`,
+  chairClicks === 25 && (await page.getByTestId("chair-coming-soon").count()) === 1);
+await context.close();
+
+// Phone: the checklist is a drawer, the composer stays visible.
+resetWorld();
+chairBodies.length = 0;
+({ context, page } = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }));
+answerDialogs(page);
+await openChair(page, { step: 4, version: 40 }, makeUtterances(12));
+info = await scrollInfo(page);
+check(`chair 390px step 4: no page overflow, dock ${info.dockH}px ≤ 60% of the screen, latest line visible, 'Điều hành' button`,
+  (await noPageOverflow(page)) && info.dockH <= 506 && info.latestVisible && (await page.getByTestId("chair-open-checklist").isVisible()) && (await page.getByTestId("chair-input").isVisible()));
+await shot(page, "chair-step4-mobile");
+await page.getByTestId("chair-open-checklist").click();
+const chairDrawer = page.getByRole("dialog", { name: "Điều hành" });
+await chairDrawer.getByTestId("chair-checklist").waitFor({ timeout: 5000 });
+check("chair 390px: drawer holds the checklist, no overflow", (await chairDrawer.locator('[data-testid^="chair-item-"]').count()) === 3 && (await noPageOverflow(page)));
+await shot(page, "chair-checklist-drawer-mobile");
+await oneClick(page, "moi_hoi_tham_hoi", chairDrawer);
+check("chair 390px: one-click from the drawer sends and closes the drawer", lastBody().item === "moi_hoi_tham_hoi" && (await chairDrawer.count()) === 0);
+await page.getByTestId("trial-advance").click();
+await page.waitForTimeout(400);
+check("chair 390px: step button with items missing opens the drawer with the rows flashing",
+  (await chairDrawer.count()) === 1 && (await chairRow(chairDrawer, "hoi_bi_cao").getAttribute("data-flash")) === "true");
+await shot(page, "chair-missing-mobile");
+await page.getByRole("button", { name: "Đóng điều hành", exact: true }).click();
+await page.getByTestId("chair-input").focus();
+check("chair 390px: the drawer closes, the box is reachable", (await chairDrawer.count()) === 0 && (await page.evaluate(() => document.activeElement?.getAttribute("data-testid"))) === "chair-input");
+await context.close();
+for (const [width, height] of [[1280, 600], [1440, 900], [1920, 1080]]) {
+  resetWorld();
+  ({ context, page } = await open({ viewport: { width, height } }));
+  await openChair(page, { step: 4, version: 40 }, makeUtterances(12));
+  info = await scrollInfo(page);
+  check(`chair ${width}x${height}: no page overflow, latest line above the dock, checklist in the side panel, no drawer button`,
+    (await noPageOverflow(page)) && info.latestVisible && (await chairAside(page).getByTestId("chair-checklist").isVisible()) && !(await page.getByTestId("chair-open-checklist").isVisible()));
+  if (width !== 1440) await shot(page, `chair-step4-${width}x${height}`);
+  await context.close();
+}
+
+// Other roles: no presiding UI anywhere.
+for (const role of ["ksv", "bi_cao", "nguoi_xem"]) {
+  resetWorld();
+  world.role = role;
+  ({ context, page } = await open());
+  await openHearing(page, role === "nguoi_xem" ? baseState({ current_step: 5, allowed_actions: ["advance:6"], procedure_note: procedureNote(5) }) : baseState(), role);
+  check(`${role}: no 'Điều hành' panel or presiding composer`, (await page.getByTestId("chair-checklist").count()) === 0 && (await page.getByTestId("chair-composer").count()) === 0
+    && (await page.getByRole("tab", { name: "Điều hành" }).count()) === 0);
+  await context.close();
+}
+
+const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || m.includes(CLERK_MARK) || m.includes(DEF_MARK) || m.includes(CHAIR_MARK) || m.includes(IDENTITY_PREFILL.slice(0, 30)) || m.includes(CLERK_PREFILL.slice(0, 40)) || /Uncaught|TypeError/.test(m));
 if (process.env.E2E_DEBUG) badConsole.forEach((m) => console.log(`  console: ${m.slice(0, 200)}`));
 // Regression: nothing may stretch the document past the record (absolutely positioned sr-only labels
 // used to resolve against <body>, leaving hundreds of px of empty page under the h-screen frame).

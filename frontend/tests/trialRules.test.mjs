@@ -4,6 +4,17 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  askAddresseesForItem,
+  chairItemActionable,
+  chairItemLabel,
+  chairOneClickTemplate,
+  chairTargetOptions,
+  chairTextLimits,
+  hasPresidingAction,
+  isChairRole,
+  parseChairActions,
+  resolveChairTarget,
+  validateChairText,
   applyClerkDraft,
   chairInvitation,
   endSlotLabel,
@@ -351,4 +362,103 @@ test("legalBasisArticle: article and code from the server's citation", () => {
   assert.match(bltths.lawVersion, /BLTTHS/);
   assert.match(legalBasisArticle("điểm s khoản 1 Điều 51 Bộ luật Hình sự").lawVersion, /BLHS/);
   assert.equal(legalBasisArticle("Nghị quyết 05/2017"), null);
+});
+
+// --- Presiding judge (contract 5.4) ---
+
+const chairItem = (key, kind, o = {}) => ({ key, label: `Nhãn ${key}`, kind, required: true, done: false, available: true, template: `Lời mẫu ${key}.`, basis: ["301"], ai_calls: 0, note: null, ...o });
+const presiding = (items, o = {}) => ({
+  step: 4, items, missing_required: items.filter((i) => i.required && !i.done).map((i) => i.key),
+  counters: { questions_left: 10, remarks_left: 5, debate_rounds: 0 }, ask_addressees: ["BI_CAO", "BI_HAI"], remark_addressees: ["KSV"],
+  limits: { item: { min: 1, max: 3000 }, ask: { min: 1, max: 1500 }, remark: { min: 1, max: 1500 } },
+  return_available: false, returned: false, in_return: false, templates_reviewed: false, ...o
+});
+
+test("chair: role, label, presiding actions give the 'preside' composer mode", () => {
+  assert.equal(isChairRole("chu_toa"), true);
+  assert.equal(isChairRole("ksv"), false);
+  assert.equal(TRIAL_ROLE_LABELS.chu_toa, "Chủ tọa phiên tòa");
+  assert.equal(hasPresidingAction(["item:khai_mac", "remark"]), true);
+  assert.equal(hasPresidingAction(["speak", "end_slot", "advance:3"]), false);
+  assert.equal(composerMode({ ...baseState, allowed_actions: ["item:khai_mac"] }), "preside");
+  assert.equal(composerMode({ ...baseState, allowed_actions: ["remark", "advance:5"] }), "preside");
+  // Step 1 of a chair session is the plain advance; other roles are unchanged.
+  assert.equal(composerMode({ ...baseState, current_step: 1, allowed_actions: ["advance:2"] }), "advance");
+  assert.equal(composerMode({ ...baseState, allowed_actions: ["speak", "end_slot"] }), "speak");
+});
+
+test("chair: parseChairActions reads item/ask/invite lists, remark, return and advance", () => {
+  const parsed = parseChairActions(["item:a|b", "ask:BI_CAO|NLC_1", "invite:moi_hoi_tham_hoi", "remark", "return_to_questioning", "advance:5"]);
+  assert.deepEqual(parsed, { items: ["a", "b"], invites: ["moi_hoi_tham_hoi"], askTo: ["BI_CAO", "NLC_1"], canRemark: true, canReturn: true, advanceTo: 5 });
+  assert.deepEqual(parseChairActions([]), { items: [], invites: [], askTo: [], canRemark: false, canReturn: false, advanceTo: null });
+});
+
+test("chair: ask items go to the right people; one-click template only when it says everything", () => {
+  assert.deepEqual(askAddresseesForItem("hoi_bi_cao", ["BI_CAO", "BI_HAI"]), ["BI_CAO"]);
+  assert.deepEqual(askAddresseesForItem("hoi_nguoi_khac", ["BI_CAO", "BI_HAI", "NLC_1"]), ["BI_HAI", "NLC_1"]);
+  assert.deepEqual(askAddresseesForItem("hoi_lai", ["BI_CAO", "BI_HAI"]), ["BI_CAO", "BI_HAI"]);
+  const actions = parseChairActions(["item:khai_mac", "ask:BI_CAO|BI_HAI", "invite:moi_hoi_tham_hoi"]);
+  assert.equal(chairOneClickTemplate(chairItem("khai_mac", "item"), actions), true);
+  assert.equal(chairOneClickTemplate(chairItem("moi_hoi_tham_hoi", "invite"), actions), true);
+  assert.equal(chairOneClickTemplate(chairItem("hoi_bi_cao", "ask"), actions), true);
+  assert.equal(chairOneClickTemplate(chairItem("hoi_nguoi_khac", "ask"), parseChairActions(["ask:BI_CAO|BI_HAI|NLC_1"])), false);
+  // Not listed, not available, or no template: no one-click.
+  assert.equal(chairOneClickTemplate(chairItem("kiem_tra_co_mat", "item"), actions), false);
+  assert.equal(chairOneClickTemplate(chairItem("khai_mac", "item", { available: false }), actions), false);
+  assert.equal(chairOneClickTemplate(chairItem("khai_mac", "item", { template: null }), actions), false);
+  assert.equal(chairItemActionable(chairItem("tro_lai_xet_hoi", "return"), parseChairActions(["return_to_questioning"])), true);
+  assert.equal(chairItemActionable(chairItem("tro_lai_xet_hoi", "return"), parseChairActions(["remark"])), false);
+});
+
+test("chair: composer targets only from allowed_actions; default prefers a question, then a required item", () => {
+  const p = presiding([chairItem("cong_bo_loi_khai_bi_hai", "item"), chairItem("moi_hoi_tham_hoi", "invite", { required: false }), chairItem("hoi_bi_cao", "ask")]);
+  const options = chairTargetOptions(p, parseChairActions(["item:cong_bo_loi_khai_bi_hai", "invite:moi_hoi_tham_hoi", "ask:BI_CAO", "remark"]));
+  assert.deepEqual(options.map((o) => o.value), ["item:cong_bo_loi_khai_bi_hai", "invite:moi_hoi_tham_hoi", "ask", "remark"]);
+  assert.equal(resolveChairTarget("", p, options), "ask");
+  assert.equal(resolveChairTarget("remark", p, options), "remark");
+  const noAsk = options.filter((o) => o.value !== "ask");
+  assert.equal(resolveChairTarget("ask", p, noAsk), "item:cong_bo_loi_khai_bi_hai");
+  assert.equal(resolveChairTarget("", presiding([]), []), null);
+});
+
+test("chair: text limits from presiding.limits; an empty box sends the template where there is one", () => {
+  const p = presiding([chairItem("khai_mac", "item"), chairItem("x", "item", { template: null })]);
+  const item = chairTextLimits("item:khai_mac", p);
+  assert.equal(item.max, 3000);
+  assert.equal(item.optional, true);
+  assert.equal(validateChairText("", item), null);
+  assert.match(validateChairText("a".repeat(3001), item), /3\.000/);
+  assert.equal(chairTextLimits("item:x", p).optional, false);
+  assert.equal(validateChairText(" ", chairTextLimits("item:x", p)), "Bạn chưa nhập nội dung.");
+  const ask = chairTextLimits("ask", p);
+  assert.equal(ask.max, 1500);
+  assert.equal(validateChairText("", ask), "Bạn chưa nhập nội dung.");
+  assert.match(validateChairText("a".repeat(1501), chairTextLimits("remark", p)), /1\.500/);
+  assert.equal(chairTextLimits("return", p).optional, true);
+});
+
+test("chair: procedure_item labels, current step first, catalogue as fallback", () => {
+  const p = presiding([chairItem("hoi_bi_cao", "ask")]);
+  assert.equal(chairItemLabel("hoi_bi_cao", p), "Nhãn hoi_bi_cao");
+  assert.equal(chairItemLabel("khai_mac", p), "Khai mạc, đọc quyết định đưa vụ án ra xét xử");
+  assert.equal(chairItemLabel("remark", null), "Phát biểu khác");
+  assert.equal(chairItemLabel("unknown_key", null), null);
+  assert.equal(chairItemLabel(null, p), null);
+});
+
+test("chair 409s: missing_items parsed; new codes have Vietnamese messages; re-sync set", () => {
+  const body = JSON.stringify({ error: { code: "trial_procedure_incomplete", message: "m" }, missing_items: ["khai_mac", 3, "hoi_thay_doi"], state: baseState });
+  const parsed = parseTrialErrorBody(409, body);
+  assert.deepEqual(parsed.missingItems, ["khai_mac", "hoi_thay_doi"]);
+  assert.deepEqual(parseTrialErrorBody(409, JSON.stringify({ error: { code: "trial_busy", message: "m" } })).missingItems, []);
+  const codes = ["trial_procedure_incomplete", "trial_item_not_available", "trial_item_done", "trial_return_not_allowed", "trial_return_used",
+    "trial_decision_missing", "trial_decision_invalid", "trial_decision_locked", "trial_pronouncement_missing", "trial_not_presiding"];
+  const generic = messageForTrialError({ status: 409, code: "trial_unknown_code" });
+  for (const code of codes) {
+    const message = messageForTrialError({ status: 409, code });
+    assert.notEqual(message, generic, code);
+  }
+  assert.equal(isResyncConflict("trial_item_done"), true);
+  assert.equal(isResyncConflict("trial_return_used"), true);
+  assert.equal(isResyncConflict("trial_procedure_incomplete"), false);
 });

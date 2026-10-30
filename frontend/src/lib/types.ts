@@ -230,7 +230,7 @@ export interface NoteUpsertRequest {
 // ============================================================================
 
 // The roles the client knows how to present. Which ones may be chosen comes from config.user_roles.
-export type TrialUserRole = "ksv" | "luat_su" | "nguoi_xem" | "thu_ky" | "bi_cao";
+export type TrialUserRole = "ksv" | "luat_su" | "nguoi_xem" | "thu_ky" | "bi_cao" | "chu_toa";
 export type TrialStatus = "active" | "completed" | "abandoned";
 export type TrialAwaiting = "user" | "ai" | "none";
 export type TrialUtteranceKind = "speech" | "procedural" | "notice";
@@ -295,6 +295,51 @@ export interface TrialState {
   // Defendant role only (contract 5.3): the question put to the student that waits for an answer
   // (đoạn xen); null at any other time and for every other role.
   pending_question?: TrialPendingQuestion | null;
+  // Presiding judge role only, steps 2-11 (contract 5.4): the step's checklist, counters and limits.
+  presiding?: TrialPresiding | null;
+  // Presiding judge role only, steps 10-11: the student's own decision. Not used before step 10.
+  decision?: Record<string, unknown> | null;
+}
+
+export type TrialPresidingItemKind = "item" | "ask" | "invite" | "return" | "decide" | "pronounce";
+
+export interface TrialPresidingItem {
+  key: string;
+  label: string;
+  kind: TrialPresidingItemKind;
+  required: boolean;
+  done: boolean;
+  // Can be done right now (order, conditions, no AI running).
+  available: boolean;
+  // "Dùng lời mẫu" text with full names; null when the item has none.
+  template: string | null;
+  // BLTTHS article numbers.
+  basis: string[];
+  ai_calls: number;
+  note: string | null;
+}
+
+export interface TrialPresidingLimits {
+  item: { min: number; max: number };
+  ask: { min: number; max: number };
+  remark: { min: number; max: number };
+  reasoning?: { min: number; max: number };
+}
+
+export interface TrialPresiding {
+  step: number;
+  items: TrialPresidingItem[];
+  missing_required: string[];
+  counters: { questions_left: number; remarks_left: number; debate_rounds: number };
+  ask_addressees: string[];
+  remark_addressees: string[];
+  limits: TrialPresidingLimits;
+  // Điều 323: the button may be pressed now / was used / the short step 5 is running.
+  return_available: boolean;
+  returned: boolean;
+  in_return: boolean;
+  // false = template wording still a draft; shown neutrally, no review badge (contract 5.4).
+  templates_reviewed: boolean;
 }
 
 export interface TrialDeclineNote {
@@ -366,6 +411,8 @@ export interface TrialUtterance {
   kind: TrialUtteranceKind;
   text: string;
   addressee: string | null;
+  // Presiding judge sessions only: the checklist item this line carries out; null otherwise.
+  procedure_item?: string | null;
 }
 
 export interface TrialParticipant {

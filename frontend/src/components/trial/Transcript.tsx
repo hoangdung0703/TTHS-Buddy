@@ -15,11 +15,14 @@ import { cn } from "@/lib/utils";
 export function Transcript({
   utterances,
   steps,
-  participants
+  participants,
+  itemLabel
 }: {
   utterances: TrialUtterance[];
   steps: TrialStepInfo[];
   participants: Record<string, TrialParticipant>;
+  // Presiding judge sessions: the checklist label of an utterance's procedure_item.
+  itemLabel?: (key: string) => string | null;
 }) {
   const titleOf = (number: number) => steps.find((step) => step.number === number)?.title ?? "";
 
@@ -38,7 +41,7 @@ export function Transcript({
                 <span className="h-px flex-1 bg-border" />
               </li>
             ) : null}
-            <UtteranceItem utterance={utterance} participants={participants} />
+            <UtteranceItem utterance={utterance} participants={participants} itemLabel={itemLabel} />
           </Fragment>
         );
       })}
@@ -46,8 +49,23 @@ export function Transcript({
   );
 }
 
-function UtteranceItem({ utterance, participants }: { utterance: TrialUtterance; participants: Record<string, TrialParticipant> }) {
+function UtteranceItem({
+  utterance,
+  participants,
+  itemLabel
+}: {
+  utterance: TrialUtterance;
+  participants: Record<string, TrialParticipant>;
+  itemLabel?: (key: string) => string | null;
+}) {
   const speaker = `${utterance.speaker_role}${utterance.speaker_name ? ` · ${utterance.speaker_name}` : ""}`;
+  // Presiding judge: which checklist item the student's line carried out (contract 4, procedure_item).
+  const item = utterance.is_user && utterance.procedure_item && itemLabel ? itemLabel(utterance.procedure_item) : null;
+  const itemTag = item ? (
+    <span data-testid="trial-procedure-item" className="ml-1.5 rounded-full bg-muted px-1.5 py-px text-[0.65rem] font-normal text-muted-foreground">
+      {item}
+    </span>
+  ) : null;
 
   if (utterance.kind === "notice") {
     return (
@@ -68,7 +86,10 @@ function UtteranceItem({ utterance, participants }: { utterance: TrialUtterance;
   if (utterance.kind === "procedural" && utterance.is_user) {
     return (
       <li data-testid="trial-user-procedural" data-seq={utterance.seq} className="flex flex-col items-end gap-1">
-        <p className="text-xs font-medium text-muted-foreground">Bạn · {speaker}</p>
+        <p className="text-xs font-medium text-muted-foreground">
+          Bạn · {speaker}
+          {itemTag}
+        </p>
         <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm border border-border bg-muted/50 px-4 py-2.5 text-sm leading-relaxed text-foreground sm:max-w-[75%]">
           {utterance.text}
         </p>
@@ -97,7 +118,8 @@ function UtteranceItem({ utterance, participants }: { utterance: TrialUtterance;
       <li data-testid="trial-user-utterance" data-seq={utterance.seq} className="flex flex-col items-end gap-1">
         <p className="text-xs font-medium text-muted-foreground">
           Bạn · {speaker}
-          {addressee ? ` → hỏi ${addressee.role} ${addressee.name}` : ""}
+          {addressee ? ` → ${utterance.procedure_item === "remark" ? "" : "hỏi "}${addressee.role} ${addressee.name}` : ""}
+          {itemTag}
         </p>
         {/* The student's own words stay exactly as sent (pre-wrap), only the layout widens. */}
         <div

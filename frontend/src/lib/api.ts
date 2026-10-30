@@ -443,6 +443,7 @@ export class TrialApiError extends ApiError {
   public readonly code: string | null;
   public readonly featureDisabled: boolean;
   public readonly state: TrialState | null;
+  public readonly missingItems: string[];
   public readonly serverMessage: string | null;
 
   public constructor(parsed: ParsedTrialError) {
@@ -451,6 +452,7 @@ export class TrialApiError extends ApiError {
     this.code = parsed.code;
     this.featureDisabled = parsed.featureDisabled;
     this.state = parsed.state;
+    this.missingItems = parsed.missingItems;
     this.serverMessage = parsed.serverMessage;
   }
 }
@@ -630,7 +632,7 @@ function dispatchTrialBlock(block: string, handlers: TrialStreamHandlers): void 
 async function streamTrial(path: string, body: unknown, handlers: TrialStreamHandlers, signal?: AbortSignal): Promise<void> {
   const response = await trialRequest(path, { method: "POST", body: JSON.stringify(body), signal });
   if (response.body === null) {
-    throw new TrialApiError({ status: response.status, code: null, featureDisabled: false, state: null, serverMessage: null });
+    throw new TrialApiError({ status: response.status, code: null, featureDisabled: false, state: null, missingItems: [], serverMessage: null });
   }
   await readSseBlocks(response.body, (block) => dispatchTrialBlock(block, handlers));
 }
@@ -643,7 +645,12 @@ export async function createTrial(request: TrialCreateRequest, handlers: TrialSt
 export type TrialTurnRequest =
   | { expected_step: number; expected_version: number; action: "speak"; text: string; addressee?: string }
   | { expected_step: number; expected_version: number; action: "end_slot" | "continue" | "decline" }
-  | { expected_step: number; expected_version: number; action: "advance"; target_step: number };
+  | { expected_step: number; expected_version: number; action: "advance"; target_step: number }
+  // Presiding judge (contract 5.4). No text = the item's template.
+  | { expected_step: number; expected_version: number; action: "item" | "invite"; item: string; text?: string }
+  | { expected_step: number; expected_version: number; action: "ask"; addressee: string; text: string }
+  | { expected_step: number; expected_version: number; action: "remark"; text: string; addressee?: string }
+  | { expected_step: number; expected_version: number; action: "return_to_questioning"; text?: string };
 
 // POST /api/trials/{id}/turn - SSE. Only the fields of the chosen action are sent: the schema
 // forbids extras.

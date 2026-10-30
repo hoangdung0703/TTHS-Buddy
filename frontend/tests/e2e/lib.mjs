@@ -144,7 +144,7 @@ const notFound = () => json(404, { detail: "Not Found" });
 export const sseEvent = (name, data) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
 export const fulfillSse = (route, body) => route.fulfill({ status: 200, headers: { ...cors, "content-type": "text/event-stream" }, body });
 export const fulfillError = (route, status, code, extra = {}) =>
-  route.fulfill(json(status, { error: { code, message: extra.message ?? "m" }, ...(extra.state ? { state: extra.state } : {}) }));
+  route.fulfill(json(status, { error: { code, message: extra.message ?? "m" }, ...(extra.fields ?? {}), ...(extra.state ? { state: extra.state } : {}) }));
 
 async function handleApi(route) {
   const request = route.request();

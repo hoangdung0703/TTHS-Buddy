@@ -7,10 +7,12 @@ import { cn } from "@/lib/utils";
 
 // 11-step progress (THIET-KE Mục 7, màn 3). Titles and legal bases come from the server's `steps`.
 // Desktop: one numbered marker per step, title + BLTTHS articles on hover/focus. Below md: a
-// one-line "Bước x/11 · title" with a thin bar.
-export function StepBar({ steps, currentStep, completed }: { steps: TrialStepInfo[]; currentStep: number; completed: boolean }) {
+// one-line "Bước x/11 · title" with a thin bar. `currentLabel` replaces the current step's title
+// (presiding judge, Điều 323 return: "Trở lại xét hỏi").
+export function StepBar({ steps, currentStep, completed, currentLabel }: { steps: TrialStepInfo[]; currentStep: number; completed: boolean; currentLabel?: string }) {
   const total = steps.length;
-  const current = steps.find((step) => step.number === currentStep);
+  const found = steps.find((step) => step.number === currentStep);
+  const current = found && currentLabel ? { ...found, title: currentLabel } : found;
   const doneCount = completed ? total : Math.max(0, currentStep - 1);
 
   return (
@@ -65,7 +67,7 @@ export function StepBar({ steps, currentStep, completed }: { steps: TrialStepInf
                   !isCurrent && "hidden xl:block"
                 )}
               >
-                {step.title}
+                {isCurrent && currentLabel ? currentLabel : step.title}
               </span>
               <span
                 role="tooltip"

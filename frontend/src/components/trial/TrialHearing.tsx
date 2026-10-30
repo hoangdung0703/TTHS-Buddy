@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CaseFilePanel, type CaseFileTab } from "@/components/trial/CaseFilePanel";
 import { ClerkNotesPanel } from "@/components/trial/ClerkNotesPanel";
+import { ChairComingSoon, PresidingChecklist, PresidingComposer, type ChairMissingFlash } from "@/components/trial/PresidingPanel";
 import { StepBar } from "@/components/trial/StepBar";
 import { TrialComposer, type ComposerAction } from "@/components/trial/TrialComposer";
 import { Transcript } from "@/components/trial/Transcript";
@@ -15,8 +16,8 @@ import { useClerkNotes } from "@/hooks/useClerkNotes";
 import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
 import { abandonTrial, deleteTrial, getTrial, sendTrialTurn, TrialApiError } from "@/lib/api";
 import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
-import { isClerkRole, isResyncConflict, mergeUtterances, messageForTrialError, TRIAL_ROLE_LABELS } from "@/lib/trialRules";
-import type { TrialDetail, TrialState, TrialUtterance } from "@/lib/types";
+import { chairItemLabel, composerMode, isChairRole, isClerkRole, isResyncConflict, mergeUtterances, messageForTrialError, TRIAL_ROLE_LABELS, type ChairTarget } from "@/lib/trialRules";
+import type { TrialDetail, TrialPresidingItem, TrialState, TrialUtterance } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // Auto-follow only when the reader is this close to the bottom; further up they are re-reading.
@@ -41,10 +42,18 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const [turnError, setTurnError] = useState<string | null>(null);
   const [softNotice, setSoftNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  // Phone drawer: the case file, or the clerk's notes.
-  const [drawer, setDrawer] = useState<"case" | "notes" | null>(null);
-  // Clerk sessions: which view the desktop side panel shows (THIET-KE 11.3.7: notes are its second tab).
-  const [sideTab, setSideTab] = useState<"notes" | "case">("notes");
+  // Phone drawer: the case file, the clerk's notes, or the presiding judge's checklist.
+  const [drawer, setDrawer] = useState<"case" | "notes" | "preside" | null>(null);
+  // Clerk and presiding sessions: which view the desktop side panel shows (THIET-KE 11.3.7: notes
+  // are its second tab; the presiding checklist likewise). "work" = notes or checklist.
+  const [sideTab, setSideTab] = useState<"work" | "case">("work");
+  // Presiding judge (contract 5.4): what the composer sends, to whom, and the required items the
+  // step button pointed at.
+  const [chairTarget, setChairTarget] = useState<ChairTarget>("");
+  const [chairAddressee, setChairAddressee] = useState("");
+  const [chairMissing, setChairMissing] = useState<string[] | null>(null);
+  const [chairFlash, setChairFlash] = useState<ChairMissingFlash | null>(null);
+  const chairInputRef = useRef<HTMLTextAreaElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [expandedOpen, setExpandedOpen] = useState(false);
   const [caseTab, setCaseTab] = useState<CaseFileTab>("summary");
@@ -64,6 +73,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const slowRequest = useSlowRequestNotice();
   const { start: startSlow, stop: stopSlow } = slowRequest;
   const isClerk = detail !== null && isClerkRole(detail.user_role);
+  const isChair = detail !== null && isChairRole(detail.user_role);
   // The one owner of the clerk's notes on this page; every notes editor below is a view of it.
   const clerkNotes = useClerkNotes(sessionId, isClerk, state?.status === "abandoned");
   // The step-1 report template goes into the composer once; after that the box is the student's.
@@ -86,6 +96,11 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
       setDraft((current) => (current.length === 0 ? answerPrefill : current));
     }
   }, [answerPrefill, pendingSeq]);
+
+  const currentStep = state?.current_step ?? null;
+  useEffect(() => {
+    setChairMissing(null);
+  }, [currentStep]);
 
   const reload = useCallback(async (): Promise<boolean> => {
     try {
@@ -252,9 +267,12 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
     busyRef.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
+    // Only an action that sent the box's text empties it (a one-click template keeps a draft).
+    const sentDraft = "text" in action && action.text !== undefined && action.text === draft;
     setBusy(true);
     setTurnError(null);
     setSoftNotice(null);
+    setChairMissing(null);
     setStatusMessage(null);
     startSlow();
 
@@ -296,7 +314,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
           },
           onUtterance: (utterance) => {
             stopSlow();
-            if (utterance.is_user) {
+            if (utterance.is_user && sentDraft) {
               setDraft("");
             }
             setUtterances((current) => mergeUtterances(current, [utterance]));
@@ -320,7 +338,10 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
       if (error instanceof TrialApiError && error.state !== null) {
         // 409: adopt the server's state, then re-read the transcript.
         setState(error.state);
-        if (isResyncConflict(error.code)) {
+        if (error.code === "trial_procedure_incomplete") {
+          // Contract 6: no error box - the missing items flash in the checklist.
+          showMissing(error.missingItems.length > 0 ? error.missingItems : (error.state.presiding?.missing_required ?? []));
+        } else if (isResyncConflict(error.code)) {
           setSoftNotice(messageForTrialError(error));
           if (error.code === "trial_busy") {
             await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -369,6 +390,36 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
       setTurnError("Kết nối bị ngắt giữa chừng. Đã tải lại trạng thái phiên tòa; nếu cần, bấm “Tiếp tục”.");
       await reload();
     }
+  }
+
+  // Points at the required items still to do: the list under the composer, and the rows flash in
+  // the checklist (side panel on desktop, drawer on phones). Sends nothing.
+  function showMissing(keys: string[]): void {
+    setChairMissing(keys);
+    setChairFlash({ keys, nonce: Date.now() });
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setSideTab("work");
+    } else {
+      setDrawer("preside");
+    }
+  }
+
+  // "Tự soạn" / "Soạn câu hỏi" in the checklist: the item goes into the composer, its template in
+  // the box when the box is empty.
+  function composeItem(item: TrialPresidingItem): void {
+    if (item.kind === "ask") {
+      setChairTarget("ask");
+      if (item.key === "hoi_bi_cao") {
+        setChairAddressee("BI_CAO");
+      }
+    } else {
+      setChairTarget(`${item.kind}:${item.key}`);
+    }
+    if (item.template && draft.trim().length === 0) {
+      setDraft(item.template);
+    }
+    setDrawer(null);
+    requestAnimationFrame(() => chairInputRef.current?.focus());
   }
 
   async function handleAbandon(): Promise<void> {
@@ -436,6 +487,28 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const isInjuryCase = detail.case_file.charge?.dieu === "134";
   const roleBrief = detail.role_brief ?? null;
   const caseFilePanel = <CaseFilePanel caseFile={detail.case_file} isInjuryCase={isInjuryCase} tab={caseTab} onTabChange={setCaseTab} roleBrief={roleBrief} />;
+  const presiding = isChair ? (state.presiding ?? null) : null;
+  const drawerTitle = drawer === "notes" ? "Ghi chép" : drawer === "preside" ? "Điều hành" : "Hồ sơ vụ án";
+  const mode = composerMode(state);
+  // Presiding judge, steps 2-9: the checklist and its composer. Steps 10-11 come in a later stage.
+  const chairComposer = presiding !== null && !busy && state.status === "active" && state.awaiting === "user" && state.current_step <= 9
+    && (mode === "preside" || mode === "advance");
+  const chairSoon = isChair && !busy && state.status === "active" && state.current_step >= 10 && mode !== "paused" && mode !== "exhausted";
+  const hasWorkTab = isClerk || presiding !== null;
+  const workTab = hasWorkTab && sideTab === "work";
+  const checklist = presiding !== null ? (
+    <PresidingChecklist
+      presiding={presiding}
+      allowedActions={state.awaiting === "user" ? state.allowed_actions : []}
+      busy={busy}
+      flash={chairFlash}
+      onAction={(action) => {
+        setDrawer(null);
+        void runAction(action);
+      }}
+      onCompose={composeItem}
+    />
+  ) : null;
 
   return (
     <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
@@ -499,14 +572,24 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
               </div>
             </div>
           </div>
-          <StepBar steps={detail.steps} currentStep={state.current_step} completed={state.status === "completed"} />
+          <StepBar
+            steps={detail.steps}
+            currentStep={state.current_step}
+            completed={state.status === "completed"}
+            currentLabel={presiding?.in_return ? "Trở lại xét hỏi" : undefined}
+          />
         </header>
 
         <div className="min-w-0" aria-live="polite" aria-relevant="additions">
           {utterances.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">Phiên tòa chưa có diễn biến nào.</p>
           ) : (
-            <Transcript utterances={utterances} steps={detail.steps} participants={detail.participants} />
+            <Transcript
+              utterances={utterances}
+              steps={detail.steps}
+              participants={detail.participants}
+              itemLabel={isChair ? (key) => chairItemLabel(key, presiding) : undefined}
+            />
           )}
           {busy ? (
             <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground" data-testid="trial-status">
@@ -557,6 +640,28 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
               </Button>
             </div>
           ) : null}
+          {chairComposer && presiding !== null ? (
+            <PresidingComposer
+              ref={chairInputRef}
+              state={state}
+              presiding={presiding}
+              steps={detail.steps}
+              participants={detail.participants}
+              busy={busy}
+              draft={draft}
+              onDraftChange={setDraft}
+              target={chairTarget}
+              onTargetChange={setChairTarget}
+              addressee={chairAddressee}
+              onAddresseeChange={setChairAddressee}
+              missing={chairMissing}
+              onAction={(action) => void runAction(action)}
+              onOpenChecklist={() => setDrawer("preside")}
+              onShowMissing={() => showMissing(presiding.missing_required)}
+            />
+          ) : chairSoon ? (
+            <ChairComingSoon />
+          ) : (
           <TrialComposer
             recordPending={recordPending}
             sessionId={sessionId}
@@ -575,38 +680,39 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
             onAbandon={() => void handleAbandon()}
             onDelete={() => void handleDelete()}
           />
+          )}
         </div>
       </div>
 
       <aside
-        aria-label={isClerk ? "Ghi chép và hồ sơ vụ án" : "Hồ sơ vụ án"}
+        aria-label={isClerk ? "Ghi chép và hồ sơ vụ án" : presiding !== null ? "Điều hành và hồ sơ vụ án" : "Hồ sơ vụ án"}
         className="hidden min-w-0 lg:sticky lg:top-12 lg:block lg:max-h-[calc(100vh-8rem)] lg:self-start lg:overflow-hidden"
       >
-        <div className={cn("flex max-h-[calc(100vh-8rem)] flex-col rounded-xl border border-primary/[0.08] bg-card p-4 shadow-[0_2px_20px_rgba(30,36,96,0.05)]", isClerk && sideTab === "notes" && "h-[calc(100vh-8rem)]")}>
+        <div className={cn("flex max-h-[calc(100vh-8rem)] flex-col rounded-xl border border-primary/[0.08] bg-card p-4 shadow-[0_2px_20px_rgba(30,36,96,0.05)]", workTab && "h-[calc(100vh-8rem)]")}>
           <div className="mb-2 flex items-center justify-between gap-2">
-            {isClerk ? (
+            {hasWorkTab ? (
               <div role="tablist" aria-label="Khung bên" className="flex gap-1 rounded-full bg-muted p-0.5">
-                {(["notes", "case"] as const).map((key) => (
+                {(["work", "case"] as const).map((key) => (
                   <button
                     key={key}
                     type="button"
                     role="tab"
                     aria-selected={sideTab === key}
-                    data-testid={`trial-side-${key}`}
+                    data-testid={`trial-side-${key === "work" ? (isClerk ? "notes" : "preside") : "case"}`}
                     onClick={() => setSideTab(key)}
                     className={cn(
                       "min-h-9 rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       sideTab === key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    {key === "notes" ? "Ghi chép" : "Hồ sơ vụ án"}
+                    {key === "case" ? "Hồ sơ vụ án" : isClerk ? "Ghi chép" : "Điều hành"}
                   </button>
                 ))}
               </div>
             ) : (
               <h2 className="text-sm font-semibold text-foreground">Hồ sơ vụ án</h2>
             )}
-            {isClerk && sideTab === "notes" ? null : (
+            {workTab ? null : (
             <button
               ref={expandButtonRef}
               type="button"
@@ -620,7 +726,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
             </button>
             )}
           </div>
-          {isClerk && sideTab === "notes" ? <ClerkNotesPanel notes={clerkNotes} prompt={state.clerk_prompt} fill /> : caseFilePanel}
+          {workTab ? (isClerk ? <ClerkNotesPanel notes={clerkNotes} prompt={state.clerk_prompt} fill /> : checklist) : caseFilePanel}
         </div>
       </aside>
 
@@ -651,15 +757,15 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
       ) : null}
 
       {drawer !== null ? (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label={drawer === "notes" ? "Ghi chép" : "Hồ sơ vụ án"}>
-          <button type="button" aria-label={drawer === "notes" ? "Đóng ghi chép (nhấn ra ngoài)" : "Đóng hồ sơ (nhấn ra ngoài)"} onClick={() => setDrawer(null)} className="absolute inset-0 bg-black/40" />
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label={drawerTitle}>
+          <button type="button" aria-label={`Đóng ${drawerTitle.toLowerCase()} (nhấn ra ngoài)`} onClick={() => setDrawer(null)} className="absolute inset-0 bg-black/40" />
           <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-card p-4 shadow-xl">
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-foreground">{drawer === "notes" ? "Ghi chép" : "Hồ sơ vụ án"}</h2>
+              <h2 className="text-sm font-semibold text-foreground">{drawerTitle}</h2>
               <button
                 ref={drawerCloseRef}
                 type="button"
-                aria-label={drawer === "notes" ? "Đóng ghi chép" : "Đóng hồ sơ vụ án"}
+                aria-label={`Đóng ${drawerTitle.toLowerCase()}`}
                 onClick={() => setDrawer(null)}
                 className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-accent/20 hover:text-foreground"
               >
@@ -667,7 +773,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
               </button>
             </div>
             <div className={cn("flex min-h-0 flex-1 flex-col", drawer === "notes" ? "overflow-y-auto" : "overflow-hidden")}>
-              {drawer === "notes" ? <ClerkNotesPanel notes={clerkNotes} prompt={state.clerk_prompt} fill /> : caseFilePanel}
+              {drawer === "notes" ? <ClerkNotesPanel notes={clerkNotes} prompt={state.clerk_prompt} fill /> : drawer === "preside" && checklist !== null ? checklist : caseFilePanel}
             </div>
           </div>
         </div>
