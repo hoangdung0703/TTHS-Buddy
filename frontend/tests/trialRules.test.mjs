@@ -4,6 +4,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  canDecide,
+  chairDeliberationOpen,
+  chairItemInDeliberation,
+  decisionBody,
+  decisionDirty,
+  decisionFieldShown,
+  decisionFindingsFor,
+  decisionFormValues,
+  decisionUnsetFields,
+  monthsLabel,
+  parseWholeNumber,
+  penaltyFrameText,
   askAddresseesForItem,
   chairItemActionable,
   chairItemLabel,
@@ -461,4 +473,98 @@ test("chair 409s: missing_items parsed; new codes have Vietnamese messages; re-s
   assert.equal(isResyncConflict("trial_item_done"), true);
   assert.equal(isResyncConflict("trial_return_used"), true);
   assert.equal(isResyncConflict("trial_procedure_incomplete"), false);
+});
+
+// --- Presiding judge, steps 10-11 (contract 3.11, 5.4) ---------------------------------------------
+const decisionForm = {
+  dieu: "173", charged_khoan: "1", charged_diem: [], khoan: ["1", "2", "3", "4"], diem: { 1: [], 2: ["a", "b"] },
+  frames: { 1: { prison_min_months: 6, prison_max_months: 36, non_custodial_max_months: 36, fine_as_main: false }, 2: null },
+  mitigating_points: { 1: ["b", "s"], 2: [] }, aggravating_points: { 1: ["g"] }, penalty_types: ["tu", "cai_tao_khong_giam_giu", "phat_tien", "khong"],
+  facts: ["F1"], exhibits: ["E1", "E3"], dispositions: ["tra_lai", "tich_thu_sung_ngan_sach", "tich_thu_tieu_huy", "luu_ho_so"],
+  civil_claim_vnd: 2000000, compensation_vnd: null, reasoning_limits: { min: 200, max: 2000 }
+};
+const emptyDecision = { draft: null, updated_at: null, check: null, locked: false, assessor_opinions: null, assessor_draft_updated_at: null,
+  assessor_order_note: "n", pronouncement_preview: null, form: decisionForm };
+
+test("decision form: empty form preselects only the charged khoản; nothing else is suggested", () => {
+  const values = decisionFormValues(emptyDecision);
+  assert.equal(values.khoan, "1");
+  assert.equal(values.guilty, null);
+  assert.equal(values.penalty_type, "");
+  assert.equal(values.penalty_months, "");
+  assert.deepEqual(values.exhibits, { E1: "", E3: "" });
+  assert.deepEqual(decisionUnsetFields(values), ["guilty", "penalty_type"]);
+  assert.equal(decisionBody(values, decisionForm), null);
+});
+
+test("decision body: contract fields only, numbers parsed, fine/probation only when they apply, unchosen exhibits left out", () => {
+  const values = { ...decisionFormValues(emptyDecision), guilty: true, penalty_type: "tu", penalty_months: "18", fine_vnd: "5.000.000",
+    probation_months: "24", civil_amount_vnd: "2.000.000", reasoning_summary: "x", exhibits: { E1: "tra_lai", E3: "" },
+    mitigating: [{ khoan: "1", diem: "s", fact_ids: ["F1"] }] };
+  const body = decisionBody(values, decisionForm);
+  assert.deepEqual(Object.keys(body).sort(), ["aggravating", "applies_dieu_54", "civil_amount_vnd", "defendant_pays_civil_fee", "defendant_pays_criminal_fee", "diem",
+    "dieu", "exhibits", "fine_vnd", "guilty", "khoan", "mitigating", "penalty_months", "penalty_type", "probation_months", "reasoning_summary", "suspended"]);
+  assert.equal(body.dieu, "173");
+  assert.equal(body.penalty_months, 18);
+  assert.equal(body.fine_vnd, null);
+  assert.equal(body.probation_months, null);
+  assert.equal(body.civil_amount_vnd, 2000000);
+  assert.deepEqual(body.exhibits, [{ evidence_id: "E1", disposition: "tra_lai" }]);
+  assert.equal(decisionBody({ ...values, penalty_type: "phat_tien" }, decisionForm).fine_vnd, 5000000);
+  assert.equal(decisionBody({ ...values, suspended: true }, decisionForm).probation_months, 24);
+});
+
+test("decision draft round trip: saved draft -> form values -> same body; dirty only on change", () => {
+  const values = { ...decisionFormValues(emptyDecision), guilty: true, penalty_type: "tu", penalty_months: "12", reasoning_summary: "r", exhibits: { E1: "tra_lai", E3: "luu_ho_so" } };
+  const draft = decisionBody(values, decisionForm);
+  const saved = decisionFormValues({ ...emptyDecision, draft });
+  assert.deepEqual(decisionBody(saved, decisionForm), draft);
+  assert.equal(decisionDirty(saved, decisionFormValues({ ...emptyDecision, draft })), false);
+  assert.equal(decisionDirty({ ...saved, penalty_months: "13" }, saved), true);
+});
+
+test("parseWholeNumber: grouping dots and spaces, empty is null", () => {
+  assert.equal(parseWholeNumber("2.000.000"), 2000000);
+  assert.equal(parseWholeNumber(" 12 "), 12);
+  assert.equal(parseWholeNumber(""), null);
+});
+
+test("decision findings: exact field match; unknown fields and gone rows go to the summary", () => {
+  const check = { errors: [{ code: "reasoning_length", field: "reasoning_summary", message: "m", basis: [] }, { code: "circumstance_no_fact", field: "mitigating[1]", message: "m", basis: [] }],
+    warnings: [{ code: "civil_over_claim", field: "civil_amount_vnd", message: "m", basis: [] }], flags: [] };
+  assert.equal(decisionFindingsFor(check, "reasoning_summary").errors.length, 1);
+  assert.equal(decisionFindingsFor(check, "civil_amount_vnd").warnings.length, 1);
+  assert.equal(decisionFindingsFor(null, "khoan").errors.length, 0);
+  assert.equal(decisionFieldShown("mitigating[1]", { mitigating: 2, aggravating: 0 }), true);
+  assert.equal(decisionFieldShown("mitigating[1]", { mitigating: 1, aggravating: 0 }), false);
+  assert.equal(decisionFieldShown("something_new", { mitigating: 0, aggravating: 0 }), false);
+});
+
+test("frames and durations as the form shows them", () => {
+  assert.equal(monthsLabel(6), "6 tháng");
+  assert.equal(monthsLabel(36), "3 năm");
+  assert.equal(monthsLabel(30), "2 năm 6 tháng");
+  assert.match(penaltyFrameText(decisionForm.frames["1"]), /tù từ 6 tháng đến 3 năm; cải tạo không giam giữ đến 3 năm/);
+  assert.match(penaltyFrameText(null), /chưa tách được khung/);
+});
+
+test("decide only when the server lists it, the saved draft has no hard error and nothing is unsaved", () => {
+  const clean = { ...emptyDecision, check: { errors: [], warnings: [{ code: "w", field: "khoan", message: "m", basis: [] }], flags: [] } };
+  assert.equal(canDecide({ allowed_actions: ["decide"], decision: clean }, false), true);
+  assert.equal(canDecide({ allowed_actions: ["decide"], decision: clean }, true), false);
+  assert.equal(canDecide({ allowed_actions: [], decision: clean }, false), false);
+  assert.equal(canDecide({ allowed_actions: ["decide"], decision: emptyDecision }, false), false);
+});
+
+test("deliberation room opens after vào phòng nghị án; assessors, decide, pronounce never from the checklist", () => {
+  const items = (done) => ({ items: [{ key: "vao_nghi_an", kind: "item", done }] });
+  assert.equal(chairDeliberationOpen({ current_step: 10, presiding: items(false), decision: emptyDecision }), false);
+  assert.equal(chairDeliberationOpen({ current_step: 10, presiding: items(true), decision: emptyDecision }), true);
+  assert.equal(chairDeliberationOpen({ current_step: 11, presiding: null, decision: emptyDecision }), true);
+  assert.equal(chairDeliberationOpen({ current_step: 9, presiding: items(true), decision: null }), false);
+  assert.equal(chairItemInDeliberation({ key: "y_kien_hoi_tham", kind: "invite" }), true);
+  assert.equal(chairItemInDeliberation({ key: "chot_quyet_dinh", kind: "decide" }), true);
+  assert.equal(chairItemInDeliberation({ key: "vao_nghi_an", kind: "item" }), false);
+  const assessor = { key: "y_kien_hoi_tham", label: "l", kind: "invite", required: false, done: false, available: true, template: "t", basis: [], ai_calls: 1, note: null };
+  assert.equal(chairItemActionable(assessor, parseChairActions(["invite:y_kien_hoi_tham"])), false);
 });

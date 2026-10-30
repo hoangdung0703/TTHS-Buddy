@@ -6,13 +6,13 @@ import { join } from "node:path";
 
 import {
   FAKE, FULL, SHORT, OBSERVER_PREAMBLE, TRANSCRIPT_MARKER, CLERK_PREFILL, DECLINE_TEXT, IDENTITY_PREFILL, ROLE_BRIEF_NOTE, clerkPrompt, clerkRecordText, clerkReport, config,
-  defendantQuestion, makeUtterances, procedureNote, recordText, utt
+  defendantQuestion, makeUtterances, procedureNote, recordText, utt, DELIBERATION_HEADING, DELIBERATION_INTRO, MINORITY_NOTE, RETURN_NOTE, SYSTEM_DRAFTED_NOTE
 } from "./fixtures.mjs";
 import {
-  BASE, baseState, check, chromium, failureCount, fulfillError, fulfillSse, installStreamingTurn, newPage, noPageOverflow, signIn, signOut,
+  BASE, baseState, check, chromium, failureCount, fulfillError, fulfillJson, fulfillSse, installStreamingTurn, newPage, noPageOverflow, signIn, signOut,
   openHearing, resetWorld, scrollInfo, sseEvent, world
 } from "./lib.mjs";
-import { CHAIR_MARK, DEBATE_NOTE, chairState, chairTurn, newChair } from "./chair.mjs";
+import { ASSESSOR_MARK, CHAIR_MARK, DEBATE_NOTE, ORDER_NOTE, PRONOUNCE_MARK, chairDecisionPut, chairState, chairTurn, newChair } from "./chair.mjs";
 
 const SHOTS = process.env.E2E_SHOTS ?? null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
@@ -1413,9 +1413,10 @@ const remarkOptions = await page.getByTestId("chair-remark-addressee").locator("
 check("chair step 9: after the last word, remark addressees exclude the defendant; hint cites Điều 324",
   remarkOptions.length === 5 && !remarkOptions.some((text) => text.startsWith("Bị cáo")) && (await page.getByTestId("trial-step-hint").innerText()).includes("Điều 324"));
 await advanceChair(page);
-check("chair step 10: 'Sắp có' placeholder, no error, no composer", (await page.getByTestId("chair-coming-soon").count()) === 1
-  && (await page.getByTestId("trial-error").count()) === 0 && (await page.getByTestId("chair-composer").count()) === 0);
-await shot(page, "chair-step10-soon");
+check("chair step 10: no 'Sắp có' any more; the composer offers 'Vào phòng nghị án', no error", (await page.getByTestId("chair-coming-soon").count()) === 0
+  && (await page.getByTestId("trial-error").count()) === 0 && (await page.getByTestId("chair-composer").count()) === 1
+  && (await chairRow(chairPanel, "vao_nghi_an").getByTestId("chair-use-template").count()) === 1);
+await shot(page, "chair-step10-enter");
 await context.close();
 
 // 409 trial_procedure_incomplete from the server (a stale state offered the step button).
@@ -1521,7 +1522,7 @@ chairBodies.length = 0;
 ({ context, page } = await open());
 await openChair(page, { step: 2, version: 21 });
 let chairClicks = 0;
-for (let guard = 0; guard < 40 && (await page.getByTestId("chair-coming-soon").count()) === 0; guard++) {
+for (let guard = 0; guard < 40 && (await chairRow(chairAside(page), "vao_nghi_an").count()) === 0; guard++) {
   if ((await page.getByTestId("trial-advance").getAttribute("data-ready")) === "true") {
     await advanceChair(page);
   } else {
@@ -1532,7 +1533,7 @@ for (let guard = 0; guard < 40 && (await page.getByTestId("chair-coming-soon").c
   chairClicks++;
 }
 check(`chair minimum: steps 2-9 in ${chairClicks} clicks (backend minimum 25 for this case shape), reaches step 10`,
-  chairClicks === 25 && (await page.getByTestId("chair-coming-soon").count()) === 1);
+  chairClicks === 25 && (await chairRow(chairAside(page), "vao_nghi_an").count()) === 1);
 await context.close();
 
 // Phone: the checklist is a drawer, the composer stays visible.
@@ -1572,6 +1573,422 @@ for (const [width, height] of [[1280, 600], [1440, 900], [1920, 1080]]) {
   await context.close();
 }
 
+
+// =============================== Chủ tọa F2: nghị án, quyết định, tuyên án (contract 3.11, 5.4) ===============================
+const decisionBodies = [];
+const room = (page) => page.getByTestId("deliberation-room");
+const findings = (page, field) => room(page).locator(`[data-testid="decision-field-findings"][data-field="${field}"]`);
+const REASONING = ("Nhận định mẫu của người học: bị cáo đã lén lút lấy 01 máy tính xách tay của bị hại; lời khai của bị cáo phù hợp với lời khai của người làm chứng "
+  + "và vật chứng thu giữ; giá trị tài sản theo kết luận định giá. Bị cáo thành khẩn khai báo, chưa có tiền án, tiền sự (văn bản giả định để kiểm bố cục).");
+const CLEAN_DRAFT = { guilty: true, dieu: "173", khoan: "1", diem: [], penalty_type: "tu", penalty_months: 12, fine_vnd: null, suspended: false, probation_months: null,
+  applies_dieu_54: false, mitigating: [{ khoan: "1", diem: "s", fact_ids: ["F1"] }], aggravating: [], civil_amount_vnd: 2000000, reasoning_summary: REASONING,
+  exhibits: [{ evidence_id: "E1", disposition: "tra_lai" }], defendant_pays_criminal_fee: true, defendant_pays_civil_fee: true };
+const AI_DECISION_WORDS = /đáp án|tham khảo|AI đề xuất|phán quyết mẫu|quyết định mẫu|so sánh|đúng\/sai|điểm số/i;
+// A presiding session inside the deliberation room (step 10 after "vào phòng nghị án", or step 11).
+async function openRoom(page, o = {}, lines = [thuKyLine()]) {
+  const c = newChair({ step: 10, version: 60, done: ["vao_nghi_an"], ...o });
+  world.role = "chu_toa";
+  world.utterances = [...lines];
+  world.turn = chairTurn(world, c, chairBodies);
+  world.decisionPut = chairDecisionPut(world, c, decisionBodies);
+  await openHearing(page, chairState(c), "chu_toa");
+  return c;
+}
+const dialogLog = [];
+const logDialogs = (page) => page.on("dialog", (dialog) => {
+  dialogLog.push(dialog.message());
+  return dialog.type() === "confirm" && !dialogAnswer ? dialog.dismiss() : dialog.accept();
+});
+const decisionGets = () => world.requests.filter((r) => r.method === "GET" && r.path.endsWith(FAKE)).length;
+
+// --- Main flow, desktop 1440x900 ---
+resetWorld();
+chairBodies.length = 0;
+decisionBodies.length = 0;
+dialogAnswer = true;
+({ context, page } = await open());
+logDialogs(page);
+let chairC = await openChair(page, { step: 10, version: 60 });
+world.decisionPut = chairDecisionPut(world, chairC, decisionBodies);
+check("chair F2 step 10: before 'Vào phòng nghị án' no room; decide and assessors are not offered in the checklist",
+  (await room(page).count()) === 0 && (await chairRow(chairAside(page), "chot_quyet_dinh").locator('[data-testid="chair-use-template"], [data-testid="chair-compose"]').count()) === 0
+  && (await chairRow(chairAside(page), "y_kien_hoi_tham").locator('[data-testid="chair-use-template"], [data-testid="chair-compose"]').count()) === 0
+  && (await chairRow(chairAside(page), "y_kien_hoi_tham").getByTestId("chair-template").count()) === 0
+  && (await chairRow(chairAside(page), "chot_quyet_dinh").innerText()).includes("Trong phòng nghị án"));
+await oneClick(page, "vao_nghi_an");
+check("chair F2 enter: body {item vao_nghi_an} only; the room opens on its own tab, the transcript one tab away",
+  JSON.stringify(lastBody()) === JSON.stringify({ expected_step: 10, expected_version: 60, action: "item", item: "vao_nghi_an" })
+  && (await room(page).isVisible()) && (await page.getByTestId("room-tab-room").getAttribute("aria-selected")) === "true"
+  && !(await page.locator("[data-seq]").first().isVisible()));
+const form = room(page).getByTestId("decision-form");
+check("chair F2 form: khoản 1-4 from state.decision.form, charged khoản 1 preselected and marked, frames shown (khoản 4: not parsed)",
+  (await form.locator('[data-testid^="decision-khoan-"]').count()) === 4 && (await form.getByTestId("decision-khoan-1").isChecked())
+  && (await form.getByTestId("decision-group-charge").innerText()).includes("(Viện kiểm sát truy tố)")
+  && (await form.getByTestId("decision-frame").first().innerText()).includes("tù từ 6 tháng đến 3 năm")
+  && (await form.getByTestId("decision-frame").nth(3).innerText()).includes("chưa tách được khung"));
+check("chair F2 form: nothing else preselected (no guilt, no penalty type), 4 ways for the exhibit, fees yes/no with no amount box",
+  !(await form.getByTestId("decision-guilty-yes").isChecked()) && !(await form.getByTestId("decision-guilty-no").isChecked())
+  && (await form.locator('[data-testid^="decision-penalty-"]:checked').count()) === 0
+  && (await form.getByTestId("decision-disposition").locator("option").count()) === 5
+  && (await form.getByTestId("decision-group-fees").locator("input[inputmode], input[type=number], input[type=text]").count()) === 0
+  && (await form.getByTestId("decision-group-fees").locator('input[type="checkbox"]').count()) === 2);
+check("chair F2 form: 'Chưa kiểm tra'; 'Chốt quyết định' disabled; no assessor panel before a clean draft; no AI decision anywhere",
+  (await room(page).getByTestId("decision-check-summary").innerText()).includes("Chưa kiểm tra") && (await page.getByTestId("decision-decide").isDisabled())
+  && (await page.getByTestId("assessor-panel").count()) === 0 && !AI_DECISION_WORDS.test(await room(page).innerText()));
+await shot(page, "chair-room-empty-1440");
+
+// Saving without the two schema-required choices: nothing sent, the reason next to each field.
+let roomPutsBefore = decisionBodies.length;
+await page.getByTestId("decision-save").click();
+await page.waitForTimeout(300);
+check("chair F2 save without guilt/penalty type: no request, both reasons shown next to their fields",
+  decisionBodies.length === roomPutsBefore && (await form.getByTestId("decision-unset").count()) === 2);
+
+// A draft with hard errors is saved; each finding sits next to its field, with its basis as a pill.
+await form.getByTestId("decision-guilty-yes").check();
+await form.getByTestId("decision-penalty-tu").check();
+await form.getByTestId("decision-months").fill("12");
+await form.getByTestId("decision-reasoning").fill("Nhận định quá ngắn.");
+await form.getByTestId("decision-add-mitigating").click();
+await form.getByTestId("decision-mitigating-row").first().getByTestId("decision-circumstance-diem").selectOption("s");
+check("chair F2 dirty: 'Có thay đổi chưa lưu' and a dot on the room tab", (await page.getByTestId("decision-save-state").getAttribute("data-dirty")) === "true"
+  && (await page.getByTestId("room-tab-room").innerText()).includes("●") && (await form.getByTestId("decision-unset").count()) === 0);
+await page.getByTestId("decision-save").click();
+await settle(page);
+const put1 = decisionBodies[decisionBodies.length - 1];
+check("chair F2 PUT body: exactly {expected_version, decision}; the 17 contract fields; dieu 173; unchosen exhibit left out",
+  Object.keys(put1).sort().join() === "decision,expected_version" && put1.expected_version === 61 && Object.keys(put1.decision).length === 17
+  && put1.decision.dieu === "173" && put1.decision.penalty_months === 12 && put1.decision.exhibits.length === 0 && put1.decision.fine_vnd === null
+  && JSON.stringify(put1.decision.mitigating) === JSON.stringify([{ khoan: "1", diem: "s", fact_ids: [] }]));
+check("chair F2 hard errors next to their fields: reasoning, exhibits, mitigating row 1",
+  (await findings(page, "reasoning_summary").getByTestId("decision-error").getAttribute("data-code")) === "reasoning_length"
+  && (await findings(page, "exhibits").getByTestId("decision-error").getAttribute("data-code")) === "exhibit_missing"
+  && (await findings(page, "mitigating[0]").getByTestId("decision-error").getAttribute("data-code")) === "circumstance_no_fact");
+check("chair F2 basis pills open the right article (Điều 260, Điều 106, Điều 326 BLTTHS)",
+  (await findings(page, "reasoning_summary").getByRole("button", { name: "Xem toàn văn điểm d khoản 2 Điều 260 Bộ luật Tố tụng hình sự" }).count()) === 1
+  && (await findings(page, "exhibits").getByRole("button", { name: "Xem toàn văn khoản 1 Điều 106 Bộ luật Tố tụng hình sự" }).count()) === 1
+  && (await findings(page, "mitigating[0]").getByRole("button", { name: "Xem toàn văn khoản 2 Điều 326 Bộ luật Tố tụng hình sự" }).count()) === 1);
+check("chair F2 hard errors block 'Chốt quyết định'; summary '3 điểm cần sửa'; saved, not dirty; still no assessor panel",
+  (await page.getByTestId("decision-decide").isDisabled()) && (await room(page).getByTestId("decision-check-summary").innerText()).includes("3 điểm cần sửa")
+  && (await page.getByTestId("decision-save-state").getAttribute("data-dirty")) === null && (await page.getByTestId("decision-save-state").innerText()).includes("Đã lưu lúc")
+  && (await page.getByTestId("assessor-panel").count()) === 0 && (await page.getByTestId("decision-decide-hint").innerText()).includes("Còn 3 điểm cần sửa"));
+await shot(page, "chair-room-errors-1440");
+
+// Leaving with unsaved edits asks first; cancelling keeps the page.
+await form.getByTestId("decision-reasoning").fill(REASONING);
+check("chair F2 edit after save: results marked as the saved draft's", (await room(page).getByTestId("decision-check-stale").count()) === 1
+  && (await page.getByTestId("decision-decide").isDisabled()));
+dialogAnswer = false;
+dialogLog.length = 0;
+await page.getByRole("link", { name: "Danh sách phiên tòa" }).first().click();
+await page.waitForTimeout(600);
+check("chair F2 leave with unsaved edits: asks first; 'cancel' stays on the page with the edit", dialogLog.some((m) => m.includes("chưa lưu"))
+  && page.url().endsWith(`/trial/${FAKE}`) && (await form.getByTestId("decision-reasoning").inputValue()) === REASONING);
+dialogAnswer = true;
+
+// Fix the errors; two soft warnings stay and do not block.
+await form.getByTestId("decision-mitigating-row").first().getByTestId("decision-fact-F1").check();
+await form.getByTestId("decision-exhibit-E1").getByTestId("decision-disposition").selectOption("tich_thu_sung_ngan_sach");
+await form.getByTestId("decision-civil").fill("3.000.000");
+await page.getByTestId("decision-check").click();
+await settle(page);
+check("chair F2 'Kiểm tra' saves too (PUT, no /turn); civil amount parsed", decisionBodies[decisionBodies.length - 1].decision.civil_amount_vnd === 3000000
+  && decisionBodies.length === roomPutsBefore + 2);
+check("chair F2 soft warnings next to their fields (civil over claim, confiscation), no error left; summary says they do not block",
+  (await findings(page, "civil_amount_vnd").getByTestId("decision-warning").getAttribute("data-code")) === "civil_over_claim"
+  && (await findings(page, "exhibits").getByTestId("decision-warning").getAttribute("data-code")) === "exhibit_confiscated_property"
+  && (await room(page).getByTestId("decision-error").count()) === 0 && (await room(page).getByTestId("decision-check-summary").innerText()).includes("2 lưu ý (không chặn chốt)"));
+check("chair F2 warnings do not block: 'Chốt quyết định' enabled", await page.getByTestId("decision-decide").isEnabled());
+const assessorPanel = page.getByTestId("assessor-panel");
+check("chair F2 clean draft: the assessor panel appears in the room with the order note verbatim and 'Nghe ý kiến Hội thẩm'",
+  (await assessorPanel.count()) === 1 && (await assessorPanel.getByTestId("assessor-order-note").innerText()) === ORDER_NOTE
+  && (await assessorPanel.getByTestId("assessor-invite").isEnabled()) && (await room(page).locator('[data-testid="assessor-panel"]').count()) === 1);
+await shot(page, "chair-room-warnings-1440");
+
+// The assessors: one click, comments only in the room, never in the transcript.
+const utterancesBefore = world.utterances.length;
+await assessorPanel.getByTestId("assessor-invite").click();
+await settle(page);
+check("chair F2 assessors: body {invite y_kien_hoi_tham}, no text", JSON.stringify(lastBody()) === JSON.stringify({ expected_step: 10, expected_version: 63, action: "invite", item: "y_kien_hoi_tham" }));
+check("chair F2 assessors: two opinions in the room (agrees / other view), based-on time shown",
+  (await assessorPanel.getByTestId("assessor-opinion").count()) === 2 && (await assessorPanel.innerText()).includes("Đồng ý với bản nháp")
+  && (await assessorPanel.innerText()).includes("Ý kiến khác") && (await assessorPanel.getByTestId("assessor-based-on").innerText()).includes("Ý kiến dựa trên bản nháp lưu lúc"));
+await page.getByTestId("room-tab-transcript").click();
+await page.waitForTimeout(300);
+const transcriptText = await page.locator("body").innerText();
+check("chair F2 assessors: not in the transcript (no new utterance, no assessor text on the transcript tab)",
+  world.utterances.length === utterancesBefore && !transcriptText.includes(ASSESSOR_MARK) && (await room(page).isHidden()));
+await page.getByTestId("room-tab-room").click();
+await page.waitForTimeout(200);
+await shot(page, "chair-room-assessors-1440");
+
+// Editing after the comments never asks the assessors again.
+const turnsBefore = chairBodies.length;
+await form.getByTestId("decision-months").fill("14");
+check("chair F2 edit after comments: marked as changed since, no invite button again", (await assessorPanel.getByTestId("assessor-based-on").innerText()).includes("không được lấy lại")
+  && (await assessorPanel.getByTestId("assessor-invite").count()) === 0 && (await page.getByTestId("decision-decide").isDisabled()));
+await page.getByTestId("decision-save").click();
+await settle(page);
+check("chair F2 save after comments: PUT only, the assessors are not asked again", chairBodies.length === turnsBefore
+  && (await assessorPanel.getByTestId("assessor-opinion").count()) === 2 && (await assessorPanel.getByTestId("assessor-based-on").innerText()).includes("không được lấy lại"));
+
+// Lock the decision.
+dialogLog.length = 0;
+await page.getByTestId("decision-decide").click();
+await settle(page);
+check("chair F2 decide: asks first, body {decide} only, the form becomes the read-only decision", dialogLog.some((m) => m.startsWith("Chốt quyết định?"))
+  && JSON.stringify(lastBody()) === JSON.stringify({ expected_step: 10, expected_version: 65, action: "decide" })
+  && (await room(page).getByTestId("decision-locked").count()) === 1 && (await room(page).getByTestId("decision-form").count()) === 0
+  && (await room(page).getByTestId("decision-locked").innerText()).includes("Tù có thời hạn 1 năm 2 tháng"));
+await shot(page, "chair-room-locked-1440");
+await page.getByTestId("trial-advance").click();
+await settle(page);
+check("chair F2 step 11: advance body target_step 11; room tab now 'Tuyên án'; 'Soạn lời tuyên' offered; the preview is empty",
+  lastBody().target_step === 11 && (await page.getByTestId("room-tab-room").innerText()).includes("Tuyên án")
+  && (await page.getByTestId("pronounce-prepare").isVisible()) && (await room(page).getByTestId("pronouncement-empty").count()) === 1);
+
+// Writing the judgment: one LLM call - a visible wait with "Hủy chờ".
+chairC.slowMs = 1500;
+await page.getByTestId("pronounce-prepare").click();
+await page.waitForTimeout(500);
+check("chair F2 prepare: the dock shows the server status, elapsed seconds and 'Hủy chờ'", (await page.getByTestId("deliberation-busy").innerText()).includes("Đang soạn lời tuyên án")
+  && (await page.getByTestId("deliberation-cancel").isVisible()));
+await shot(page, "chair-pronounce-waiting-1440");
+await settle(page);
+await page.waitForTimeout(1500);
+chairC.slowMs = 0;
+check("chair F2 prepare: body {prepare_pronouncement}; preview shown, source 'hệ thống soạn từ quyết định của bạn', no box to edit it",
+  JSON.stringify(lastBody()) === JSON.stringify({ expected_step: 11, expected_version: 67, action: "prepare_pronouncement" })
+  && (await room(page).getByTestId("pronouncement-preview").innerText()).includes(PRONOUNCE_MARK)
+  && (await room(page).getByTestId("pronouncement-source").innerText()).includes("hệ thống soạn từ quyết định của bạn")
+  && (await room(page).getByTestId("pronouncement-panel").locator("textarea, input").count()) === 0 && (await page.getByTestId("pronounce-send").isVisible()));
+check("chair F2 step 11: no AI decision or model answer anywhere in the room", !AI_DECISION_WORDS.test(await room(page).innerText()));
+await shot(page, "chair-pronounce-preview-1440");
+dialogLog.length = 0;
+await page.getByTestId("pronounce-send").click();
+await settle(page);
+await page.waitForTimeout(400);
+const lastLine = page.locator("[data-seq]").last();
+check("chair F2 pronounce: asks first, body {pronounce}; the hearing ends with 'Mở biên bản'; the judgment is the student's line in the transcript",
+  dialogLog.some((m) => m.startsWith("Tuyên án")) && JSON.stringify(lastBody()) === JSON.stringify({ expected_step: 11, expected_version: 68, action: "pronounce" })
+  && (await page.getByTestId("trial-finished").innerText()).includes("Mở biên bản") && (await lastLine.isVisible())
+  && (await lastLine.innerText()).includes(PRONOUNCE_MARK) && (await lastLine.innerText()).includes("Bạn · Chủ tọa"));
+await shot(page, "chair-finished-1440");
+await page.getByRole("link", { name: "Mở biên bản" }).click();
+await page.getByTestId("trial-record").waitFor({ timeout: 20000 });
+const recordBody = await page.getByTestId("trial-record").innerText();
+const appendixText = await page.getByTestId("record-appendix").innerText();
+check("chair F2 record: IV.2 carries the Điều 323 note; judgment appendix has both notes", recordBody.includes(RETURN_NOTE)
+  && appendixText.includes(SYSTEM_DRAFTED_NOTE) && appendixText.indexOf(SYSTEM_DRAFTED_NOTE) < appendixText.indexOf("Về tội danh"));
+check("chair F2 record: 'Biên bản nghị án' appendix in order heading -> notes (intro, assessors, minority view) -> fields, labelled 'Hệ thống dựng'",
+  appendixText.includes(DELIBERATION_HEADING) && appendixText.indexOf(DELIBERATION_HEADING) < appendixText.indexOf(DELIBERATION_INTRO)
+  && appendixText.indexOf(DELIBERATION_INTRO) < appendixText.indexOf(MINORITY_NOTE) && appendixText.indexOf(MINORITY_NOTE) < appendixText.indexOf("Thẩm phán - Chủ tọa phiên tòa: Nguyễn Văn An")
+  && (await page.getByTestId("record-appendix").getByTestId("record-content-label").filter({ hasText: "Hệ thống dựng" }).count()) === 1
+  && (await page.getByTestId("record-disclaimer").count()) === 2);
+await page.evaluate(() => document.querySelector('[data-testid="record-appendix"]')?.scrollIntoView());
+await shot(page, "chair-record-appendix-1440");
+await context.close();
+
+// The same session reopened after the end: the transcript first, the room still readable.
+resetWorld();
+({ context, page } = await open());
+await openRoom(page, { step: 11, version: 80, done: ["tuyen_an"], draft: CLEAN_DRAFT, draftAt: "2026-10-31T01:00:00.000Z", decided: true, preview: "Lời tuyên mẫu.", completed: true });
+check("chair F2 completed session: opens on the transcript, 'Mở biên bản'; the room tab shows the judgment read only",
+  (await page.getByTestId("room-tab-transcript").getAttribute("aria-selected")) === "true" && (await page.getByTestId("trial-finished").innerText()).includes("Mở biên bản"));
+await page.getByTestId("room-tab-room").click();
+check("chair F2 completed session room: 'Đã tuyên', no buttons to act", (await room(page).getByTestId("pronouncement-source").innerText()).includes("Đã tuyên")
+  && (await page.getByTestId("pronounce-send").count()) === 0 && (await page.getByTestId("pronounce-prepare").count()) === 0);
+await context.close();
+
+// "Hủy chờ": the wait stops, the state is re-read; what the server finished shows up.
+resetWorld();
+chairBodies.length = 0;
+({ context, page } = await open());
+{
+  const c = await openRoom(page, { step: 11, version: 70, draft: CLEAN_DRAFT, draftAt: "2026-10-31T01:00:00.000Z", decided: true, slowMs: 6000 });
+  const gets = decisionGets();
+  await page.getByTestId("pronounce-prepare").click();
+  await page.getByTestId("deliberation-cancel").waitFor({ timeout: 5000 });
+  await page.getByTestId("deliberation-cancel").click();
+  await page.waitForTimeout(800);
+  check("chair F2 'Hủy chờ': the wait ends at once, notice in Vietnamese, GET re-read, the finished preview shows, no error box",
+    (await page.getByTestId("deliberation-busy").count()) === 0 && (await page.getByTestId("trial-soft-notice").innerText()).includes("Đã dừng chờ")
+    && decisionGets() > gets && (await room(page).getByTestId("pronouncement-preview").count()) === 1 && (await page.getByTestId("trial-error").count()) === 0);
+  c.slowMs = 0;
+}
+await context.close();
+
+// PUT /decision refusals: every 409 of the route and the HTTP errors - a Vietnamese line, the form as typed stays.
+const PUT_409 = {
+  trial_not_presiding: "không phải vai Chủ tọa", trial_action_not_allowed: "vừa thay đổi trạng thái", trial_busy: "đang được xử lý",
+  trial_not_active: "đã kết thúc hoặc đã bị bỏ", trial_decision_locked: "đã chốt"
+};
+let putOk = true;
+const putFailed = [];
+for (const [code, expected] of Object.entries(PUT_409)) {
+  resetWorld();
+  ({ context, page } = await open());
+  const c = await openRoom(page, { draft: { ...CLEAN_DRAFT, reasoning_summary: "ngắn" }, draftAt: "2026-10-31T01:00:00.000Z" });
+  if (code === "trial_decision_locked") {
+    c.decided = true;
+    world.state = chairState(c); // what the re-read GET then shows
+  }
+  world.decisionPut = (route) => fulfillError(route, 409, code, { state: chairState(c) });
+  await room(page).getByTestId("decision-reasoning").fill(`${REASONING} Sửa thêm.`);
+  await page.getByTestId("decision-save").click();
+  await settle(page);
+  const text = await errorLine(page);
+  const kept = code === "trial_decision_locked"
+    ? (await room(page).getByTestId("decision-locked").count()) === 1
+    : (await room(page).getByTestId("decision-reasoning").inputValue()) === `${REASONING} Sửa thêm.`;
+  const ok = text.includes(expected) && kept && (await page.getByTestId("trial-composer-dock").isVisible());
+  if (!ok) putFailed.push(code);
+  putOk = putOk && ok;
+  await context.close();
+}
+check(`chair F2 PUT 409s: Vietnamese line; edits kept (locked: read-only decision) (${putFailed.join(", ") || "all"})`, putOk);
+const PUT_HTTP = [[401, "http_error", "Phiên đăng nhập đã hết hạn"], [404, "http_error", "Không tìm thấy phiên tòa"], [422, "validation_error", "không hợp lệ"],
+  [429, "rate_limit_exceeded", "thao tác hơi nhanh"], [503, "data_unavailable", "tạm gián đoạn"], [0, "network", "Mất kết nối"]];
+let putHttpOk = true;
+const putHttpFailed = [];
+for (const [status, code, expected] of PUT_HTTP) {
+  resetWorld();
+  ({ context, page } = await open());
+  await openRoom(page);
+  world.decisionPut = (route) => (status === 0 ? route.abort("failed") : fulfillError(route, status, code));
+  await room(page).getByTestId("decision-guilty-yes").check();
+  await room(page).getByTestId("decision-penalty-tu").check();
+  await room(page).getByTestId("decision-reasoning").fill(REASONING);
+  await page.getByTestId("decision-save").click();
+  await settle(page);
+  const ok = (await page.getByTestId("trial-error").innerText().catch(() => "")).includes(expected) && (await page.getByTestId("trial-error").innerText()).includes("vẫn còn trên màn hình")
+    && (await room(page).getByTestId("decision-reasoning").inputValue()) === REASONING && (await page.getByTestId("decision-save-state").getAttribute("data-dirty")) === "true";
+  if (!ok) putHttpFailed.push(status);
+  putHttpOk = putHttpOk && ok;
+  await context.close();
+}
+check(`chair F2 PUT 401/404/422/429/503/network: Vietnamese error on screen, the typed form kept and still unsaved (${putHttpFailed.join(", ") || "all"})`, putHttpOk);
+
+// 409 version mismatch on PUT: re-sync, keep the form being edited, then save with the new version.
+resetWorld();
+decisionBodies.length = 0;
+({ context, page } = await open());
+{
+  const c = await openRoom(page, { draft: CLEAN_DRAFT, draftAt: "2026-10-31T01:00:00.000Z" });
+  c.version += 2; // another tab moved the session on
+  world.state = chairState(c);
+  const gets = decisionGets();
+  await room(page).getByTestId("decision-months").fill("20");
+  await page.getByTestId("decision-save").click();
+  await settle(page);
+  check("chair F2 PUT version mismatch: soft notice says the draft is kept, GET re-read, the typed value still there, still unsaved",
+    (await page.getByTestId("trial-soft-notice").innerText()).includes("vẫn được giữ") && decisionGets() > gets
+    && (await room(page).getByTestId("decision-months").inputValue()) === "20" && (await page.getByTestId("decision-save-state").getAttribute("data-dirty")) === "true");
+  await page.getByTestId("decision-save").click();
+  await settle(page);
+  check("chair F2 after re-sync: saved with the new version", decisionBodies[decisionBodies.length - 1].expected_version === c.version - 1
+    && decisionBodies[decisionBodies.length - 1].decision.penalty_months === 20 && (await page.getByTestId("decision-save-state").getAttribute("data-dirty")) === null);
+}
+await context.close();
+
+// decide refused by the server (a stale state): trial_decision_invalid shows the errors next to the fields; trial_decision_missing asks to save.
+for (const [code, expected] of [["trial_decision_invalid", "còn lỗi cần sửa"], ["trial_decision_missing", "lưu bản nháp quyết định"]]) {
+  resetWorld();
+  ({ context, page } = await open());
+  logDialogs(page);
+  const c = await openRoom(page, { draft: CLEAN_DRAFT, draftAt: "2026-10-31T01:00:00.000Z" });
+  const bad = newChair({ ...c, draft: code === "trial_decision_invalid" ? { ...CLEAN_DRAFT, exhibits: [] } : null });
+  world.turn = (route) => fulfillError(route, 409, code, { state: chairState(bad), fields: code === "trial_decision_invalid" ? { errors: ["exhibit_missing"] } : undefined });
+  await page.getByTestId("decision-decide").click();
+  await settle(page);
+  const ok = (await errorLine(page)).includes(expected) && (code !== "trial_decision_invalid" || (await findings(page, "exhibits").getByTestId("decision-error").count()) === 1)
+    && (await page.getByTestId("decision-decide").isDisabled());
+  check(`chair F2 decide -> 409 ${code}: Vietnamese line, 'Chốt' locked again${code === "trial_decision_invalid" ? ", errors next to the fields" : ""}`, ok);
+  await context.close();
+}
+// prepare/pronounce refusals: 409 trial_pronouncement_missing re-syncs.
+resetWorld();
+({ context, page } = await open());
+logDialogs(page);
+{
+  const c = await openRoom(page, { step: 11, version: 70, draft: CLEAN_DRAFT, draftAt: "2026-10-31T01:00:00.000Z", decided: true, preview: "Lời tuyên mẫu." });
+  world.turn = (route) => {
+    world.state = chairState({ ...c, preview: null });
+    return fulfillError(route, 409, "trial_pronouncement_missing", { state: world.state });
+  };
+  await page.getByTestId("pronounce-send").click();
+  await settle(page);
+  check("chair F2 pronounce -> 409 trial_pronouncement_missing: Vietnamese line, 'Soạn lời tuyên' offered again",
+    (await errorLine(page)).includes("Chưa có lời tuyên") && (await page.getByTestId("pronounce-prepare").count()) === 1);
+}
+await context.close();
+
+// Phone 390x844 and three desktop sizes: the room is the main column, the dock with the actions stays on screen.
+resetWorld();
+({ context, page } = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }));
+await openRoom(page, { draft: { ...CLEAN_DRAFT, reasoning_summary: "ngắn" }, draftAt: "2026-10-31T01:00:00.000Z" }, makeUtterances(12));
+{
+  const dock = await page.getByTestId("trial-composer-dock").boundingBox();
+  check(`chair F2 390px: no page overflow, the room shown, the dock (${Math.round(dock.height)}px) on screen with all three actions`,
+    (await noPageOverflow(page)) && (await room(page).isVisible()) && dock.y + dock.height <= 844 + 1 && dock.height <= 844 * 0.35
+    && (await page.getByTestId("decision-save").isVisible()) && (await page.getByTestId("decision-decide").isVisible()));
+  await shot(page, "chair-room-mobile-390");
+  await room(page).getByTestId("decision-reasoning").focus();
+  await room(page).getByTestId("decision-reasoning").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  const box = await room(page).getByTestId("decision-reasoning").boundingBox();
+  const dock2 = await page.getByTestId("trial-composer-dock").boundingBox();
+  check("chair F2 390px typing the reasoning: the box is visible above the dock, the save button reachable", box.y < dock2.y && (await page.getByTestId("decision-save").isVisible()));
+  await shot(page, "chair-room-mobile-390-reasoning");
+  await room(page).getByTestId("decision-reasoning").fill(REASONING);
+  await page.getByTestId("decision-check").click();
+  await settle(page);
+  check("chair F2 390px: 'Kiểm tra' works, warnings/no errors, the assessor panel fits", (await room(page).getByTestId("decision-error").count()) === 0
+    && (await noPageOverflow(page)) && (await page.getByTestId("assessor-panel").isVisible()));
+  await page.getByTestId("assessor-panel").scrollIntoViewIfNeeded();
+  await shot(page, "chair-room-mobile-390-assessors");
+}
+await context.close();
+for (const [width, height] of [[1280, 600], [1440, 900], [1920, 1080]]) {
+  resetWorld();
+  ({ context, page } = await open({ viewport: { width, height } }));
+  await openRoom(page, { draft: { ...CLEAN_DRAFT, exhibits: [] }, draftAt: "2026-10-31T01:00:00.000Z" }, makeUtterances(12));
+  const dock = await page.getByTestId("trial-composer-dock").boundingBox();
+  const roomBox = await room(page).boundingBox();
+  const gap = await page.evaluate(() => {
+    const dockEl = document.querySelector('[data-testid="trial-composer-dock"]');
+    let scroller = dockEl.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    scroller.scrollTop = scroller.scrollHeight;
+    return { docOverViewport: document.documentElement.scrollHeight - window.innerHeight, belowDock: window.innerHeight - dockEl.getBoundingClientRect().bottom };
+  });
+  await page.waitForTimeout(200);
+  check(`chair F2 ${width}x${height}: no overflow, the room ≥ 520px wide (${Math.round(roomBox.width)}px), the dock on screen, no empty space under it (${Math.round(gap.belowDock)}px), no page scroll`,
+    (await noPageOverflow(page)) && roomBox.width >= 520 && dock.y + dock.height <= height + 1 && gap.belowDock <= 40 && gap.docOverViewport <= 0
+    && (await chairAside(page).isVisible()));
+  if (width !== 1440) await shot(page, `chair-room-${width}x${height}`);
+  await context.close();
+}
+
+// Other roles at steps 10-11: nothing of the room, the record without the deliberation appendix.
+for (const role of ["ksv", "bi_cao", "nguoi_xem", "thu_ky"]) {
+  resetWorld();
+  world.role = role;
+  ({ context, page } = await open());
+  await openHearing(page, baseState({ current_step: 10, step_title: "Nghị án", allowed_actions: ["advance:11"], ...(role === "nguoi_xem" ? { procedure_note: procedureNote(10) } : {}) }), role);
+  check(`${role} step 10: no deliberation room, tabs or decision dock`, (await page.getByTestId("deliberation-room").count()) === 0
+    && (await page.getByTestId("room-tabs").count()) === 0 && (await page.getByTestId("decision-dock").count()) === 0);
+  await context.close();
+}
+resetWorld();
+({ context, page } = await open());
+await page.goto(`${BASE}/trial/${FAKE}/record`);
+await page.getByTestId("trial-record").waitFor({ timeout: 20000 });
+check("ksv record: no 'Biên bản nghị án', no 'Hệ thống dựng', judgment appendix unchanged (one note)",
+  !(await page.getByTestId("trial-record").innerText()).includes(DELIBERATION_HEADING) && (await page.getByText("Hệ thống dựng").count()) === 0
+  && !(await page.getByTestId("record-appendix").innerText()).includes(SYSTEM_DRAFTED_NOTE));
+await context.close();
+
 // Other roles: no presiding UI anywhere.
 for (const role of ["ksv", "bi_cao", "nguoi_xem"]) {
   resetWorld();
@@ -1583,7 +2000,7 @@ for (const role of ["ksv", "bi_cao", "nguoi_xem"]) {
   await context.close();
 }
 
-const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || m.includes(CLERK_MARK) || m.includes(DEF_MARK) || m.includes(CHAIR_MARK) || m.includes(IDENTITY_PREFILL.slice(0, 30)) || m.includes(CLERK_PREFILL.slice(0, 40)) || /Uncaught|TypeError/.test(m));
+const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || m.includes(CLERK_MARK) || m.includes(DEF_MARK) || m.includes(CHAIR_MARK) || m.includes(ASSESSOR_MARK) || m.includes(PRONOUNCE_MARK) || m.includes(REASONING.slice(0, 40)) || m.includes(IDENTITY_PREFILL.slice(0, 30)) || m.includes(CLERK_PREFILL.slice(0, 40)) || /Uncaught|TypeError/.test(m));
 if (process.env.E2E_DEBUG) badConsole.forEach((m) => console.log(`  console: ${m.slice(0, 200)}`));
 // Regression: nothing may stretch the document past the record (absolutely positioned sr-only labels
 // used to resolve against <body>, leaving hundreds of px of empty page under the h-screen frame).

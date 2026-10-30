@@ -212,3 +212,31 @@ export function defendantQuestion(seq, step, speaker_id, text, { prefill = null,
     }
   };
 }
+
+// --- Presiding judge (contract 3.7, chặng R4) -----------------------------------------------------------
+export const RETURN_NOTE = "Hội đồng xét xử quyết định trở lại việc xét hỏi (Điều 323 Bộ luật Tố tụng hình sự).";
+export const SYSTEM_DRAFTED_NOTE = "Lời tuyên do hệ thống soạn từ quyết định của Chủ tọa (người học).";
+export const DELIBERATION_HEADING = "PHỤ LỤC (ngoài Mẫu số 22-HS): Biên bản nghị án";
+export const DELIBERATION_INTRO = "Phụ lục do hệ thống mô phỏng dựng theo khoản 2 Điều 259 Bộ luật Tố tụng hình sự từ quyết định Chủ tọa (người học) đã chốt.";
+export const MINORITY_NOTE = "Ý kiến thiểu số của Hội thẩm nhân dân Lâm Văn Phúc: đề nghị cân nhắc thêm tình tiết giảm nhẹ (mẫu).";
+
+// The record of a presiding session: IV.2 notes the Điều 323 return; the judgment appendix says the
+// system wrote it; a second appendix, built by code from the locked decision.
+export function chairRecordDoc() {
+  const doc = recordDoc();
+  doc.sections[3].subsections[1].notes = [RETURN_NOTE];
+  doc.appendix[0].notes = [...doc.appendix[0].notes, SYSTEM_DRAFTED_NOTE];
+  doc.appendix.push({ heading: DELIBERATION_HEADING, content: null, entries: [], subsections: [],
+    notes: [DELIBERATION_INTRO, "Hội thẩm nhân dân Đoàn Thị Mai đồng ý với quyết định.", MINORITY_NOTE],
+    fields: [
+      { label: "Tòa án", value: COURT_NAME },
+      { label: "Thẩm phán - Chủ tọa phiên tòa", value: "Nguyễn Văn An" },
+      { label: "Căn cứ kết tội (điểm c khoản 3 Điều 326)", value: "Bị cáo phạm tội; áp dụng khoản 1 Điều 173 Bộ luật Hình sự." },
+      { label: "Hình phạt (điểm d khoản 3 Điều 326)", value: "Tù 12 tháng." },
+      { label: "Các vấn đề tại điểm a, b, đ, g, h khoản 3 Điều 326", value: "Không xem xét trong phạm vi mô phỏng." },
+      { label: "Nhận định của Chủ tọa", value: "Nhận định mẫu của người học (văn bản giả định)." }
+    ] });
+  return doc;
+}
+
+export const chairRecordText = () => [recordText(), "PHỤ LỤC (NGOÀI MẪU SỐ 22-HS): BIÊN BẢN NGHỊ ÁN"].join("\n");

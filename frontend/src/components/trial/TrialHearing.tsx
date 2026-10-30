@@ -1,22 +1,43 @@
 "use client";
 
-import { AlertCircle, ArrowDown, ArrowLeft, FileText, FolderOpen, Maximize2, MoreHorizontal, NotebookPen, RefreshCw, Trash2, X, XCircle } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowLeft, FileText, FolderOpen, Gavel, Maximize2, MessagesSquare, MoreHorizontal, NotebookPen, RefreshCw, Trash2, X, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CaseFilePanel, type CaseFileTab } from "@/components/trial/CaseFilePanel";
+import { AssessorOpinions, DecisionForm, DecisionSummary, DeliberationDock, PronouncementPanel } from "@/components/trial/ChairDeliberation";
 import { ClerkNotesPanel } from "@/components/trial/ClerkNotesPanel";
-import { ChairComingSoon, PresidingChecklist, PresidingComposer, type ChairMissingFlash } from "@/components/trial/PresidingPanel";
+import { PresidingChecklist, PresidingComposer, type ChairMissingFlash } from "@/components/trial/PresidingPanel";
 import { StepBar } from "@/components/trial/StepBar";
 import { TrialComposer, type ComposerAction } from "@/components/trial/TrialComposer";
 import { Transcript } from "@/components/trial/Transcript";
 import { Button } from "@/components/ui/button";
 import { useClerkNotes } from "@/hooks/useClerkNotes";
 import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
-import { abandonTrial, deleteTrial, getTrial, sendTrialTurn, TrialApiError } from "@/lib/api";
+import { abandonTrial, deleteTrial, getTrial, putTrialDecision, sendTrialTurn, TrialApiError } from "@/lib/api";
 import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
-import { chairItemLabel, composerMode, isChairRole, isClerkRole, isResyncConflict, mergeUtterances, messageForTrialError, TRIAL_ROLE_LABELS, type ChairTarget } from "@/lib/trialRules";
+import {
+  canDecide,
+  CHAIR_DECIDE_CONFIRM_MESSAGE,
+  CHAIR_LEAVE_CONFIRM_MESSAGE,
+  CHAIR_PRONOUNCE_CONFIRM_MESSAGE,
+  chairDeliberationOpen,
+  chairItemLabel,
+  composerMode,
+  decisionBody,
+  decisionDirty,
+  decisionFormValues,
+  decisionUnsetFields,
+  isChairRole,
+  isClerkRole,
+  isResyncConflict,
+  mergeUtterances,
+  messageForTrialError,
+  TRIAL_ROLE_LABELS,
+  type ChairTarget,
+  type DecisionFormValues
+} from "@/lib/trialRules";
 import type { TrialDetail, TrialPresidingItem, TrialState, TrialUtterance } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +47,9 @@ const NEAR_BOTTOM_PX = 80;
 // stored as completed by then, so after this long the screen re-reads it and releases the student.
 const RECORD_WAIT_RELEASE_MS = 15000;
 const RECORD_STATUS_PREFIX = "Đang lập biên bản";
+// Presiding judge, step 11: writing the judgment is one LLM call (a few seconds, rarely ~20s). Past
+// this the wait stops and the state is re-read, as the "Hủy chờ" button does.
+const PRONOUNCE_DRAFT_TIMEOUT_MS = 90000;
 
 // The hearing screen (THIET-KE Mục 7, màn 3). Server state is the only authority: every request
 // carries expected_step/expected_version from the latest state, a 409 replaces the state and
@@ -39,6 +63,8 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  // The action of the running stream, to word the wait before the server's first status line.
+  const [runningAction, setRunningAction] = useState<ComposerAction["action"] | null>(null);
   const [turnError, setTurnError] = useState<string | null>(null);
   const [softNotice, setSoftNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -54,6 +80,16 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const [chairMissing, setChairMissing] = useState<string[] | null>(null);
   const [chairFlash, setChairFlash] = useState<ChairMissingFlash | null>(null);
   const chairInputRef = useRef<HTMLTextAreaElement>(null);
+  // Presiding judge, step 10 (contract 3.11): the decision form as edited. null = untouched, i.e. it
+  // shows the saved draft; it survives a 409 re-sync so nothing typed is lost.
+  const [decisionValues, setDecisionValues] = useState<DecisionFormValues | null>(null);
+  const decisionValuesRef = useRef<DecisionFormValues | null>(null);
+  decisionValuesRef.current = decisionValues;
+  const [decisionSaving, setDecisionSaving] = useState(false);
+  const [decisionUnset, setDecisionUnset] = useState<string[]>([]);
+  // Main column while the deliberation room is open: the room or the transcript. null = the default
+  // (the room while the hearing runs, the transcript once it has ended).
+  const [roomTab, setRoomTab] = useState<"room" | "transcript" | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [expandedOpen, setExpandedOpen] = useState(false);
   const [caseTab, setCaseTab] = useState<CaseFileTab>("summary");
@@ -101,6 +137,48 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     setChairMissing(null);
   }, [currentStep]);
+
+  const decision = state !== null && detail !== null && isChairRole(detail.user_role) ? (state.decision ?? null) : null;
+  const savedDecisionValues = decision !== null ? decisionFormValues(decision) : null;
+  const decisionDraftDirty = decision !== null && !decision.locked && decisionValues !== null && savedDecisionValues !== null
+    && decisionDirty(decisionValues, savedDecisionValues);
+  const sessionStatus = state?.status ?? null;
+  useEffect(() => {
+    if (sessionStatus !== "active") {
+      setRoomTab(null);
+    }
+  }, [sessionStatus]);
+
+  // Unsaved decision edits: ask before the page goes away (reload, close, or an in-app link).
+  useEffect(() => {
+    if (!decisionDraftDirty) {
+      return;
+    }
+    function onBeforeUnload(event: BeforeUnloadEvent): void {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    function onClick(event: MouseEvent): void {
+      const link = (event.target as Element | null)?.closest?.("a[href]");
+      if (!(link instanceof HTMLAnchorElement) || link.target === "_blank" || event.defaultPrevented) {
+        return;
+      }
+      const url = new URL(link.href, window.location.href);
+      if (url.origin === window.location.origin && url.pathname === window.location.pathname) {
+        return;
+      }
+      if (!window.confirm(CHAIR_LEAVE_CONFIRM_MESSAGE)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [decisionDraftDirty]);
 
   const reload = useCallback(async (): Promise<boolean> => {
     try {
@@ -180,8 +258,10 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const lastSeq = lastUtteranceItem?.seq ?? -1;
   const lastIsUser = lastUtteranceItem?.is_user ?? false;
   const hasScrolledRef = useRef(false);
+  // The deliberation room replaces the transcript in the main column: nothing to follow there.
+  const roomShownRef = useRef(false);
   useEffect(() => {
-    if (lastSeq < 0) {
+    if (lastSeq < 0 || roomShownRef.current) {
       return;
     }
     const follow = !hasScrolledRef.current || lastIsUser || atBottomRef.current;
@@ -203,7 +283,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
       return;
     }
     const observer = new ResizeObserver(() => {
-      if (atBottomRef.current) {
+      if (atBottomRef.current && !roomShownRef.current) {
         scrollToLatest();
       }
     });
@@ -216,7 +296,7 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     const viewport = window.visualViewport;
     function onResize(): void {
-      if (composerRef.current?.contains(document.activeElement) && atBottomRef.current) {
+      if (composerRef.current?.contains(document.activeElement) && atBottomRef.current && !roomShownRef.current) {
         scrollToLatest();
       }
     }
@@ -260,13 +340,15 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
     };
   }, [expandedOpen]);
 
-  async function runAction(action: ComposerAction): Promise<void> {
+  async function runAction(action: ComposerAction, options: { timeoutMs?: number } = {}): Promise<void> {
     if (busyRef.current || state === null) {
       return;
     }
     busyRef.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
+    const timeout = options.timeoutMs !== undefined ? setTimeout(() => cancelWait("timeout"), options.timeoutMs) : null;
+    setRunningAction(action.action);
     // Only an action that sent the box's text empties it (a one-click template keeps a draft).
     const sentDraft = "text" in action && action.text !== undefined && action.text === draft;
     setBusy(true);
@@ -359,6 +441,10 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
         await reload();
       }
     } finally {
+      if (timeout !== null) {
+        clearTimeout(timeout);
+      }
+      setRunningAction(null);
       if (recordTimer !== null) {
         clearTimeout(recordTimer);
       }
@@ -389,6 +475,78 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
       // The stream ended with neither state nor error: the connection dropped mid-way.
       setTurnError("Kết nối bị ngắt giữa chừng. Đã tải lại trạng thái phiên tòa; nếu cần, bấm “Tiếp tục”.");
       await reload();
+    }
+  }
+
+  // "Hủy chờ" (and the step-11 timeout): stop waiting for the running stream and re-read the state.
+  // The server may still finish the turn; the next GET shows it, or offers "Tiếp tục".
+  function cancelWait(reason: "user" | "timeout"): void {
+    const controller = abortRef.current;
+    if (controller === null) {
+      return;
+    }
+    controller.abort();
+    setSoftNotice(
+      reason === "timeout"
+        ? "Việc soạn lâu hơn dự kiến nên đã dừng chờ và tải lại trạng thái phiên tòa. Nếu đã soạn xong, kết quả hiện ngay; nếu chưa, bấm “Tiếp tục” hoặc thử lại sau ít phút."
+        : "Đã dừng chờ và tải lại trạng thái phiên tòa. Nếu máy chủ đã làm xong, kết quả hiện ngay; nếu chưa, bấm “Tiếp tục” hoặc thử lại sau ít phút."
+    );
+    void reload();
+  }
+
+  // PUT /decision (contract 3.11): stores the form, even with hard errors, and adopts the state with
+  // the server's check. A 409 re-syncs the state and transcript and keeps the form as edited.
+  async function saveDecision(mode: "save" | "check"): Promise<void> {
+    if (busyRef.current || state === null || decision === null || savedDecisionValues === null) {
+      return;
+    }
+    const sent = decisionValues ?? savedDecisionValues;
+    const unset = decisionUnsetFields(sent);
+    setDecisionUnset(unset);
+    const body = decisionBody(sent, decision.form);
+    if (body === null) {
+      document.getElementById(`decision-field-${unset[0]}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
+    busyRef.current = true;
+    setDecisionSaving(true);
+    setTurnError(null);
+    setSoftNotice(null);
+    try {
+      const { state: next } = await putTrialDecision(sessionId, state.version, body);
+      setState(next);
+      // Edits made while the request was out stay as edits; otherwise the form shows the saved draft.
+      if (decisionValuesRef.current === decisionValues) {
+        setDecisionValues(null);
+      }
+      if (mode === "check") {
+        requestAnimationFrame(() => {
+          const summary = document.querySelector<HTMLElement>('[data-testid="decision-check-summary"]');
+          summary?.scrollIntoView({ block: "start", behavior: "smooth" });
+          summary?.focus({ preventScroll: true });
+        });
+      }
+    } catch (error) {
+      if (error instanceof TrialApiError && error.state !== null) {
+        setState(error.state);
+        if (error.code === "trial_decision_locked") {
+          setDecisionValues(null);
+        }
+        const kept = error.code === "trial_version_mismatch" || error.code === "trial_step_mismatch" || error.code === "trial_busy"
+          ? " Bản nháp bạn đang sửa vẫn được giữ trên màn hình; bấm “Lưu nháp” để lưu lại."
+          : "";
+        setSoftNotice(`${messageForTrialError(error)}${kept}`);
+        await reload();
+      } else if (error instanceof TrialApiError) {
+        if (!error.featureDisabled) {
+          setTurnError(`${messageForTrialError(error)} Bản nháp bạn đang sửa vẫn còn trên màn hình.`);
+        }
+      } else {
+        setTurnError("Mất kết nối tới máy chủ nên chưa lưu được. Bản nháp bạn đang sửa vẫn còn trên màn hình; bấm “Lưu nháp” để thử lại.");
+      }
+    } finally {
+      busyRef.current = false;
+      setDecisionSaving(false);
     }
   }
 
@@ -490,10 +648,18 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const presiding = isChair ? (state.presiding ?? null) : null;
   const drawerTitle = drawer === "notes" ? "Ghi chép" : drawer === "preside" ? "Điều hành" : "Hồ sơ vụ án";
   const mode = composerMode(state);
-  // Presiding judge, steps 2-9: the checklist and its composer. Steps 10-11 come in a later stage.
-  const chairComposer = presiding !== null && !busy && state.status === "active" && state.awaiting === "user" && state.current_step <= 9
+  // Presiding judge, steps 10-11 (contract 5.4): once "vào phòng nghị án" is done the main column is
+  // the deliberation room (decision form, assessors, judgment), the transcript one tab away.
+  const roomOpen = isChair && chairDeliberationOpen(state);
+  const roomShown = roomOpen && (roomTab ?? (state.status === "active" ? "room" : "transcript")) === "room";
+  roomShownRef.current = roomShown;
+  // In the room an empty allowed_actions is normal (no clean draft yet: "decide" is not offered).
+  const roomDock = roomOpen && decision !== null && state.status === "active" && (busy || state.awaiting === "user");
+  // Steps 2-10 up to the deliberation room: the checklist and its composer.
+  const chairComposer = presiding !== null && !busy && !roomOpen && state.status === "active" && state.awaiting === "user" && state.current_step <= 10
     && (mode === "preside" || mode === "advance");
-  const chairSoon = isChair && !busy && state.status === "active" && state.current_step >= 10 && mode !== "paused" && mode !== "exhausted";
+  const decisionEditable = decision !== null && !decision.locked && state.current_step === 10;
+  const decisionShown = decisionValues ?? savedDecisionValues;
   const hasWorkTab = isClerk || presiding !== null;
   const workTab = hasWorkTab && sideTab === "work";
   const checklist = presiding !== null ? (
@@ -580,7 +746,76 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
           />
         </header>
 
-        <div className="min-w-0" aria-live="polite" aria-relevant="additions">
+        {roomOpen ? (
+          <div role="tablist" aria-label="Khu chính" className="flex w-full max-w-md gap-1 self-start rounded-full bg-muted p-0.5" data-testid="room-tabs">
+            {(["room", "transcript"] as const).map((key) => {
+              const selected = (key === "room") === roomShown;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  data-testid={`room-tab-${key}`}
+                  onClick={() => setRoomTab(key)}
+                  className={cn(
+                    "flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    selected ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {key === "room" ? <Gavel className="h-4 w-4" aria-hidden="true" /> : <MessagesSquare className="h-4 w-4" aria-hidden="true" />}
+                  {key === "room" ? (state.current_step >= 11 ? "Tuyên án" : "Phòng nghị án") : "Diễn biến phiên tòa"}
+                  {key === "room" && decisionDraftDirty ? <span className="text-primary" aria-label="có thay đổi chưa lưu">●</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {roomOpen && decision !== null ? (
+          <section data-testid="deliberation-room" aria-label="Phòng nghị án" className={cn("flex min-w-0 flex-col gap-4", !roomShown && "hidden")}>
+            <div className="flex flex-col gap-1">
+              <h2 className="font-serif text-xl font-light tracking-tight text-foreground">{state.current_step >= 11 ? "Tuyên án" : "Phòng nghị án"}</h2>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {state.current_step >= 11
+                  ? "Lời tuyên được soạn từ chính quyết định bạn đã chốt."
+                  : "Bạn quyết định mọi vấn đề của vụ án. Việc nghị án là bí mật: nội dung trong phòng này không vào diễn biến phiên tòa."}
+              </p>
+            </div>
+            {state.current_step >= 11 ? (
+              <PronouncementPanel decision={decision} caseFile={detail.case_file} completed={state.status === "completed"} />
+            ) : decisionEditable && decisionShown !== null ? (
+              <DecisionForm
+                decision={decision}
+                values={decisionShown}
+                onChange={(next) => {
+                  setDecisionValues(next);
+                  setDecisionUnset((current) => {
+                    const stillUnset: string[] = decisionUnsetFields(next);
+                    return current.filter((field) => stillUnset.includes(field));
+                  });
+                }}
+                caseFile={detail.case_file}
+                unset={decisionUnset}
+                dirty={decisionDraftDirty}
+                disabled={busy || state.status !== "active"}
+              />
+            ) : decision.draft !== null ? (
+              <DecisionSummary draft={decision.draft} caseFile={detail.case_file} />
+            ) : null}
+            {state.current_step === 10 ? (
+              <AssessorOpinions
+                decision={decision}
+                canInvite={state.awaiting === "user" && state.allowed_actions.some((action) => action.startsWith("invite:") && action.slice(7).split("|").includes("y_kien_hoi_tham"))}
+                dirty={decisionDraftDirty}
+                busy={busy || decisionSaving}
+                onInvite={() => void runAction({ action: "invite", item: "y_kien_hoi_tham" })}
+              />
+            ) : null}
+          </section>
+        ) : null}
+
+        <div className={cn("min-w-0", roomShown && "hidden")} aria-live="polite" aria-relevant="additions">
           {utterances.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">Phiên tòa chưa có diễn biến nào.</p>
           ) : (
@@ -659,8 +894,37 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
               onOpenChecklist={() => setDrawer("preside")}
               onShowMissing={() => showMissing(presiding.missing_required)}
             />
-          ) : chairSoon ? (
-            <ChairComingSoon />
+          ) : roomDock && decision !== null ? (
+            <DeliberationDock
+              step={state.current_step}
+              decision={decision}
+              allowedActions={state.awaiting === "user" ? state.allowed_actions : []}
+              busy={busy}
+              statusMessage={statusMessage}
+              runningAction={runningAction}
+              saving={decisionSaving}
+              dirty={decisionDraftDirty}
+              canDecide={canDecide(state, decisionDraftDirty)}
+              slowNotice={slowRequest.isSlow ? SLOW_REQUEST_NOTICE : null}
+              onSave={() => void saveDecision("save")}
+              onCheck={() => void saveDecision("check")}
+              onDecide={() => {
+                if (window.confirm(CHAIR_DECIDE_CONFIRM_MESSAGE)) {
+                  void runAction({ action: "decide" });
+                }
+              }}
+              onAdvance={(target) => void runAction({ action: "advance", target_step: target })}
+              onPrepare={() => {
+                setRoomTab("room");
+                void runAction({ action: "prepare_pronouncement" }, { timeoutMs: PRONOUNCE_DRAFT_TIMEOUT_MS });
+              }}
+              onPronounce={() => {
+                if (window.confirm(CHAIR_PRONOUNCE_CONFIRM_MESSAGE)) {
+                  void runAction({ action: "pronounce" });
+                }
+              }}
+              onCancel={() => cancelWait("user")}
+            />
           ) : (
           <TrialComposer
             recordPending={recordPending}

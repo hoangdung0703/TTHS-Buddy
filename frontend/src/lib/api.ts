@@ -39,6 +39,7 @@ import type {
   QuizSubmitResponse,
   TrialClerkDraft,
   TrialCreateRequest,
+  TrialDecisionDraft,
   TrialDetail,
   TrialListResponse,
   TrialNotes,
@@ -592,6 +593,15 @@ export async function putTrialRecordDraft(sessionId: string, draft: { iv2: strin
   });
 }
 
+// PUT /decision (contract 3.11): stores the presiding judge's decision draft, even one with hard
+// errors; the answer's state.decision.check is the server's check. No LLM call.
+export async function putTrialDecision(sessionId: string, expectedVersion: number, decision: TrialDecisionDraft): Promise<{ state: TrialState }> {
+  return trialJson<{ state: TrialState }>(`/${encodeURIComponent(sessionId)}/decision`, {
+    method: "PUT",
+    body: JSON.stringify({ expected_version: expectedVersion, decision })
+  });
+}
+
 // Finalises the saved draft; answers like GET /record. Idempotent.
 export async function finalizeTrialRecord(sessionId: string): Promise<TrialRecord> {
   return trialJson<TrialRecord>(`/${encodeURIComponent(sessionId)}/record/finalize`, { method: "POST" });
@@ -650,7 +660,8 @@ export type TrialTurnRequest =
   | { expected_step: number; expected_version: number; action: "item" | "invite"; item: string; text?: string }
   | { expected_step: number; expected_version: number; action: "ask"; addressee: string; text: string }
   | { expected_step: number; expected_version: number; action: "remark"; text: string; addressee?: string }
-  | { expected_step: number; expected_version: number; action: "return_to_questioning"; text?: string };
+  | { expected_step: number; expected_version: number; action: "return_to_questioning"; text?: string }
+  | { expected_step: number; expected_version: number; action: "decide" | "prepare_pronouncement" | "pronounce" };
 
 // POST /api/trials/{id}/turn - SSE. Only the fields of the chosen action are sent: the schema
 // forbids extras.

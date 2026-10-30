@@ -6,7 +6,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { config, FAKE, caseFile, participants, steps, makeUtterances, recordDoc, recordText, clerkRecordDoc, clerkRecordText, roleBrief, COURT_NAME, DISCLAIMER } from "./fixtures.mjs";
+import { config, FAKE, caseFile, participants, steps, makeUtterances, recordDoc, recordText, clerkRecordDoc, clerkRecordText, chairRecordDoc, chairRecordText, roleBrief, COURT_NAME, DISCLAIMER } from "./fixtures.mjs";
 
 export const PORT = Number(process.env.E2E_PORT ?? 3011);
 export const BASE = `http://localhost:${PORT}`;
@@ -117,12 +117,14 @@ export const world = {
   finalize: null,
   // Request bodies the clerk routes received, in order: { method, path, body }.
   clerkBodies: [],
+  // PUT /decision (presiding judge): (route, body) => Promise; null answers 404.
+  decisionPut: null,
   requests: []
 };
 
 export function resetWorld() {
   Object.assign(world, { flag: "on", allowedEmails: null, head: null, delay: 0, config: config(), role: "ksv", state: baseState(), utterances: makeUtterances(), turn: null, create: null,
-    clerk: baseClerk(), notesPut: null, draftPut: null, finalize: null, clerkBodies: [], requests: [] });
+    clerk: baseClerk(), notesPut: null, draftPut: null, finalize: null, clerkBodies: [], decisionPut: null, requests: [] });
 }
 
 // Contract 3.3: role_brief only in a defendant session; for every other role the key is absent.
@@ -139,6 +141,7 @@ const cors = {
   "access-control-allow-methods": "GET, POST, PUT, HEAD, DELETE, OPTIONS"
 };
 const json = (status, body) => ({ status, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify(body) });
+export const fulfillJson = (route, status, body) => route.fulfill(json(status, body));
 const notFound = () => json(404, { detail: "Not Found" });
 
 export const sseEvent = (name, data) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -190,6 +193,12 @@ async function handleApi(route) {
   if (path.startsWith(`/api/trials/${FAKE}`)) {
     if (/\/(notes|record\/draft|record\/finalize)$/.test(path)) {
       return fulfillError(route, 409, "trial_not_clerk", { state: world.state });
+    }
+    if (path.endsWith("/decision") && method === "PUT" && world.decisionPut) {
+      return world.decisionPut(route, JSON.parse(request.postData() ?? "{}"));
+    }
+    if (path.endsWith("/record") && world.role === "chu_toa") {
+      return route.fulfill(json(200, { session_id: FAKE, text: chairRecordText(), record: chairRecordDoc(), clerk: null }));
     }
     if (path.endsWith("/record")) {
       const observer = world.role === "nguoi_xem";

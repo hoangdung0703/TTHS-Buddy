@@ -3,7 +3,26 @@
 // Everything that decides WHAT the student may do comes from state.allowed_actions; the helpers
 // here only translate that list into UI pieces and pre-check text the server would reject anyway.
 
-import type { TrialClerkDraft, TrialClerkSection, TrialConfig, TrialPresiding, TrialPresidingItem, TrialRecordDocument, TrialRecordSection, TrialState, TrialUtterance } from "./types";
+import type {
+  TrialClerkDraft,
+  TrialClerkSection,
+  TrialConfig,
+  TrialDecisionCheck,
+  TrialDecisionCircumstance,
+  TrialDecisionDraft,
+  TrialDecisionFinding,
+  TrialDecisionForm,
+  TrialDecisionState,
+  TrialExhibitDisposition,
+  TrialPenaltyFrame,
+  TrialPenaltyType,
+  TrialPresiding,
+  TrialPresidingItem,
+  TrialRecordDocument,
+  TrialRecordSection,
+  TrialState,
+  TrialUtterance
+} from "./types";
 
 // --- Text limits --------------------------------------------------------------------------------
 // The server sends the limits of the current slot in state.text_limits (contract Mục 3.4/5); that is
@@ -734,7 +753,7 @@ export function askAddresseesForItem(key: string, askTo: readonly string[]): str
 
 // Whether the item can be acted on now: the server marks it available AND its action is listed.
 export function chairItemActionable(item: TrialPresidingItem, actions: ChairActions): boolean {
-  if (!item.available) {
+  if (!item.available || chairItemInDeliberation(item)) {
     return false;
   }
   switch (item.kind) {
@@ -897,6 +916,10 @@ export function chairStepHint(step: number, presiding: TrialPresiding | null | u
       return presiding?.items.some((item) => item.key === "moi_loi_sau_cung" && item.done)
         ? "Bị cáo đã nói lời sau cùng: không ai được hỏi thêm bị cáo (khoản 2 Điều 324 BLTTHS)."
         : "Cho bị cáo nói lời sau cùng.";
+    case 10:
+      return "Vào phòng nghị án; ở đó bạn lập quyết định, kiểm tra và chốt.";
+    case 11:
+      return "Hệ thống soạn lời tuyên từ quyết định bạn đã chốt; đọc trước rồi tuyên án.";
     default:
       return "Làm các mục bắt buộc trong khung Điều hành, rồi bấm “Sang bước tiếp theo”.";
   }
@@ -904,3 +927,227 @@ export function chairStepHint(step: number, presiding: TrialPresiding | null | u
 
 export const CHAIR_RETURN_CONFIRM_MESSAGE =
   "Trở lại xét hỏi (Điều 323 BLTTHS)? Mỗi phiên chỉ dùng được một lần. Phiên tòa quay về bước 5 thu gọn: bạn hỏi tối đa 3 câu, có thể mời Kiểm sát viên, luật sư hỏi, rồi kết thúc xét hỏi để về lại bước 8 và đối đáp lại.";
+
+// --- Presiding judge: deliberation and judgment (contract 3.11, 5.4, steps 10-11) ------------------
+
+// The deliberation room opens once "vào phòng nghị án" is done (step 10) and stays for step 11.
+export function chairDeliberationOpen(state: Pick<TrialState, "current_step" | "presiding" | "decision">): boolean {
+  if (state.decision === null || state.decision === undefined) {
+    return false;
+  }
+  if (state.current_step >= 11) {
+    return true;
+  }
+  return state.current_step === 10 && (state.presiding?.items.some((item) => item.key === "vao_nghi_an" && item.done) ?? false);
+}
+
+// Checklist rows that are done in the deliberation room, never from the checklist: the assessors'
+// comments (their invitation would otherwise put a line in the transcript), "decide" and "pronounce".
+export function chairItemInDeliberation(item: Pick<TrialPresidingItem, "key" | "kind">): boolean {
+  return item.kind === "decide" || item.kind === "pronounce" || item.key === "y_kien_hoi_tham";
+}
+
+export const PENALTY_TYPE_LABELS: Record<TrialPenaltyType, string> = {
+  tu: "Tù có thời hạn",
+  cai_tao_khong_giam_giu: "Cải tạo không giam giữ",
+  phat_tien: "Phạt tiền",
+  khong: "Không có hình phạt"
+};
+
+export const DISPOSITION_LABELS: Record<TrialExhibitDisposition, string> = {
+  tra_lai: "Trả lại cho chủ sở hữu hoặc người quản lý hợp pháp",
+  tich_thu_sung_ngan_sach: "Tịch thu, nộp ngân sách nhà nước",
+  tich_thu_tieu_huy: "Tịch thu và tiêu hủy",
+  luu_ho_so: "Lưu trong hồ sơ vụ án"
+};
+
+// What the form holds while the student edits: numbers as typed, choices that must be made
+// explicitly ("" / null) instead of a default that would suggest an answer.
+export interface DecisionFormValues {
+  guilty: boolean | null;
+  khoan: string;
+  diem: string[];
+  penalty_type: TrialPenaltyType | "";
+  penalty_months: string;
+  fine_vnd: string;
+  suspended: boolean;
+  probation_months: string;
+  applies_dieu_54: boolean;
+  mitigating: TrialDecisionCircumstance[];
+  aggravating: TrialDecisionCircumstance[];
+  civil_amount_vnd: string;
+  reasoning_summary: string;
+  exhibits: Record<string, TrialExhibitDisposition | "">;
+  defendant_pays_criminal_fee: boolean;
+  defendant_pays_civil_fee: boolean;
+}
+
+const numberText = (value: number | null | undefined): string => (value === null || value === undefined ? "" : String(value));
+
+// The saved draft as form values, or an empty form: only the charged khoản and điểm are preselected
+// (contract 5.4); nothing else is filled in.
+export function decisionFormValues(decision: Pick<TrialDecisionState, "draft" | "form">): DecisionFormValues {
+  const { draft, form } = decision;
+  const exhibits: Record<string, TrialExhibitDisposition | ""> = {};
+  for (const id of form.exhibits) {
+    exhibits[id] = draft?.exhibits.find((exhibit) => exhibit.evidence_id === id)?.disposition ?? "";
+  }
+  if (draft === null) {
+    return {
+      guilty: null, khoan: form.charged_khoan, diem: [...form.charged_diem], penalty_type: "", penalty_months: "", fine_vnd: "", suspended: false,
+      probation_months: "", applies_dieu_54: false, mitigating: [], aggravating: [], civil_amount_vnd: "", reasoning_summary: "", exhibits,
+      defendant_pays_criminal_fee: false, defendant_pays_civil_fee: false
+    };
+  }
+  return {
+    guilty: draft.guilty,
+    khoan: draft.khoan,
+    diem: [...draft.diem],
+    penalty_type: draft.penalty_type,
+    penalty_months: numberText(draft.penalty_months),
+    fine_vnd: numberText(draft.fine_vnd),
+    suspended: draft.suspended,
+    probation_months: numberText(draft.probation_months),
+    applies_dieu_54: draft.applies_dieu_54,
+    mitigating: draft.mitigating.map((item) => ({ ...item, fact_ids: [...item.fact_ids] })),
+    aggravating: draft.aggravating.map((item) => ({ ...item, fact_ids: [...item.fact_ids] })),
+    civil_amount_vnd: numberText(draft.civil_amount_vnd),
+    reasoning_summary: draft.reasoning_summary,
+    exhibits,
+    defendant_pays_criminal_fee: draft.defendant_pays_criminal_fee,
+    defendant_pays_civil_fee: draft.defendant_pays_civil_fee
+  };
+}
+
+// "2.000.000", "2 000 000 đồng" -> 2000000; "" -> null. Digits only: the inputs never hold a sign.
+export function parseWholeNumber(text: string): number | null {
+  const digits = text.replace(/\D/g, "");
+  if (digits.length === 0) {
+    return null;
+  }
+  const value = Number(digits);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+// Choices the schema needs before the draft can be sent (422 otherwise). Everything else - even a
+// draft full of hard errors - is saved and checked by the server.
+export function decisionUnsetFields(values: DecisionFormValues): ("guilty" | "penalty_type")[] {
+  const unset: ("guilty" | "penalty_type")[] = [];
+  if (values.guilty === null) {
+    unset.push("guilty");
+  }
+  if (values.penalty_type === "") {
+    unset.push("penalty_type");
+  }
+  return unset;
+}
+
+export const DECISION_UNSET_MESSAGES: Record<"guilty" | "penalty_type", string> = {
+  guilty: "Chọn bị cáo có tội hay không phạm tội trước khi lưu.",
+  penalty_type: "Chọn loại hình phạt chính trước khi lưu (không phạm tội thì chọn “Không có hình phạt”)."
+};
+
+// The PUT /decision body.decision. Only the contract's fields; fine_vnd only with phạt tiền,
+// probation only with án treo; exhibits without a chosen disposition are left out (the server then
+// reports exhibit_missing). Null when a schema-required choice is still unset.
+export function decisionBody(values: DecisionFormValues, form: Pick<TrialDecisionForm, "dieu" | "exhibits">): TrialDecisionDraft | null {
+  if (values.guilty === null || values.penalty_type === "") {
+    return null;
+  }
+  const exhibits: TrialDecisionDraft["exhibits"] = [];
+  for (const id of form.exhibits) {
+    const disposition = values.exhibits[id];
+    if (disposition) {
+      exhibits.push({ evidence_id: id, disposition });
+    }
+  }
+  return {
+    guilty: values.guilty,
+    dieu: form.dieu,
+    khoan: values.khoan,
+    diem: [...values.diem],
+    penalty_type: values.penalty_type,
+    penalty_months: parseWholeNumber(values.penalty_months),
+    fine_vnd: values.penalty_type === "phat_tien" ? parseWholeNumber(values.fine_vnd) : null,
+    suspended: values.suspended,
+    probation_months: values.suspended ? parseWholeNumber(values.probation_months) : null,
+    applies_dieu_54: values.applies_dieu_54,
+    mitigating: values.mitigating.map((item) => ({ khoan: item.khoan, diem: item.diem, fact_ids: [...item.fact_ids] })),
+    aggravating: values.aggravating.map((item) => ({ khoan: item.khoan, diem: item.diem, fact_ids: [...item.fact_ids] })),
+    civil_amount_vnd: parseWholeNumber(values.civil_amount_vnd),
+    reasoning_summary: values.reasoning_summary,
+    exhibits,
+    defendant_pays_criminal_fee: values.defendant_pays_criminal_fee,
+    defendant_pays_civil_fee: values.defendant_pays_civil_fee
+  };
+}
+
+// True when the form differs from what is saved (the draft, or the empty form when nothing is).
+export function decisionDirty(values: DecisionFormValues, saved: DecisionFormValues): boolean {
+  return JSON.stringify(values) !== JSON.stringify(saved);
+}
+
+export interface FieldFindings {
+  errors: TrialDecisionFinding[];
+  warnings: TrialDecisionFinding[];
+}
+
+// The server's findings about one field ("khoan", "mitigating[0]", ...), exact match.
+export function decisionFindingsFor(check: TrialDecisionCheck | null | undefined, field: string): FieldFindings {
+  return {
+    errors: check?.errors.filter((finding) => finding.field === field) ?? [],
+    warnings: check?.warnings.filter((finding) => finding.field === field) ?? []
+  };
+}
+
+// Fields the form shows findings next to. A finding about any other field (or a row that no longer
+// exists) is listed in the summary at the top instead, so none is ever hidden.
+const DECISION_FIELDS = new Set([
+  "guilty", "dieu", "khoan", "diem", "penalty_type", "penalty_months", "fine_vnd", "suspended", "probation_months", "applies_dieu_54",
+  "mitigating", "aggravating", "civil_amount_vnd", "reasoning_summary", "exhibits", "defendant_pays_criminal_fee", "defendant_pays_civil_fee"
+]);
+
+export function decisionFieldShown(field: string, rows: { mitigating: number; aggravating: number }): boolean {
+  if (DECISION_FIELDS.has(field)) {
+    return true;
+  }
+  const match = /^(mitigating|aggravating)\[(\d+)\]$/.exec(field);
+  return match !== null && Number(match[2]) < rows[match[1] as "mitigating" | "aggravating"];
+}
+
+// "36 tháng (3 năm)"-style durations: whole years when exact.
+export function monthsLabel(months: number): string {
+  if (months < 12) {
+    return `${months} tháng`;
+  }
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  return rest === 0 ? `${years} năm` : `${years} năm ${rest} tháng`;
+}
+
+// The penalty frame of a khoản as the form shows it next to the months box (contract 5.4: frames).
+export function penaltyFrameText(frame: TrialPenaltyFrame | null | undefined): string {
+  if (frame === null || frame === undefined) {
+    return "Hệ thống chưa tách được khung hình phạt của khoản này.";
+  }
+  const parts = [`tù từ ${monthsLabel(frame.prison_min_months)} đến ${monthsLabel(frame.prison_max_months)}`];
+  if (frame.non_custodial_max_months !== null) {
+    parts.push(`cải tạo không giam giữ đến ${monthsLabel(frame.non_custodial_max_months)}`);
+  }
+  if (frame.fine_as_main) {
+    parts.push("phạt tiền");
+  }
+  return `Khung: ${parts.join("; ")}.`;
+}
+
+// "decide" is offered only by the server (no hard error in the saved draft); the form also waits for
+// unsaved edits to be saved and checked first.
+export function canDecide(state: Pick<TrialState, "allowed_actions" | "decision">, dirty: boolean): boolean {
+  return !dirty && state.allowed_actions.includes("decide") && (state.decision?.check?.errors.length ?? 1) === 0;
+}
+
+export const CHAIR_DECIDE_CONFIRM_MESSAGE =
+  "Chốt quyết định? Sau khi chốt, bạn không sửa được bản nháp nữa; lời tuyên án sẽ được soạn từ đúng quyết định này.";
+export const CHAIR_PRONOUNCE_CONFIRM_MESSAGE =
+  "Tuyên án bằng lời tuyên này? Lời tuyên được ghi vào diễn biến phiên tòa dưới tên Chủ tọa và phiên tòa kết thúc.";
+export const CHAIR_LEAVE_CONFIRM_MESSAGE = "Bản nháp quyết định có thay đổi chưa lưu. Rời trang thì các thay đổi này sẽ mất. Vẫn rời trang?";

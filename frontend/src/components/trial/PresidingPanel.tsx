@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CheckCircle2, Circle, CircleDashed, Gavel, ListChecks, MessageSquareText, PenLine, RotateCcw, Send, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, CircleDashed, ListChecks, MessageSquareText, PenLine, RotateCcw, Send, Sparkles } from "lucide-react";
 import { forwardRef, useEffect, useId, useRef, useState } from "react";
 
 import { ArticlePill } from "@/components/trial/ArticlePill";
@@ -11,6 +11,7 @@ import {
   askAddresseesForItem,
   CHAIR_RETURN_CONFIRM_MESSAGE,
   chairItemActionable,
+  chairItemInDeliberation,
   chairItemLabel,
   chairOneClickTemplate,
   chairStepHint,
@@ -83,7 +84,9 @@ export function PresidingChecklist({ presiding, allowedActions, busy, flash, onA
           Bắt buộc: {requiredDone}/{requiredTotal} mục
         </p>
         <p className="text-xs text-muted-foreground" data-testid="chair-counters">
-          {questioning ? `Còn ${questionsLeft} câu hỏi · ` : ""}Còn {remarksLeft} lần phát biểu khác
+          {questioning ? `Còn ${questionsLeft} câu hỏi` : ""}
+          {questioning && presiding.step <= 9 ? " · " : ""}
+          {presiding.step <= 9 ? `Còn ${remarksLeft} lần phát biểu khác` : ""}
         </p>
       </div>
       {presiding.in_return ? (
@@ -153,7 +156,9 @@ const ChecklistRow = forwardRef<HTMLLIElement, ChecklistRowProps>(function Check
   }
 
   const StatusIcon = item.done ? CheckCircle2 : item.required ? Circle : CircleDashed;
-  const status = item.done ? (isAsk ? "Đã hỏi" : "Đã làm") : actionable ? "" : "Chưa làm được lúc này";
+  // Assessors, "decide", "pronounce": done in the deliberation room, never from here.
+  const inRoom = chairItemInDeliberation(item);
+  const status = item.done ? (isAsk ? "Đã hỏi" : "Đã làm") : inRoom ? "Trong phòng nghị án" : actionable ? "" : "Chưa làm được lúc này";
 
   return (
     <li
@@ -178,7 +183,7 @@ const ChecklistRow = forwardRef<HTMLLIElement, ChecklistRowProps>(function Check
             </span>
             {status ? <span className="shrink-0 text-[0.7rem] text-muted-foreground">{status}</span> : null}
           </div>
-          {item.template && !item.done && item.kind !== "return" ? <TemplatePreview text={item.template} /> : null}
+          {item.template && !item.done && item.kind !== "return" && !inRoom ? <TemplatePreview text={item.template} /> : null}
           {item.kind === "return" ? (
             <p className="text-xs leading-relaxed text-muted-foreground">
               Một lần mỗi phiên{actionable ? " · còn lượt" : ""}. Phiên về bước 5 thu gọn (hỏi tối đa 3 câu), kết thúc xét hỏi rồi về lại bước 8 và đối đáp lại.
@@ -500,20 +505,5 @@ function AddresseeSelect({
         ))}
       </select>
     </span>
-  );
-}
-
-// F1 stops before deliberation: steps 10-11 (decision form, assessors, pronouncement) come in F2.
-export function ChairComingSoon() {
-  return (
-    <div data-testid="chair-coming-soon" role="status" className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3">
-      <Gavel className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <p className="min-w-0 text-sm text-foreground">
-        <span className="font-medium">Nghị án và tuyên án: sắp có.</span>
-        <span className="block text-xs text-muted-foreground">
-          Phần quyết định của Chủ tọa chưa có trên giao diện. Phiên tòa đã được lưu ở bước này; bạn quay lại sau khi tính năng được mở.
-        </span>
-      </p>
-    </div>
   );
 }

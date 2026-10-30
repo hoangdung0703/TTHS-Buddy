@@ -48,13 +48,13 @@ function Entry({ entry }: { entry: TrialRecordEntry }) {
   );
 }
 
-function ContentLabel({ kind }: { kind: "summary" | "verbatim" | "user" }) {
+function ContentLabel({ kind }: { kind: "summary" | "verbatim" | "user" | "system" }) {
   return (
     <span
       data-testid="record-content-label"
       className="ml-2 inline-flex items-center rounded-full border border-border bg-secondary px-2 py-0.5 align-middle text-[0.7rem] font-medium text-secondary-foreground print:bg-transparent"
     >
-      {kind === "summary" ? "Tóm tắt" : kind === "user" ? "Người học soạn" : "Nguyên văn"}
+      {kind === "summary" ? "Tóm tắt" : kind === "user" ? "Người học soạn" : kind === "system" ? "Hệ thống dựng" : "Nguyên văn"}
     </span>
   );
 }
@@ -63,8 +63,10 @@ function hasBody(section: TrialRecordSection): boolean {
   return (section.entries?.length ?? 0) > 0 || (section.summary ?? "").length > 0;
 }
 
-// notesFirst: the appendix's note introduces its entries; in the form's sections the fixed notes
-// follow the content (e.g. "Hội đồng xét xử vào phòng nghị án...").
+// notesFirst: the appendix's notes introduce it (heading, notes, fields, entries - contract 3.7); in
+// the form's sections the fixed notes follow the content (e.g. "Hội đồng xét xử vào phòng nghị án...").
+// An appendix with fields (the presiding judge's "Biên bản nghị án") is built by code from the
+// student's decision and says so.
 function Section({ section, level, notesFirst = false }: { section: TrialRecordSection; level: 1 | 2; notesFirst?: boolean }) {
   const notes = section.notes?.map((note, index) => (
     <p key={index} className={cn("break-words", notesFirst && "italic text-muted-foreground print:text-black")}>
@@ -83,14 +85,15 @@ function Section({ section, level, notesFirst = false }: { section: TrialRecordS
         {/* Subsections that carry speech say whether it is the clerk's summary or verbatim. */}
         {level === 2 && isUser ? <ContentLabel kind="user" /> : null}
         {level === 2 && !isUser && hasBody(section) ? <ContentLabel kind={isSummary ? "summary" : "verbatim"} /> : null}
+        {notesFirst && (section.fields?.length ?? 0) > 0 ? <ContentLabel kind="system" /> : null}
       </Heading>
       {isUser && section.author_note ? (
         <p data-testid="record-author-note" className="-mt-2 text-xs italic text-muted-foreground print:text-black">
           ({section.author_note})
         </p>
       ) : null}
-      {section.fields?.map((field, index) => <FieldLine key={index} field={field} />)}
       {notesFirst ? notes : null}
+      {section.fields?.map((field, index) => <FieldLine key={index} field={field} />)}
       {isUser ? (
         (section.summary ?? "").length > 0 ? (
           <div data-testid="record-user-text">

@@ -14,6 +14,7 @@ import {
   DECLINE_CONFIRM_MESSAGE,
   endSlotLabel,
   GUARD_EXHAUSTED_MESSAGE,
+  isChairRole,
   isClerkRole,
   isDefendantRole,
   legalBasisArticle,
@@ -37,7 +38,8 @@ export type ComposerAction =
   | { action: "item" | "invite"; item: string; text?: string }
   | { action: "ask"; addressee: string; text: string }
   | { action: "remark"; text: string; addressee?: string }
-  | { action: "return_to_questioning"; text?: string };
+  | { action: "return_to_questioning"; text?: string }
+  | { action: "decide" | "prepare_pronouncement" | "pronounce" };
 
 interface TrialComposerProps {
   // The session is completed but the record summary is still being written (final turn).
@@ -157,7 +159,7 @@ export function TrialComposer({
         <Button asChild size="sm" className="h-9 rounded-full">
           <Link href={`/trial/${sessionId}/record`}>
             <FileText className="h-4 w-4" />
-            {isClerkRole(userRole) ? "Mở biên bản" : "Xem biên bản"}
+            {isClerkRole(userRole) || isChairRole(userRole) ? "Mở biên bản" : "Xem biên bản"}
           </Link>
         </Button>
       </div>

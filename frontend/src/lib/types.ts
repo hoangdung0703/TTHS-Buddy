@@ -297,8 +297,110 @@ export interface TrialState {
   pending_question?: TrialPendingQuestion | null;
   // Presiding judge role only, steps 2-11 (contract 5.4): the step's checklist, counters and limits.
   presiding?: TrialPresiding | null;
-  // Presiding judge role only, steps 10-11: the student's own decision. Not used before step 10.
-  decision?: Record<string, unknown> | null;
+  // Presiding judge role only, steps 10-11 (contract 5.4): the student's OWN decision (draft or
+  // locked), its check, the assessors' comments and the judgment text written from it. Never an AI
+  // decision: none exists in this role.
+  decision?: TrialDecisionState | null;
+}
+
+// --- Presiding judge: the decision form (contract 3.11, 5.4) -------------------------------------
+
+export type TrialPenaltyType = "tu" | "cai_tao_khong_giam_giu" | "phat_tien" | "khong";
+export type TrialExhibitDisposition = "tra_lai" | "tich_thu_sung_ngan_sach" | "tich_thu_tieu_huy" | "luu_ho_so";
+
+export interface TrialDecisionCircumstance {
+  khoan: string;
+  // "" for Điều 51 khoản 2 ("tình tiết khác", no điểm).
+  diem: string;
+  fact_ids: string[];
+}
+
+// PUT /decision body.decision; also state.decision.draft.
+export interface TrialDecisionDraft {
+  guilty: boolean;
+  dieu: string;
+  khoan: string;
+  diem: string[];
+  penalty_type: TrialPenaltyType;
+  penalty_months: number | null;
+  fine_vnd: number | null;
+  suspended: boolean;
+  probation_months: number | null;
+  applies_dieu_54: boolean;
+  mitigating: TrialDecisionCircumstance[];
+  aggravating: TrialDecisionCircumstance[];
+  civil_amount_vnd: number | null;
+  reasoning_summary: string;
+  exhibits: { evidence_id: string; disposition: TrialExhibitDisposition }[];
+  defendant_pays_criminal_fee: boolean;
+  defendant_pays_civil_fee: boolean;
+}
+
+// One check result: `field` names the form field ("khoan", "mitigating[0]", ...), `basis` the legal
+// citations as the server writes them. Feedback, never a score.
+export interface TrialDecisionFinding {
+  code: string;
+  field: string;
+  message: string;
+  basis: string[];
+}
+
+export interface TrialDecisionCheck {
+  // Hard errors: block "decide".
+  errors: TrialDecisionFinding[];
+  // Soft warnings: shown, never blocking.
+  warnings: TrialDecisionFinding[];
+  flags: string[];
+}
+
+export interface TrialPenaltyFrame {
+  prison_min_months: number;
+  prison_max_months: number;
+  non_custodial_max_months: number | null;
+  fine_as_main: boolean;
+}
+
+export interface TrialDecisionForm {
+  dieu: string;
+  charged_khoan: string;
+  charged_diem: string[];
+  // Only the khoản that set a main penalty frame.
+  khoan: string[];
+  diem: Record<string, string[]>;
+  // null = the system could not read the frame of that khoản.
+  frames: Record<string, TrialPenaltyFrame | null>;
+  // Điều 51 khoản 1-2 / Điều 52 khoản 1: the điểm of each khoản ([] = no điểm).
+  mitigating_points: Record<string, string[]>;
+  aggravating_points: Record<string, string[]>;
+  penalty_types: TrialPenaltyType[];
+  facts: string[];
+  exhibits: string[];
+  dispositions: TrialExhibitDisposition[];
+  civil_claim_vnd: number | null;
+  compensation_vnd: number | null;
+  reasoning_limits: { min: number; max: number };
+}
+
+export interface TrialAssessorOpinion {
+  speaker_id: string;
+  speaker_name: string;
+  agrees: boolean;
+  text: string;
+}
+
+export interface TrialDecisionState {
+  draft: TrialDecisionDraft | null;
+  updated_at: string | null;
+  check: TrialDecisionCheck | null;
+  locked: boolean;
+  assessor_opinions: TrialAssessorOpinion[] | null;
+  // The saved draft the opinions were given on.
+  assessor_draft_updated_at: string | null;
+  // Shown verbatim next to the opinions (contract Mục 9.16).
+  assessor_order_note: string;
+  // Step 11: the judgment text the system wrote from the locked decision (full names); read only.
+  pronouncement_preview: string | null;
+  form: TrialDecisionForm;
 }
 
 export type TrialPresidingItemKind = "item" | "ask" | "invite" | "return" | "decide" | "pronounce";
