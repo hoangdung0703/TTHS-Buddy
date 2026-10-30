@@ -23,6 +23,12 @@ the HĐXX questioning, the KSV and luật sư questioning and lời sau cùng st
 the student, who answers ("speak") or, while being questioned, declines ("decline"); a per-slot cap
 (SlotSpec.max_questions) bounds the questions and so the calls. Two optional turns exist for this
 role only (SlotSpec.user_roles): bổ sung bào chữa (step 7) and tranh luận with a KSV reply (step 8).
+
+Chủ tọa (chặng R4, design doc Mục 11.4, plan KE-HOACH-CHU-TOA.md) presides: from step 2 on, every step
+is one "preside" slot owned by the student, who performs the step's procedural items, asks, invites
+the AI parts and moves on with "advance" once every required item is done. Its own state
+(PresideState) is kept on SessionState.preside; the rules live in trial_presiding, which this module
+calls for that role only.
 """
 from __future__ import annotations
 
@@ -34,7 +40,7 @@ from typing import Literal
 Role = Literal["chu_toa", "hoi_tham", "thu_ky", "ksv", "luat_su", "bi_cao", "bi_hai",
                "nguoi_lam_chung", "nguoi_lq", "hdxx"]
 SlotKind = Literal["template", "segment", "speech", "indictment", "qa_loop", "long_speech", "debate",
-                   "deliberation"]
+                   "deliberation", "preside"]
 Requirement = Literal["witnesses", "victim_present", "related_party"]
 # Roles a student may take (the database check of migration 0013 allows the same list).
 UserRole = Literal["chu_toa", "thu_ky", "ksv", "luat_su", "bi_cao", "nguoi_xem"]
@@ -45,6 +51,8 @@ ROLE_LABELS: dict[str, str] = {
     "nguoi_lam_chung": "Người làm chứng", "nguoi_lq": "Người có quyền lợi, nghĩa vụ liên quan",
     "hdxx": "Hội đồng xét xử",
     "nguoi_xem": "Người xem",
+    # Speaker of the lines code writes in a Chủ tọa session (pauses): never the student's id.
+    "he_thong": "Hệ thống",
 }
 
 # Participant ids per role; witnesses expand to NLC_1..NLC_n.
@@ -55,7 +63,7 @@ ROLE_TO_IDS: dict[str, tuple[str, ...]] = {
 }
 LAY_IDS_PREFIXES = ("BI_CAO", "BI_HAI", "NLC_", "NLQ")
 # Roles whose stage is enabled: the API accepts no other (config.user_roles is built from this).
-ENABLED_USER_ROLES: frozenset[str] = frozenset({"ksv", "luat_su", "nguoi_xem", "thu_ky", "bi_cao"})
+ENABLED_USER_ROLES: frozenset[str] = frozenset({"ksv", "luat_su", "nguoi_xem", "thu_ky", "bi_cao", "chu_toa"})
 # Observes only: no participant id, never speaks, every slot is an AI slot.
 OBSERVER_ROLE = "nguoi_xem"
 # Speaks only the step-1 report, then writes parts IV.2 and IV.3 of the biên bản (trial_clerk).
@@ -63,6 +71,9 @@ CLERK_ROLE = "thu_ky"
 # Answers inside AI slots (đoạn xen) and may decline a question (trial_defendant).
 DEFENDANT_ROLE = "bi_cao"
 _DEFENDANT_ONLY = frozenset({DEFENDANT_ROLE})
+# Presides over the hearing from step 2 on (trial_presiding).
+PRESIDING_ROLE = "chu_toa"
+SYSTEM_SPEAKER_ID = "HE_THONG"
 # Who answers the questions of a qa_loop the AI asks.
 _QA_ANSWER_ROLES = ("bi_cao", "bi_hai", "nguoi_lam_chung", "nguoi_lq")
 # Đối đáp when neither side is the student: KSV then luật sư per round (decision 2026-10-29, item 3).
@@ -167,6 +178,9 @@ STEPS: tuple[StepSpec, ...] = (
 )
 STEP_BY_NUMBER: dict[int, StepSpec] = {s.number: s for s in STEPS}
 LAST_STEP = len(STEPS)
+# Chủ tọa: the only slot of steps 2-11. Step 1 keeps the Thư ký template slot of every role.
+PRESIDE_SLOT = SlotSpec("preside", "chu_toa", "preside")
+FIRST_PRESIDED_STEP = 2
 
 
 @dataclass(frozen=True)
@@ -199,6 +213,34 @@ class CaseShape:
 
 
 @dataclass(frozen=True)
+class PresideJob:
+    """AI work owed in a Chủ tọa session. kind: "answer" (to the student's question or remark),
+    "invite" (an AI part the student invited; `key` is the item), "assessor" (Hội thẩm comments on
+    the decision draft) or "pronounce_draft" (the judgment text written from the locked decision).
+    `progress` counts the speeches already stored of a two-speech invite (one debate round)."""
+    kind: Literal["answer", "invite", "assessor", "pronounce_draft"]
+    key: str = ""
+    addressee: str | None = None
+    progress: int = 0
+
+
+@dataclass(frozen=True)
+class PresideState:
+    """Chủ tọa only, stored in mock_trial_sessions.user_work["preside"] and written with the version
+    (no migration). `done`, `questions`, `remarks` and `rounds` are per step."""
+    done: tuple[str, ...] = ()
+    questions: int = 0
+    remarks: int = 0
+    rounds: int = 0
+    job: PresideJob | None = None
+    # Điều 323 BLTTHS: once per hearing, from step 8 back to a short step 5, then step 8 again.
+    returned: bool = False
+    in_return: bool = False
+    decided: bool = False
+    drafted: bool = False
+
+
+@dataclass(frozen=True)
 class SessionState:
     user_role: UserRole
     shape: CaseShape
@@ -210,19 +252,25 @@ class SessionState:
     # True while the AI owes a reply inside a loop slot (an answer, a debate response) or the
     # AI owns the slot outright.
     pending_ai: bool = False
+    # Chủ tọa only; None for every other role.
+    preside: PresideState | None = None
 
 
 class TrialConflict(Exception):
     """Maps to HTTP 409. `code` is stable and safe to log; never contains student text."""
 
-    def __init__(self, code: str, state: SessionState):
+    def __init__(self, code: str, state: SessionState, detail: dict | None = None):
         super().__init__(code)
         self.code = code
         self.state = state
+        # Extra keys of the 409 body (e.g. missing_items): keys and labels only, never student text.
+        self.detail = detail or {}
 
 
 def active_slots(step: int, shape: CaseShape, user_role: str | None = None) -> tuple[SlotSpec, ...]:
     """Slots of `step` for this case shape and, when given, this student role (SlotSpec.user_roles)."""
+    if user_role == PRESIDING_ROLE and step >= FIRST_PRESIDED_STEP:
+        return (PRESIDE_SLOT,)
     return tuple(s for s in STEP_BY_NUMBER[step].slots if shape.satisfies(s.requires)
                  and (s.user_roles is None or user_role is None or user_role in s.user_roles))
 
@@ -285,7 +333,13 @@ def debate_speaker_role(slot: SlotSpec, speeches_done: int) -> str:
 def new_session(user_role: UserRole, shape: CaseShape) -> SessionState:
     if user_role not in ENABLED_USER_ROLES:
         raise ValueError(f"Role not enabled: {user_role}")
-    return _enter(SessionState(user_role=user_role, shape=shape))
+    preside = PresideState() if user_role == PRESIDING_ROLE else None
+    return _enter(SessionState(user_role=user_role, shape=shape, preside=preside))
+
+
+def is_presiding(state: SessionState) -> bool:
+    """A Chủ tọa session past step 1: trial_presiding's rules apply, not the slot script's."""
+    return state.user_role == PRESIDING_ROLE and state.current_step >= FIRST_PRESIDED_STEP
 
 
 def _next_slot(state: SessionState) -> SessionState:
@@ -303,14 +357,21 @@ def step_complete(state: SessionState) -> bool:
     return current_slot(state) is None
 
 
+PRESIDE_ACTIONS: frozenset[str] = frozenset({"item", "ask", "invite", "remark", "return_to_questioning", "decide",
+                                             "prepare_pronouncement", "pronounce"})
+
+
 @dataclass(frozen=True)
 class UserAction:
-    kind: Literal["speak", "end_slot", "advance", "decline"]
+    kind: Literal["speak", "end_slot", "advance", "decline", "item", "ask", "invite", "remark",
+                  "return_to_questioning", "decide", "prepare_pronouncement", "pronounce"]
     expected_step: int
     expected_version: int
     text: str | None = None
     addressee: str | None = None
     target_step: int | None = None
+    # Chủ tọa: the procedural item an "item" or "invite" action performs.
+    item: str | None = None
 
 
 @dataclass(frozen=True)
@@ -325,6 +386,9 @@ class ActionOutcome:
 def allowed_actions(state: SessionState) -> list[str]:
     if awaiting(state) != "user":
         return []
+    if is_presiding(state):
+        from app.services import trial_presiding  # imports this module, so resolved at call time
+        return trial_presiding.allowed_actions(state)
     slot = current_slot(state)
     if slot is None:
         return [f"advance:{state.current_step + 1}"]
@@ -376,6 +440,11 @@ def apply_user_action(state: SessionState, action: UserAction) -> ActionOutcome:
     if awaiting(state) != "user":
         raise TrialConflict("not_your_turn", state)
     if state.user_role == OBSERVER_ROLE and action.kind != "advance":
+        raise TrialConflict("action_not_allowed", state)
+    if is_presiding(state):
+        from app.services import trial_presiding  # imports this module, so resolved at call time
+        return trial_presiding.apply_action(state, action)
+    if action.kind in PRESIDE_ACTIONS:
         raise TrialConflict("action_not_allowed", state)
     slot = current_slot(state)
 
@@ -463,6 +532,9 @@ def complete_ai_turn(state: SessionState, asked_student: bool = False) -> Sessio
     next; otherwise the slot is over."""
     if awaiting(state) != "ai":
         raise TrialConflict("not_ai_turn", state)
+    if is_presiding(state):
+        from app.services import trial_presiding  # imports this module, so resolved at call time
+        return trial_presiding.complete_job(state)
     slot = current_slot(state)
     assert slot is not None
     if is_interleaved(slot, state.user_role):

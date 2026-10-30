@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.models.trial import ChairDecision
 from app.services.trial_state_machine import ENABLED_USER_ROLES
 
 
@@ -36,10 +37,15 @@ class TrialTurnRequest(_Strict):
     expected_version: int = Field(ge=0)
     # "continue" resumes an AI turn that was interrupted (client gone, guard pause); the rest map
     # onto trial_state_machine.UserAction.
-    action: Literal["speak", "end_slot", "advance", "continue", "decline"]
+    action: Literal["speak", "end_slot", "advance", "continue", "decline",
+                    # Chủ tọa only (chặng R4, API-CONTRACT 5.4); 409 trial_action_not_allowed for other roles.
+                    "item", "ask", "invite", "remark", "return_to_questioning", "decide",
+                    "prepare_pronouncement", "pronounce"]
     text: str | None = Field(default=None, max_length=6000)
     addressee: str | None = Field(default=None, max_length=16)
     target_step: int | None = Field(default=None, ge=1, le=11)
+    # Chủ tọa: the procedural item of an "item" or "invite" action (a key of state.presiding.items).
+    item: str | None = Field(default=None, max_length=40)
 
 
 class TrialTextLimits(BaseModel):
@@ -128,6 +134,12 @@ class TrialStateOut(BaseModel):
     clerk_report: TrialClerkReport | None = None
     # Bị cáo only, while a question put to the student is pending; null otherwise.
     pending_question: TrialPendingQuestion | None = None
+    # Chủ tọa only (steps 2-11): the step's checklist, counters, addressees and text limits. Built by
+    # trial_presiding.presiding_view; the shape is documented in API-CONTRACT 5.4. Null otherwise.
+    presiding: dict | None = None
+    # Chủ tọa only (steps 10-11): the student's own decision draft or locked decision with its check,
+    # the Hội thẩm comments, the judgment preview and the form's choices. Null otherwise.
+    decision: dict | None = None
 
 
 class TrialUtteranceOut(BaseModel):
@@ -140,6 +152,8 @@ class TrialUtteranceOut(BaseModel):
     kind: str
     text: str
     addressee: str | None = None
+    # Chủ tọa sessions: the procedural item a line performs (null for every other role).
+    procedure_item: str | None = None
 
 
 class TrialSummaryOut(BaseModel):
@@ -323,3 +337,14 @@ class TrialSessionEvent(BaseModel):
 
 class TrialDoneEvent(BaseModel):
     pass
+
+
+class TrialDecisionRequest(_Strict):
+    """Chủ tọa, step 10: save the decision draft (replaces the stored one). No LLM call."""
+    expected_version: int = Field(ge=0)
+    decision: ChairDecision
+
+
+class TrialDecisionResponse(BaseModel):
+    # state.decision carries the saved draft and its check.
+    state: TrialStateOut

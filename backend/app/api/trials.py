@@ -38,6 +38,8 @@ from app.models.trial_api import (
     TrialConfigOut,
     TrialCreateRequest,
     TrialCrimeOut,
+    TrialDecisionRequest,
+    TrialDecisionResponse,
     TrialDetailResponse,
     TrialLimitsOut,
     TrialDoneEvent,
@@ -96,13 +98,22 @@ from app.services.trial_state_machine import (
     DEFENDANT_ROLE,
     ENABLED_USER_ROLES,
     OBSERVER_ROLE,
+    PRESIDING_ROLE,
     STEP_BY_NUMBER,
+    SYSTEM_SPEAKER_ID,
     TrialConflict,
     UserAction,
     awaiting,
     new_session,
 )
-from app.services.trial_turn_service import TrialContext, TrialGuardFailure, Utterance, apply_student_action, run_ai_turn
+from app.services.trial_turn_service import (
+    DECISION_DRAFT_KEY,
+    TrialContext,
+    TrialGuardFailure,
+    Utterance,
+    apply_student_action,
+    run_ai_turn,
+)
 
 logger = get_logger(__name__)
 
@@ -169,9 +180,10 @@ def _error(status_code: int, code: str, message: str, extra: dict | None = None)
                         content={"error": {"code": code, "message": message}, **(extra or {})})
 
 
-def _conflict(code: str, session_id: str, ctx: TrialContext) -> JSONResponse:
+def _conflict(code: str, session_id: str, ctx: TrialContext, detail: dict | None = None) -> JSONResponse:
+    """`detail`: extra keys of the body (Chủ tọa: missing_items, errors, item) - keys and labels only."""
     return _error(status.HTTP_409_CONFLICT, f"trial_{code}", "Trạng thái phiên tòa đã thay đổi hoặc thao tác không "
-                  "hợp lệ ở bước hiện tại.", {"state": _state_of(session_id, ctx).model_dump(mode="json")})
+                  "hợp lệ ở bước hiện tại.", {**(detail or {}), "state": _state_of(session_id, ctx).model_dump(mode="json")})
 
 
 def _not_found() -> HTTPException:
@@ -193,7 +205,7 @@ def _stale_cutoff() -> datetime:
 
 def _state_of(session_id: str, ctx: TrialContext):
     return state_out(session_id, ctx.state, consecutive_guard_pauses(ctx) >= MAX_CONSECUTIVE_GUARD_PAUSES,
-                     case=ctx.case, transcript=ctx.transcript)
+                     case=ctx.case, transcript=ctx.transcript, pack=ctx.pack, user_work=ctx.user_work)
 
 
 def consecutive_guard_pauses(ctx: TrialContext) -> int:
@@ -273,7 +285,9 @@ async def run_ai_stream(repo: TrialRepository, user_id: str, session_id: str, ct
                     produced = await run_ai_turn(ctx)
             except TrialGuardFailure as pause:
                 telemetry.set_answer_flags(guard_tripped=f"trial:{pause.slot}")
-                notice = ctx.add("CHU_TOA", GUARD_PAUSE_TEXT, kind="notice", flags=["guard_pause"])
+                # In a Chủ tọa session the pause is the system's, never words put in the student's mouth.
+                speaker = SYSTEM_SPEAKER_ID if ctx.state.user_role == PRESIDING_ROLE else "CHU_TOA"
+                notice = ctx.add(speaker, GUARD_PAUSE_TEXT, kind="notice", flags=["guard_pause"])
                 await asyncio.shield(asyncio.to_thread(
                     repo.insert_utterances, utterance_rows([notice], session_id, user_id)))
                 yield _sse_format("utterance", utterance_out(notice, ctx.case))
@@ -500,9 +514,9 @@ async def trial_turn(session_id: uuid.UUID, body: TrialTurnRequest, request: Req
         try:
             student_utterances = apply_student_action(ctx, UserAction(
                 kind=body.action, expected_step=body.expected_step, expected_version=body.expected_version,
-                text=body.text, addressee=body.addressee, target_step=body.target_step))
+                text=body.text, addressee=body.addressee, target_step=body.target_step, item=body.item))
         except TrialConflict as conflict:
-            return _conflict(conflict.code, sid, ctx)
+            return _conflict(conflict.code, sid, ctx, conflict.detail)
 
     needs_ai = ctx.state.status == "active" and awaiting(ctx.state) == "ai"
     claimed = await asyncio.to_thread(
@@ -566,9 +580,53 @@ def _record_response(session_id: uuid.UUID, session: dict, ctx: TrialContext) ->
                               draft=not draft.finalized)
         clerk = _clerk_draft_out(ctx, session.get("user_work"))
     else:
+        presiding = None
+        if session["user_role"] == PRESIDING_ROLE and ctx.verdict is not None:
+            presiding = {"verdict": ctx.verdict, "meta": ctx.verdict_meta,
+                         "returned": bool(ctx.state.preside and ctx.state.preside.returned)}
         record = build_record(ctx.case, ctx.transcript, started, ended, summary=ctx.record_summary,
-                              observer=session["user_role"] == OBSERVER_ROLE)
+                              observer=session["user_role"] == OBSERVER_ROLE, presiding=presiding)
     return TrialRecordResponse(session_id=session_id, text=render_record_text(record), record=record, clerk=clerk)
+
+
+# --- Chủ tọa (chặng R4, design doc Mục 11.4): the decision draft ---------------------------------
+# Saved outside /turn because it is a form, not words said at the hearing; but unlike the Thư ký's
+# work it is written WITH the version (decision Q1): no save can race an AI turn.
+
+@router.put("/{session_id}/decision", response_model=TrialDecisionResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def put_decision(session_id: uuid.UUID, body: TrialDecisionRequest, request: Request,
+                       current_user: AuthUser = Depends(require_supabase_user),
+                       settings: Settings = Depends(get_settings),
+                       repo: TrialRepository = Depends(get_trial_repository)):
+    """Stores the Chủ tọa's decision draft and returns the state with its check (state.decision).
+    No LLM call. Only at step 10, after "vào phòng nghị án", before the decision is locked."""
+    user_id, sid = current_user.user_id, str(session_id)
+    session, ctx = await _load(repo, user_id, session_id, settings, TrialCallRecorder())
+    state = ctx.state
+    if session["user_role"] != PRESIDING_ROLE:
+        return _conflict("not_presiding", sid, ctx)
+    if state.status != "active":
+        return _conflict("not_active", sid, ctx)
+    if body.expected_version != state.version:
+        return _conflict("version_mismatch", sid, ctx)
+    preside = state.preside
+    assert preside is not None
+    if preside.decided:
+        return _conflict("decision_locked", sid, ctx)
+    if state.current_step != 10 or "vao_nghi_an" not in preside.done:
+        return _conflict("action_not_allowed", sid, ctx)
+    if awaiting(state) != "user":
+        return _conflict("busy", sid, ctx)
+    ctx.user_work[DECISION_DRAFT_KEY] = body.decision.model_dump(mode="json")
+    ctx.user_work["decision_updated_at"] = utc_now().isoformat()
+    ctx.state = replace(state, version=state.version + 1)
+    if not await asyncio.to_thread(repo.claim_and_update, user_id, sid, state.version, state_fields(ctx), None):
+        ctx.state = state
+        return _conflict("busy", sid, ctx)
+    logger.info("TRIAL_DECISION %s", json.dumps({"reasoning_chars": len(body.decision.reasoning_summary),
+                                                 "exhibits": len(body.decision.exhibits)}))
+    return TrialDecisionResponse(state=_state_of(sid, ctx))
 
 
 # --- Thư ký (chặng R2, design doc Mục 11.3): notes and the biên bản draft --------------------------

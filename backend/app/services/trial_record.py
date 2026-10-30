@@ -17,13 +17,17 @@ is the transcript arranged into the form, so it can never contain a line nobody 
 - In a Thư ký session (chặng R2) IV.2 and IV.3 are what the student wrote (trial_clerk), labelled as
   such; until the student finalises them the record is a draft with a "Bản nháp" line.
 - The simulation notice is inserted by code at the top and bottom of the text rendering.
+- In a Chủ tọa session (chặng R4) every procedural line of the presiding judge is the student's own
+  (or the template the student chose). IV.2 notes an Điều 323 return; the tuyên án appendix says the
+  text was drafted by the system from the student's decision; a second appendix outside the form is
+  the "Biên bản nghị án" (BLTTHS Điều 259 khoản 2), built from the stored decision - no LLM call.
 """
 from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta, timezone
 
-from app.models.trial import TRIAL_DISCLAIMER, CaseFile, Participant
+from app.models.trial import TRIAL_DISCLAIMER, CaseFile, Participant, Verdict
 from app.models.trial_api import (
     TrialRecordEntry,
     TrialRecordField,
@@ -59,6 +63,17 @@ JUDGMENT_STEP = 11
 APPENDIX_HEADING = "PHỤ LỤC (ngoài Mẫu số 22-HS): Lời tuyên án"
 APPENDIX_NOTE = "Phụ lục do hệ thống mô phỏng đính kèm, chép nguyên văn lời tuyên án tại phiên tòa."
 OPENING_STEPS = (1, 2)
+# Chủ tọa sessions (chặng R4).
+RETURN_NOTE = "Hội đồng xét xử quyết định trở lại việc xét hỏi (Điều 323 Bộ luật Tố tụng hình sự)."
+SYSTEM_DRAFTED_NOTE = "Lời tuyên do hệ thống soạn từ quyết định của Chủ tọa (người học)."
+DELIBERATION_HEADING = "PHỤ LỤC (ngoài Mẫu số 22-HS): Biên bản nghị án"
+DELIBERATION_INTRO = ("Phụ lục do hệ thống mô phỏng dựng theo khoản 2 Điều 259 Bộ luật Tố tụng hình sự từ quyết định "
+                      "Chủ tọa (người học) đã chốt.")
+OUT_OF_SCOPE = "Không xem xét trong phạm vi mô phỏng."
+PENALTY_LABELS = {"tu": "tù", "cai_tao_khong_giam_giu": "cải tạo không giam giữ", "phat_tien": "phạt tiền"}
+DISPOSITION_LABELS = {"tra_lai": "trả lại cho chủ sở hữu hoặc người quản lý hợp pháp",
+                      "tich_thu_sung_ngan_sach": "tịch thu, nộp ngân sách nhà nước",
+                      "tich_thu_tieu_huy": "tịch thu và tiêu hủy", "luu_ho_so": "lưu trong hồ sơ vụ án"}
 DELIBERATION_NOTES = (
     "Hội đồng xét xử vào phòng nghị án để nghị án.",
     "Hội đồng xét xử vào phòng xử án và tuyên án.",
@@ -176,6 +191,72 @@ def _entries(case: CaseFile, utterances: list[Utterance], steps: tuple[int, ...]
     ) for u in utterances if u.kind != "notice" and u.step in steps]
 
 
+def _money(amount: int) -> str:
+    return f"{amount:,}".replace(",", ".") + " đồng"
+
+
+def _penalty(verdict: Verdict) -> str:
+    if not verdict.guilty:
+        return "Không áp dụng (bị cáo không phạm tội)."
+    if verdict.penalty_type == "phat_tien":
+        text = f"Phạt tiền {_money(verdict.fine_vnd or 0)}"
+    else:
+        text = f"{PENALTY_LABELS.get(verdict.penalty_type, verdict.penalty_type).capitalize()} {verdict.penalty_months} tháng"
+    if verdict.applies_dieu_54:
+        text += ", áp dụng Điều 54 Bộ luật Hình sự"
+    if verdict.suspended:
+        text += f", cho hưởng án treo, thời gian thử thách {verdict.probation_months} tháng"
+    return text + "."
+
+
+def _circumstances(items, dieu: str) -> str:
+    return "; ".join(f"điểm {c.diem} khoản {c.khoan} Điều {dieu} Bộ luật Hình sự" for c in items) or "Không có."
+
+
+def deliberation_appendix(case: CaseFile, verdict: Verdict, meta: dict) -> TrialRecordSection:
+    """BLTTHS Điều 259 khoản 2: (a) time and court, (b) judges, (c) the case, (d) "kết quả biểu quyết
+    ... về từng vấn đề ... quy định tại khoản 3 Điều 326 ..., ý kiến khác (nếu có)". The issues the
+    simulation does not cover are said to be outside it, never invented."""
+    n = case.participants
+    extras = meta.get("extras") or {}
+    described = {e.id: e.description for e in case.draft.evidence}
+    exhibits = "; ".join(f"{render(described.get(x['evidence_id'], x['evidence_id']), n)}: "
+                         f"{DISPOSITION_LABELS.get(x['disposition'], x['disposition'])}"
+                         for x in extras.get("exhibits", [])) or "Không có vật chứng."
+    fees = ("Bị cáo " + ("phải" if extras.get("defendant_pays_criminal_fee") else "không phải")
+            + " chịu án phí hình sự sơ thẩm; " + ("phải" if extras.get("defendant_pays_civil_fee") else "không phải")
+            + " chịu án phí dân sự sơ thẩm (mức án phí theo quy định của pháp luật).")
+    guilt = "Không có căn cứ kết tội; bị cáo không phạm tội."
+    if verdict.guilty:
+        diem = f"điểm {', '.join(verdict.diem)} " if verdict.diem else ""
+        guilt = f"Bị cáo phạm tội; áp dụng {diem}khoản {verdict.khoan} Điều {verdict.dieu} Bộ luật Hình sự."
+    civil = (f"Bị cáo bồi thường {_money(verdict.civil_amount_vnd)}." if verdict.civil_amount_vnd
+             else "Không quyết định khoản bồi thường.")
+    fields = [
+        TrialRecordField(label="Tòa án", value=court_office(case)),
+        TrialRecordField(label="Thẩm phán - Chủ tọa phiên tòa", value=n["CHU_TOA"].name),
+        TrialRecordField(label="Hội thẩm nhân dân", value=f"{n['HOI_THAM_1'].name} và {n['HOI_THAM_2'].name}"),
+        TrialRecordField(label="Vụ án", value=f"{n['BI_CAO'].name} - {case.draft.charge.crime_name}"),
+        TrialRecordField(label="Căn cứ kết tội (điểm c khoản 3 Điều 326)", value=guilt),
+        TrialRecordField(label="Tình tiết giảm nhẹ", value=_circumstances(verdict.mitigating, "51")),
+        TrialRecordField(label="Tình tiết tăng nặng", value=_circumstances(verdict.aggravating, "52")),
+        TrialRecordField(label="Hình phạt (điểm d khoản 3 Điều 326)", value=_penalty(verdict)),
+        TrialRecordField(label="Trách nhiệm bồi thường, vấn đề dân sự (điểm d khoản 3 Điều 326)", value=civil),
+        TrialRecordField(label="Xử lý vật chứng (điểm e khoản 3 Điều 326)", value=exhibits),
+        TrialRecordField(label="Án phí (điểm e khoản 3 Điều 326)", value=fees),
+        TrialRecordField(label="Các vấn đề tại điểm a, b, đ, g, h khoản 3 Điều 326", value=OUT_OF_SCOPE),
+        TrialRecordField(label="Nhận định của Chủ tọa", value=verdict.reasoning_summary),
+    ]
+    notes = [DELIBERATION_INTRO]
+    for opinion in meta.get("assessor_opinions") or []:
+        name = n[opinion["speaker_id"]].name
+        if opinion.get("agrees"):
+            notes.append(f"Hội thẩm nhân dân {name} đồng ý với quyết định.")
+        else:
+            notes.append(f"Ý kiến thiểu số của Hội thẩm nhân dân {name}: {render(opinion['text'], n)}")
+    return TrialRecordSection(heading=DELIBERATION_HEADING, fields=fields, notes=notes)
+
+
 def _debate_item(case: CaseFile, utterances: list[Utterance], heading: str, steps: tuple[int, ...],
                  key: str | None, summary: dict | None, clerk: dict[str, str] | None) -> TrialRecordSection:
     if clerk is not None and key in clerk:
@@ -191,9 +272,19 @@ def _debate_item(case: CaseFile, utterances: list[Utterance], heading: str, step
 def build_record(case: CaseFile, utterances: list[Utterance], started_at: datetime | None,
                  completed_at: datetime | None, summary: dict | None = None,
                  observer: bool = False, clerk: dict[str, str] | None = None,
-                 draft: bool = False) -> TrialRecordOut:
+                 draft: bool = False, presiding: dict | None = None) -> TrialRecordOut:
     """`clerk`: the Thư ký's own IV.2 / IV.3 (keys "iv2", "iv3"), replacing summary and verbatim;
-    `draft`: not finalised yet."""
+    `draft`: not finalised yet; `presiding`: a Chủ tọa session's locked decision ("verdict", "meta")
+    and whether it returned to questioning ("returned")."""
+    debate_items = [_debate_item(case, utterances, heading, steps, key, summary, clerk)
+                    for heading, steps, key in DEBATE_ITEMS]
+    appendix_notes = [APPENDIX_NOTE]
+    extra_appendix: list[TrialRecordSection] = []
+    if presiding is not None:
+        if presiding.get("returned"):
+            debate_items[1] = debate_items[1].model_copy(update={"notes": [*debate_items[1].notes, RETURN_NOTE]})
+        appendix_notes.append(SYSTEM_DRAFTED_NOTE)
+        extra_appendix.append(deliberation_appendix(case, presiding["verdict"], presiding.get("meta") or {}))
     start = (started_at or datetime.now(timezone.utc)).astimezone(VIETNAM_TZ)
     end = (completed_at or datetime.now(timezone.utc)).astimezone(VIETNAM_TZ)
     names = case.participants
@@ -208,10 +299,8 @@ def build_record(case: CaseFile, utterances: list[Utterance], started_at: dateti
             _parties_section(case),
             TrialRecordSection(heading="III. Phần thủ tục bắt đầu phiên tòa",
                                entries=_entries(case, utterances, OPENING_STEPS)),
-            TrialRecordSection(heading="IV. Phần tranh tụng tại phiên tòa", subsections=[
-                _debate_item(case, utterances, heading, steps, key, summary, clerk)
-                for heading, steps, key in DEBATE_ITEMS
-            ], notes=list(DELIBERATION_NOTES)),
+            TrialRecordSection(heading="IV. Phần tranh tụng tại phiên tòa", subsections=debate_items,
+                               notes=list(DELIBERATION_NOTES)),
         ],
         closing=[
             TrialRecordField(label="Những sửa đổi, bổ sung theo yêu cầu của Kiểm sát viên và những người tham gia "
@@ -225,8 +314,8 @@ def build_record(case: CaseFile, utterances: list[Utterance], started_at: dateti
             TrialRecordSignature(title="THẨM PHÁN - CHỦ TỌA PHIÊN TÒA", note="(Ký tên, ghi rõ họ tên, đóng dấu)",
                                  name=names["CHU_TOA"].name),
         ],
-        appendix=[TrialRecordSection(heading=APPENDIX_HEADING, notes=[APPENDIX_NOTE],
-                                     entries=_entries(case, utterances, (JUDGMENT_STEP,)))],
+        appendix=[TrialRecordSection(heading=APPENDIX_HEADING, notes=appendix_notes,
+                                     entries=_entries(case, utterances, (JUDGMENT_STEP,))), *extra_appendix],
         draft=draft,
     )
 
@@ -262,6 +351,7 @@ def render_record_text(record: TrialRecordOut) -> str:
     lines += [f"{s.title}: {s.name}" for s in record.signatures]
     for section in record.appendix:
         lines += ["", section.heading.upper(), *section.notes]
+        lines += [_field_line(f) for f in section.fields]
         lines += [f"{e.speaker_role} {e.speaker_name}: {e.text}".replace(" :", ":") for e in section.entries]
     lines += ["", NOTICE_LINE]
     return "\n".join(lines)

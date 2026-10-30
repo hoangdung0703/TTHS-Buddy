@@ -11,6 +11,9 @@ Inserts are single attempts (data_access policy: a retried insert could store tw
 The Thư ký's notes and biên bản draft live in mock_trial_sessions.user_work (migration 0013), written
 only by update_user_work: never with the state fields, and without touching `version`, so saving
 notes during an AI turn neither races nor invalidates the hearing's optimistic concurrency.
+Exception, Chủ tọa only (chặng R4, decision Q1): user_work holds the presiding state and the decision
+draft, so it is written WITH the state fields through claim_and_update / update_state, guarded by the
+version like any state change - a draft save and an AI turn can never overwrite each other.
 
 The daily limits count USAGE_LOG (migration 0014), one row per successful case creation that outlives
 the case: deleting a session or a case never frees quota.

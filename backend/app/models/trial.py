@@ -27,7 +27,7 @@ TRIAL_DISCLAIMER = (
 )
 
 # Roles a stored case may record; which ones a NEW case may use is trial_state_machine.ENABLED_USER_ROLES.
-UserRole = Literal["ksv", "luat_su", "nguoi_xem", "thu_ky", "bi_cao"]
+UserRole = Literal["ksv", "luat_su", "nguoi_xem", "thu_ky", "bi_cao", "chu_toa"]
 EvidenceType = Literal["vat_chung", "giam_dinh", "dinh_gia", "tai_lieu"]
 Gender = Literal["nam", "nu"]
 PleaValue = Literal["nhan_toan_bo", "nhan_mot_phan", "choi_toi"]
@@ -223,6 +223,33 @@ class Verdict(_Strict):
     aggravating: list[VerdictCircumstance]
     civil_amount_vnd: int | None = None
     reasoning_summary: str
+
+
+# --- Chủ tọa's own decision (chặng R4, design doc Mục 11.4.4 phương án A) -------------------------
+# BLTTHS Điều 106 khoản 2-3 and BLHS Điều 47: confiscated (to the state budget or destroyed), or given
+# back to the owner; "luu_ho_so" keeps a document-like exhibit with the case file (decision Q14).
+ExhibitDisposition = Literal["tra_lai", "tich_thu_sung_ngan_sach", "tich_thu_tieu_huy", "luu_ho_so"]
+
+
+class ExhibitDecision(_Strict):
+    evidence_id: str
+    disposition: ExhibitDisposition
+
+
+class ChairDecision(Verdict):
+    """The decision form of a Chủ tọa session: the Verdict fields (so the guards and the tuyên án call
+    are the existing ones) plus what Verdict lacks - the exhibits and the court fees. Fees are yes/no
+    only: the fee schedule is not in the corpus (decision Q15). `reasoning_summary` is the student's
+    nhận định."""
+    exhibits: list[ExhibitDecision] = []
+    defendant_pays_criminal_fee: bool = False
+    defendant_pays_civil_fee: bool = False
+
+    def to_verdict(self) -> Verdict:
+        return Verdict.model_validate(self.model_dump(include=set(Verdict.model_fields)))
+
+    def extras(self) -> dict:
+        return self.model_dump(include={"exhibits", "defendant_pays_criminal_fee", "defendant_pays_civil_fee"})
 
 
 VERDICT_RESPONSE_SCHEMA: dict = _obj({

@@ -2,7 +2,7 @@
 
 Trạng thái: thiết kế đã duyệt kèm các quyết định ngày 19/10/2026 (mục ngay dưới). Chặng 1 (nền backend + spike) xong trên nhánh `muc5-mock-trial`, chờ duyệt trước chặng 2.
 Migration: `backend/migrations/0012_mock_trials.sql`. Chạy tay; **đã chạy** ở database thật. Nháp cũ trong thư mục này đã xóa.
-Thiết kế 4 vai còn lại (Người xem, Bị cáo, Thư ký, Chủ tọa): Mục 11 ở cuối tài liệu. Đã duyệt kèm quyết định 29/10/2026 (11.8). Chặng R1 (Người xem) đã code: xem 11.9. Migration `0014_mock_trial_usage_log.sql` (chặng R1b, 11.10) đã viết, **chưa chạy**; **PHẢI chạy 0014 trước khi bật `TRIAL_ENABLED`** (chưa có bảng thì không tạo được vụ nào: 503). Migration `0013_mock_trial_roles.sql` **đã chạy** ở database thật ngày 29/10/2026 (nới check `user_role` thêm `nguoi_xem`; thêm `mock_trial_utterances.procedure_item` và `mock_trial_sessions.user_work`, cả hai cho phép null).
+Thiết kế 4 vai còn lại (Người xem, Bị cáo, Thư ký, Chủ tọa): Mục 11 ở cuối tài liệu. Đã duyệt kèm quyết định 29/10/2026 (11.8). Chặng R1 (Người xem) đã code: xem 11.9. Chặng R4 (Chủ tọa, backend) đã code: xem 11.14; vai này không cần migration mới. Migration `0014_mock_trial_usage_log.sql` (chặng R1b, 11.10) đã viết, **chưa chạy**; **PHẢI chạy 0014 trước khi bật `TRIAL_ENABLED`** (chưa có bảng thì không tạo được vụ nào: 503). Migration `0013_mock_trial_roles.sql` **đã chạy** ở database thật ngày 29/10/2026 (nới check `user_role` thêm `nguoi_xem`; thêm `mock_trial_utterances.procedure_item` và `mock_trial_sessions.user_work`, cả hai cho phép null).
 
 ## Quyết định 19/10/2026 (ghi đè phần thân khi mâu thuẫn)
 
@@ -1116,3 +1116,60 @@ Theo số câu hỏi ở 11.7:
 
 **Còn chờ:** nhóm luật duyệt câu từ chối trả lời, `decline_note`, câu bổ sung prompt nghị án (điểm s khoản 1 Điều 51), câu mời bước 7–8 và giả định 2–5; quyết định có bật cứng mẫu nội dung "nói thay bị cáo" (cần số đo chặn oan trên nhiều phiên hơn, quyết định 14); giao diện Bị cáo (chặng sau, theo 11.2.7 và API-CONTRACT 5.3).
 
+
+### 11.14 Chặng R4 — vai Chủ tọa (backend), 31/10/2026
+
+**Không cần migration mới** (quyết định Q1): trạng thái điều hành, bản nháp quyết định, ý kiến Hội thẩm và lời tuyên soạn sẵn nằm trong `mock_trial_sessions.user_work` (0013, đã chạy); câu của Chủ tọa ghi `mock_trial_utterances.procedure_item` (0013). Check `user_role` của 0012 đã có `chu_toa`. Kế hoạch: `KE-HOACH-CHU-TOA.md` (pha 1); quyết định Q1–Q16 của người dùng ghi đè kế hoạch khi khác.
+
+**Đã làm (backend):**
+- `chu_toa` vào `ENABLED_USER_ROLES`. Bước 1 như mọi vai (Thư ký câu mẫu). Từ bước 2 mỗi bước là một slot `preside` (kiểu lượt "executive" của yêu cầu); luật nằm ở `backend/app/services/trial_presiding.py`: danh mục mục thủ tục theo bước (B/T, thứ tự `first`/`last`/`after`, căn cứ BLTTHS), `allowed_actions` (`item:`, `ask:`, `invite:`, `remark`, `return_to_questioning`, `decide`, `prepare_pronouncement`, `pronounce`, `advance:N`), job AI (`answer`, `invite`, `assessor`, `pronounce_draft`). `advance` thiếu mục bắt buộc: 409 `trial_procedure_incomplete` + `missing_items`. Bộ phát hiện nhảy cóc tắt cho vai này.
+- `PresideState` lưu ở `user_work.preside`, ghi **cùng version** qua `claim_and_update`/`update_state` (chỉ vai này; Thư ký giữ cách ghi không kèm version). `PUT /api/trials/{id}/decision` lưu bản nháp cũng kèm version, từ chối khi khóa sinh đang giữ (`trial_busy`).
+- "Dùng lời mẫu": lời mẫu từng mục do code dựng (đã điền tên), một thao tác, 0 lời gọi (Q2). Bước 2 trả lời bằng câu mẫu (Q5): bị cáo khai lý lịch từ hồ sơ, KSV/luật sư/bị cáo "không có đề nghị thay đổi", người làm chứng cam đoan, "không có yêu cầu" (mục Điều 305, không bắt buộc, Q6). Câu hỏi căn cước tự viết thì AI trả lời (1 lời gọi). KSV đọc cáo trạng nguyên văn (0 lời gọi). `TEMPLATES_REVIEWED = False` (Q13).
+- AI không nói thay Chủ tọa: `CHU_TOA` không có trong enum người nói nào; notice tạm nghỉ ở phiên này có người nói `HE_THONG` ("Hệ thống"); instruction trả lời riêng (bỏ câu cho phép Chủ tọa AI nhắc nhở); prompt hệ thống thêm quy tắc điều hành (11.4.2). Cờ đo `usurps_presiding` (AI chiếm quyền điều hành) và mẫu `speaks_for_student` cho `CHU_TOA`: chỉ đo, chưa chặn (quyết định 14).
+- **Không có nghị án AI** (Q8): `_deliberate` từ chối vai này; lời tuyên chỉ soạn từ quyết định đã chốt. Test đếm 0 lời gọi `verdict`.
+- Form quyết định (phương án A): `ChairDecision` = trường của `Verdict` + vật chứng (4 cách xử lý, Q14) + án phí chịu/không chịu, không số tiền (Q15). Kiểm tra ở `backend/app/services/trial_chair_decision.py`: lỗi cứng chặn `decide`, cảnh báo mềm không chặn; mỗi mục có `field`, `message`, `basis`. Chỉ áp cho quyết định của người dùng (Q10); `check_verdict` của nghị án AI không đổi.
+- Hội thẩm góp ý trên bản nháp đã lưu (Q7): đồng ý hay không + một đoạn, không được tự nêu số tháng/năm khác bản nháp (sinh lại 1 lần rồi tạm nghỉ). Không vào diễn biến phiên tòa (Q16), chỉ ở `state.decision.assessor_opinions`, kèm `assessor_order_note` về thứ tự Điều 326.
+- Bước 11: `prepare_pronouncement` (1 lời gọi `tuyen_an`, Rule 9 strict, kiểm điều khoản tội danh, thêm vật chứng và án phí), xem trước, `pronounce` ghi lời thành lời Chủ tọa (`is_user`, cờ `system_drafted`), rồi tóm tắt IV.2/IV.3 như KSV.
+- Điều 323 (Q3): chỉ ở bước 8, sau ≥ 1 vòng đối đáp, trước khi kết thúc tranh luận, một lần; bước 5 thu gọn (người dùng hỏi ≤ 3 câu, mời KSV/luật sư hỏi ≤ 3 câu, kết thúc xét hỏi bắt buộc), `advance:8`, đối đáp lại. Biên bản IV.2 có ghi chú cố định.
+- Đối đáp tối đa 2 vòng; mục `vong_2` có `note` nói đây là giới hạn của mô phỏng (khoản 3 Điều 322, Q12).
+- Biên bản: phụ lục lời tuyên có thêm dòng "Lời tuyên do hệ thống soạn…"; phụ lục mới "Biên bản nghị án" (khoản 2 Điều 259) dựng bằng code, có ý kiến thiểu số của Hội thẩm. `GET /record` không gọi LLM.
+- API-CONTRACT: 0, 2, 3.1, 3.3, 3.4, 3.7, **3.11**, 4, 5, **5.4**, 6, 9 (quy tắc 15–16).
+
+**Đối chiếu corpus** (`ingestion/chunks.json`), các luật kiểm mới:
+- Điều 298 khoản 2 BLTTHS: "Tòa án có thể xét xử bị cáo theo khoản khác với khoản mà Viện kiểm sát đã truy tố trong cùng một điều luật hoặc về một tội khác bằng hoặc nhẹ hơn tội mà Viện kiểm sát đã truy tố." Văn bản không giới hạn "khoản nhẹ hơn", nên khoản nặng hơn chỉ là cảnh báo (Q9).
+- Điều 54 khoản 1 BLHS: "… nhưng phải trong khung hình phạt liền kề nhẹ hơn của điều luật khi người phạm tội có ít nhất hai tình tiết giảm nhẹ quy định tại khoản 1 Điều 51"; khoản 3: khung nhẹ nhất thì "có thể quyết định hình phạt dưới mức thấp nhất … hoặc chuyển sang một hình phạt khác thuộc loại nhẹ hơn".
+- Điều 38 khoản 1 BLHS: tù có thời hạn "mức tối thiểu là 03 tháng và mức tối đa là 20 năm". Điều 35 khoản 1, 3: phạt tiền chính cho tội ít nghiêm trọng, nghiêm trọng; "không được thấp hơn 1.000.000 đồng". Điều 36 khoản 1: cải tạo không giam giữ "từ 06 tháng đến 03 năm đối với người phạm tội ít nghiêm trọng, phạm tội nghiêm trọng"; Điều 9 khoản 1 (phân loại tội). Điều 65 khoản 1 (án treo). Điều 47 khoản 2, Điều 48 khoản 1, Điều 51 khoản 2–3, Điều 52 khoản 2.
+- BLTTHS: Điều 106 khoản 1–3 (xử lý vật chứng), Điều 135 khoản 2, Điều 136 khoản 2–3 ("Án phí do người bị kết án hoặc Nhà nước chịu"), Điều 155 khoản 1, Điều 259 khoản 2, Điều 260 khoản 2 điểm d, Điều 301–308, 318, 320, 322 khoản 3, 323, 324, 326, 327, 328.
+- **Corpus không đủ:** mức án phí (Nghị quyết 326/2016/UBTVQH14), điều kiện chi tiết của án treo (Nghị quyết 02/2018/NQ-HĐTP), nguyên tắc bồi thường không vượt yêu cầu (Bộ luật Dân sự, Bộ luật Tố tụng dân sự): tương ứng không có ô số tiền án phí, chỉ cảnh báo `suspended_without_mitigating`, chỉ cảnh báo `civil_over_claim`.
+
+**Giả định khi thiết kế thiếu chi tiết** (chọn cách an toàn, không đổi quyết định đã chốt):
+1. Câu trả lời mẫu ở bước 2 dùng cho mọi cách diễn đạt của mục, trừ câu hỏi căn cước tự viết (khác lời mẫu) thì AI trả lời.
+2. Chủ tọa hỏi (`ask`) ở bước 4 và ở bước 5 khi trở lại xét hỏi; bước 5 thường chỉ có lời mời và "phát biểu khác".
+3. "Phát biểu khác" có ở bước 2–9 (không có trước khi khai mạc, không có ở bước 10–11); sau lời sau cùng không gửi được cho bị cáo (khoản 2 Điều 324).
+4. Mỗi mục làm một lần (`trial_item_done`); câu hỏi lặp tới trần. Lời mời được đánh dấu đã làm khi mời; nếu AI tạm nghỉ thì job còn nguyên, "Tiếp tục" chạy lại.
+5. Bản nháp có lỗi cứng vẫn được lưu; chỉ `decide` bị chặn. Ý kiến Hội thẩm chỉ lấy được khi bản nháp không còn lỗi cứng, một lần; sửa bản nháp sau đó không gọi lại.
+6. Form chỉ cho các khoản có khung hình phạt chính (loại khoản "còn có thể bị phạt tiền…"); tình tiết chỉ từ Điều 51 khoản 1–2 và Điều 52 khoản 1.
+7. Khung liền kề nhẹ hơn = khoản liền trước (đúng với cả 4 tội khoản 1–4). Khoản 3 Điều 54 cũng cho phạt tiền chính ở khung nhẹ nhất khi tội không quá nghiêm trọng (khoản 1 điểm a Điều 35).
+8. `fine_vnd` chỉ dùng khi hình phạt chính là phạt tiền; hình phạt bổ sung để sau.
+9. Lời tuyên soạn một lần (không có nút "soạn lại"); không sửa được (phương án C để sau).
+10. Lời mẫu "phổ biến quyền" chỉ nêu số Điều 61, 62, 65, 66 theo người có mặt, chờ nhóm luật duyệt câu chữ.
+11. Không đặt trần lời gọi mỗi phiên (Q4); breaker an toàn giữ nguyên (cầu chì 3 lần tạm nghỉ, khóa sinh, trần câu hỏi và phát biểu).
+
+**Code cũ cản thiết kế:** (a) `trial_repository` ghi `user_work` không kèm version (đã thêm ngoại lệ cho vai này, Q1); (b) code tự ghi câu mang tên `CHU_TOA` (tạm nghỉ, nhắc nhảy cóc, câu mẫu kết thúc phần): ở vai này đổi sang `HE_THONG` hoặc chỉ ghi khi người dùng làm mục; (c) `_dispatch` của `tuyen_an` tự nghị án khi thiếu quyết định: vai này đi đường riêng, `_deliberate` từ chối; (d) `Verdict` không có vật chứng, án phí: thêm `ChairDecision` riêng, `Verdict` không đổi; (e) 3 test cũ khẳng định `chu_toa` bị từ chối đã đổi sang vai không tồn tại.
+
+**Backlog: guard nghị án AI cũ (`check_verdict`, không sửa theo Q10):**
+- Điều 298 khoản 2: chặn khoản nặng hơn trong cùng Điều, văn bản không giới hạn như vậy (chặn chặt hơn luật).
+- Điều 54 khoản 3: chặn cải tạo không giam giữ ở khung nhẹ nhất không có loại này (ví dụ Điều 171 khoản 1 kèm Điều 54): **chặn oan**.
+- Điều 54 khoản 1: không kiểm sàn khung liền kề nhẹ hơn (lỏng).
+- Điều 38: không kiểm tù tối thiểu 03 tháng (lỏng). Điều 35: không kiểm mức phạt tiền tối thiểu (lỏng).
+- Điều 51 khoản 3 và Điều 52 khoản 2 (quy tắc về tình tiết, không phải tình tiết) vẫn được nhận là "tình tiết" khi điểm để trống (lỏng).
+
+**Đo (Gemini thật, 54 lời gọi, ước tính 55–62, trần cứng 78; script `backend/evaluation/run_trial_chu_toa_e2e.py`, offline, không tài khoản test):**
+- Phiên A, seed 9501 (Điều 173, cáo trạng khoản 2, có bị hại, 1 người làm chứng; toàn lời mẫu, 3 câu hỏi, Hội thẩm hỏi và góp ý, tù trong khung): đủ 11 bước; 1 lời gọi tạo vụ + 16 trong phiên (8 dialogue, 5 bài dài, 2 Hội thẩm góp ý gồm 1 lần sinh lại do `citation`, 1 tóm tắt biên bản); ~182K token vào, ~6,5K ra, ~2,8K thinking; 37 thao tác.
+- Phiên B, seed 9502 (Điều 134 khoản 1, bị hại vắng mặt; tự diễn đạt, 5 câu hỏi gồm 1 tiền đề sai, 2 phát biểu có người nhận, bị cáo bổ sung, vòng 2, trở lại xét hỏi với 3 câu + mời KSV, đối đáp lại, án treo): đủ 11 bước; 1 + 30 lời gọi (18 dialogue, 10 bài dài, 1 Hội thẩm, 1 tóm tắt); ~381K token vào, ~10K ra, ~1,6K thinking; 51 thao tác. Tối thiểu theo checklist: 32 thao tác cho cả hai hình vụ.
+- 5 lời tuyên từ ngữ cảnh bước 10 của phiên A: không có tội, Điều 54 (khoản 2 xuống 06 tháng, sàn khoản 1), cải tạo không giam giữ (qua Điều 54), khoản nhẹ hơn (khoản 1), nhận định chứa câu injection. 6 lời gọi (1 lần sinh lại do `unknown_amount`), mỗi lời ~17,5K token vào. 5/5 nêu đúng có tội/không có tội, đúng mức hình phạt, đúng loại hình phạt, có Điều 54 khi áp dụng, viện dẫn đúng khoản tội danh; injection không lọt (không có "99 năm", "Điều 999").
+- Tổng: ~676K token vào, ~25K ra, ~20K thinking. Độ trễ một lời gọi trong phiên: trung vị 2,2s, p90 6,7s; dialogue trung vị 1,4s, p90 2,6s.
+- Guard: 0 lần tạm nghỉ; 4 lần sinh lại (citation 2, invented_name 1, unknown_amount 1). 0 lời AI mang `CHU_TOA`; 0 lời gọi nghị án AI. Cờ đo: `usurps_presiding` 0, `speaks_for_student` 0 (nên chưa có số liệu bắt oan; quyết định 14 vẫn ở mức đo). Hội thẩm: cả 4 ý kiến "đồng ý", 0 cờ.
+- Biên bản 2/2 đủ I–IV, IV.2/IV.3 tóm tắt, 2 phụ lục (lời tuyên, biên bản nghị án).
+
+**Còn chờ:** nhóm luật duyệt danh mục mục thủ tục, toàn bộ lời mẫu, câu trả lời mẫu, câu "Không xem xét trong phạm vi mô phỏng" của phụ lục nghị án, các câu `message` của form, giả định 1–11; xác nhận cảnh báo `civil_over_claim` có nên thành lỗi cứng; đo thêm `usurps_presiding` trên nhiều phiên hơn trước khi bật cứng; giao diện Chủ tọa (chặng frontend, theo 11.4.7 và API-CONTRACT 5.4, 3.11).

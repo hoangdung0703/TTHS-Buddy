@@ -1,6 +1,6 @@
 # Vai Chủ tọa (backend) — Kế hoạch pha 1
 
-Trạng thái: **kế hoạch, chưa code**. Nhánh `muc5-chu-toa-backend` (từ `origin/main` af1b073). Pha này không gọi Gemini (0 lời gọi), không sửa `backend/` hay `frontend/`, không đọc `data/private/`.
+Trạng thái: **pha 2 đã code** (31/10/2026), theo quyết định Q1–Q16 của người dùng; xem THIET-KE 11.14. Phần dưới là kế hoạch pha 1, giữ nguyên để đối chiếu. Nhánh `muc5-chu-toa-backend` (từ `origin/main` af1b073). Pha này không gọi Gemini (0 lời gọi), không sửa `backend/` hay `frontend/`, không đọc `data/private/`.
 
 Nguồn đúng: `THIET-KE.md` Mục 11.4 và quyết định 11.8 (đặc biệt 13–17, 19–21). Tài liệu này chỉ cụ thể hóa cách làm; chỗ nào thiết kế thiếu hoặc mâu thuẫn với code hay văn bản luật thì ghi ở Mục 0.2 và Mục 10, kèm phương án mặc định an toàn, **không** đổi quyết định đã chốt.
 

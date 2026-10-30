@@ -20,6 +20,12 @@ question in a separate field (cau_hoi_cho_nguoi_hoc) whose speaker enum holds th
 only, so no output can contain the defendant's answer. Content patterns of "the AI speaks for the
 defendant" are measured only (decision 14), as are amounts in the student's own words that the case
 file does not hold (`user_amount_off_file`, Mục 11.2.3).
+
+Chủ tọa (chặng R4): the student presides (trial_presiding). AI work is a PresideJob - the answer of the
+person questioned, an invited part (luận tội, đối đáp...), the Hội thẩm comment on the decision draft,
+or the judgment text written from the locked decision. No nghị án call ever runs in this role
+(_deliberate refuses it): the decision is the student's. CHU_TOA is in no speaker enum; lines that
+take over the presiding are flagged `usurps_presiding` (measured only, decision 14).
 """
 from __future__ import annotations
 
@@ -32,9 +38,10 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.core.config import Settings
 from app.core.logging import get_logger
-from app.models.trial import VERDICT_RESPONSE_SCHEMA, CaseFile, Verdict
+from app.models.trial import VERDICT_RESPONSE_SCHEMA, CaseFile, ChairDecision, Verdict
 from app.prompts.trial_prompts import (
     AI_QA_GOALS,
+    ASSESSOR_INSTRUCTION,
     DEFENDANT_SLOT_INSTRUCTIONS,
     DEFENDANT_TESTIMONY_RULES,
     DEFENDANT_TURN_ASK,
@@ -45,6 +52,11 @@ from app.prompts.trial_prompts import (
     OFFICES_LINE,
     PLAYER_ROLE_LINE,
     PLAYER_RULE_ONE,
+    PRESIDING_ANSWER,
+    PRESIDING_PARTS,
+    PRESIDING_PRONOUNCE_EXTRAS,
+    PRESIDING_RETURN_QA,
+    PRESIDING_ROLE_RULES,
     SLOT_INSTRUCTIONS,
     TRIAL_SYSTEM_PROMPT,
     TUYEN_AN_INSTRUCTION,
@@ -66,15 +78,18 @@ from app.services.trial_config import (
     get_crime,
     procuracy_name,
 )
+from app.services.trial_chair_decision import check_decision
 from app.services.trial_defendant import (
     DECLINE_TEXT,
     INVITATIONS,
     OPT_OUT_TEXTS,
     fallback_question,
+    identity_prefill,
 )
 from app.services.trial_legal_pack import LegalPack
 from app.services.trial_metrics import CallRecord, TrialCallRecorder
-from app.services.trial_names import NAME_LIKE_PATTERN, placeholders_in
+from app.services.trial_names import NAME_LIKE_PATTERN, placeholders_in, render
+from app.services import trial_presiding
 from app.services.trial_rule9 import (
     check_citations,
     extract_citations,
@@ -84,6 +99,8 @@ from app.services.trial_rule9 import (
 from app.services.trial_state_machine import (
     DEFENDANT_ROLE,
     LAY_IDS_PREFIXES,
+    PRESIDING_ROLE,
+    PresideJob,
     ROLE_LABELS,
     ROLE_TO_IDS,
     STEP_BY_NUMBER,
@@ -100,6 +117,7 @@ from app.services.trial_state_machine import (
     debate_speaker_role,
     is_ai_debate,
     is_interleaved,
+    is_presiding,
     is_user_slot,
     questions_left,
     skip_refusal_text,
@@ -148,6 +166,7 @@ class Utterance:
     text: str          # with {ID} placeholders for people
     guard_flags: list[str] = field(default_factory=list)
     addressee: str | None = None  # the person a student question is put to (step 5)
+    procedure_item: str | None = None  # Chủ tọa: the procedural item this line performs
 
 
 @dataclass
@@ -163,6 +182,12 @@ class TrialContext:
     verdict_flags: list[str] = field(default_factory=list)
     # Biên bản summaries (trial_record_summary), stored inside verdict_json once computed.
     record_summary: dict | None = None
+    # mock_trial_sessions.user_work. Chủ tọa: "preside" (written from state), "decision_draft",
+    # "assessor_opinions", "pronouncement_draft" - all written with the version (repository docstring).
+    user_work: dict = field(default_factory=dict)
+    # Chủ tọa: what verdict_json carries beside the Verdict fields once the student locked the
+    # decision ("source": "user", "extras", "assessor_opinions"). Never returned to the client.
+    verdict_meta: dict = field(default_factory=dict)
 
     @property
     def student_id(self) -> str | None:
@@ -176,9 +201,10 @@ class TrialContext:
         return DEFAULT_COURT_NAME if name == LEGACY_COURT_PLACEHOLDER else name
 
     def add(self, speaker_id: str, text: str, *, is_user: bool = False, kind: str = "speech",
-            flags: list[str] | None = None, addressee: str | None = None) -> Utterance:
+            flags: list[str] | None = None, addressee: str | None = None,
+            procedure_item: str | None = None) -> Utterance:
         utterance = Utterance(len(self.transcript) + 1, self.state.current_step, speaker_id, is_user, kind,
-                              text, flags or [], addressee)
+                              text, flags or [], addressee, procedure_item)
         self.transcript.append(utterance)
         return utterance
 
@@ -352,8 +378,10 @@ def _system_prompt(ctx: TrialContext, base: str = TRIAL_SYSTEM_PROMPT) -> str:
     if ctx.student_id is None:
         return base.format(role_line=OBSERVER_ROLE_LINE, rule_one=OBSERVER_RULE_ONE, offices_line=offices)
     role = {"user_role_label": ROLE_LABELS[ctx.state.user_role], "user_role_id": "{" + ctx.student_id + "}"}
-    return base.format(role_line=PLAYER_ROLE_LINE.format(**role), rule_one=PLAYER_RULE_ONE.format(**role),
-                       offices_line=offices)
+    role_line = PLAYER_ROLE_LINE.format(**role)
+    if ctx.state.user_role == PRESIDING_ROLE:
+        role_line += PRESIDING_ROLE_RULES
+    return base.format(role_line=role_line, rule_one=PLAYER_RULE_ONE.format(**role), offices_line=offices)
 
 
 # --- Guards ---------------------------------------------------------------------------------------
@@ -385,6 +413,9 @@ _SPEAKS_FOR_STUDENT = {
     # Bị cáo (Mục 11.2.6): another speaker stating what the defendant admitted or said.
     "BI_CAO": re.compile(r"(?:\{BI_CAO\}|bị cáo)\s+(?:đã|vừa|cũng)\s+(?:thừa nhận|nhận tội|khai rằng|xác nhận|đồng ý)"
                          r"|như\s+(?:\{BI_CAO\}|bị cáo)\s+vừa\s+khai", re.IGNORECASE),
+    # Chủ tọa (chặng R4): another speaker stating what the presiding judge ordered or allowed.
+    "CHU_TOA": re.compile(r"(?:\{CHU_TOA\}|chủ tọa(?: phiên tòa)?)\s+(?:đã|vừa)\s+(?:yêu cầu|tuyên bố|cho phép|đồng ý"
+                          r"|quyết định|chấp nhận)", re.IGNORECASE),
 }
 # The defendant's latest words admit something: the BI_CAO pattern above is then not counted.
 # Negated forms ("không thừa nhận", "chưa đúng") are removed first, so they admit nothing.
@@ -400,13 +431,16 @@ def _student_just_admitted(ctx: TrialContext) -> bool:
 
 
 def _check_utterance(ctx: TrialContext, speaker_id: str, text: str, allowed: tuple[str, ...],
-                     mode: str = "lenient", pack: LegalPack | None = None) -> tuple[list[str], list[str]]:
-    """(hard/soft violation labels, measure-only flags) for one utterance."""
+                     mode: str = "lenient", pack: LegalPack | None = None, *, as_student: bool = False,
+                     extra_amounts: frozenset[int] = frozenset()) -> tuple[list[str], list[str]]:
+    """(hard/soft violation labels, measure-only flags) for one utterance. `as_student`: a text the
+    system writes FOR the student to adopt (the Chủ tọa's judgment text), so the student's own id is
+    the expected speaker there. `extra_amounts`: amounts legitimate in this call only."""
     violations: list[str] = []
     flags: list[str] = []
     if not text.strip():
         violations.append("empty")
-    if speaker_id == ctx.student_id:
+    if speaker_id == ctx.student_id and not as_student:
         violations.append("speaker_is_student")
     elif speaker_id not in allowed:
         violations.append("speaker_not_allowed")
@@ -421,6 +455,7 @@ def _check_utterance(ctx: TrialContext, speaker_id: str, text: str, allowed: tup
     if NAME_LIKE_PATTERN.search(text):
         violations.append("invented_name")
     amounts, percents = _known_numbers(ctx)
+    amounts |= extra_amounts
     if speaker_id in LEGAL_SPEAKER_IDS and pack is not None:
         # Thresholds and fine ranges quoted from the articles in this call's context are not case facts.
         amounts = amounts | {parse_money(m.group(1)) for a in pack.articles.values()
@@ -433,6 +468,9 @@ def _check_utterance(ctx: TrialContext, speaker_id: str, text: str, allowed: tup
     if pattern and speaker_id != ctx.student_id and pattern.search(text) and not (
             ctx.student_id == "BI_CAO" and _student_just_admitted(ctx)):
         flags.append("speaks_for_student")
+    if (ctx.state.user_role == PRESIDING_ROLE and speaker_id != ctx.student_id
+            and trial_presiding.usurps_presiding(text)):
+        flags.append("usurps_presiding")   # measured only until the false-positive rate is known
     if office_name_mismatches(text, ctx.court):
         flags.append("office_name")
     return violations, flags
@@ -522,7 +560,10 @@ async def _generate_segment(ctx: TrialContext, slot_key: str, instruction: str,
 
 
 async def _generate_speech(ctx: TrialContext, slot_key: str, instruction: str, speaker_id: str, *,
-                           mode: str, thinking_level: str | None, extra_check=None) -> Utterance:
+                           mode: str, thinking_level: str | None, extra_check=None, as_student: bool = False,
+                           store: bool = True) -> Utterance:
+    """One long speech. `as_student` and `store=False`: the Chủ tọa's judgment text, written for the
+    student to read first - it is returned, not added to the transcript."""
     feedback = ""
     last: list[str] = []
     for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -538,7 +579,7 @@ async def _generate_speech(ctx: TrialContext, slot_key: str, instruction: str, s
             feedback = _feedback(["schema"])
             continue
         violations, flags = _check_utterance(ctx, speaker_id, text, (speaker_id,), mode,
-                                             pack=context_pack(ctx, slot_key))
+                                             pack=context_pack(ctx, slot_key), as_student=as_student)
         if extra_check is not None:
             violations += extra_check(text)
         record.guard_violations = violations
@@ -550,6 +591,8 @@ async def _generate_speech(ctx: TrialContext, slot_key: str, instruction: str, s
                 feedback = _feedback(violations)
                 continue
             raise TrialGuardFailure(slot_key, violations)
+        if not store:
+            return Utterance(0, ctx.state.current_step, speaker_id, False, "speech", text, [*violations, *flags])
         return ctx.add(speaker_id, text, flags=[*violations, *flags])
     raise TrialGuardFailure(slot_key, last)
 
@@ -589,6 +632,9 @@ _TEMPLATES = {
 # --- Verdict --------------------------------------------------------------------------------------
 
 async def _deliberate(ctx: TrialContext) -> None:
+    if ctx.state.user_role == PRESIDING_ROLE:
+        # The Chủ tọa decides (decision 16, Q8): an AI decision must never exist in this role.
+        raise RuntimeError("No AI nghị án in a Chủ tọa session")
     feedback = ""
     last: list[str] = []
     base = VERDICT_SYSTEM_PROMPT + (DEFENDANT_VERDICT_NOTE if ctx.state.user_role == DEFENDANT_ROLE else "")
@@ -642,6 +688,10 @@ def _charge_citation_check(ctx: TrialContext):
 
 async def run_ai_turn(ctx: TrialContext) -> list[Utterance]:
     """Produce the AI output owed for the current slot, then advance the state machine."""
+    if is_presiding(ctx.state):
+        produced = await _presiding_job(ctx)
+        ctx.state = complete_ai_turn(ctx.state)
+        return produced
     slot = current_slot(ctx.state)
     assert slot is not None and awaiting(ctx.state) == "ai"
     produced = await _dispatch(ctx, slot)
@@ -752,6 +802,240 @@ async def run_until_user(ctx: TrialContext) -> list[Utterance]:
     return produced
 
 
+# --- Chủ tọa (chặng R4): AI jobs -------------------------------------------------------------------
+
+DECISION_DRAFT_KEY = "decision_draft"
+ASSESSOR_KEY = "assessor_opinions"
+PRONOUNCEMENT_KEY = "pronouncement_draft"
+ASSESSOR_IDS = ("HOI_THAM_1", "HOI_THAM_2")
+ASSESSOR_MAX_CHARS = 800
+_ASSESSOR_OUT = {"type": "OBJECT", "properties": {"dong_y": {"type": "BOOLEAN"}, "y_kien": {"type": "STRING"}},
+                 "required": ["dong_y", "y_kien"]}
+ASSESSOR_SCHEMA = {"type": "OBJECT", "properties": {"hoi_tham_1": _ASSESSOR_OUT, "hoi_tham_2": _ASSESSOR_OUT},
+                   "required": ["hoi_tham_1", "hoi_tham_2"]}
+# A duration the assessor names on its own ("18 tháng", "2 năm"); "ngày 19 tháng 10 năm 2026" is a date.
+_DURATION = re.compile(r"(?<!ngày )(?<!tháng )\b(\d{1,3})\s*(tháng|năm)\b", re.IGNORECASE)
+EXHIBIT_LABELS = {"tra_lai": "trả lại cho chủ sở hữu hoặc người quản lý hợp pháp",
+                  "tich_thu_sung_ngan_sach": "tịch thu, nộp ngân sách nhà nước",
+                  "tich_thu_tieu_huy": "tịch thu và tiêu hủy", "luu_ho_so": "lưu trong hồ sơ vụ án"}
+
+
+class _AssessorOpinion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dong_y: bool
+    y_kien: str
+
+
+class _AssessorOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    hoi_tham_1: _AssessorOpinion
+    hoi_tham_2: _AssessorOpinion
+
+
+def stored_decision(ctx: TrialContext) -> ChairDecision | None:
+    data = ctx.user_work.get(DECISION_DRAFT_KEY)
+    return ChairDecision.model_validate(data) if data else None
+
+
+async def _presiding_job(ctx: TrialContext) -> list[Utterance]:
+    preside = ctx.state.preside
+    assert preside is not None and preside.job is not None
+    job = preside.job
+    if job.kind == "answer":
+        assert job.addressee is not None
+        instruction = PRESIDING_ANSWER.format(addressee_id="{" + job.addressee + "}")
+        return await _generate_segment(ctx, "preside_answer", instruction, (job.addressee,))
+    if job.kind == "assessor":
+        await _assessor_opinions(ctx)
+        return []
+    if job.kind == "pronounce_draft":
+        await _pronouncement_draft(ctx)
+        return []
+    return await _invited_part(ctx, trial_presiding.INVITE_PARTS[job.key], job)
+
+
+async def _invited_part(ctx: TrialContext, part: str, job: PresideJob) -> list[Utterance]:
+    """The AI part the student invited: the existing generators and instructions where the part
+    exists for other roles, presiding-only instructions where the original one has Chủ tọa speak."""
+    shape = ctx.state.shape
+    if part == "hoi_tham_hoi":
+        speakers = (*ASSESSOR_IDS, *shape.lay_present_ids())
+        return await _generate_segment(ctx, "preside_hoi_tham", PRESIDING_PARTS[part].format(), speakers)
+    if part in ("ksv_hoi", "ls_hoi"):
+        asker = "KSV" if part == "ksv_hoi" else "LUAT_SU"
+        instruction = SLOT_INSTRUCTIONS["ai_qa_loop"].format(
+            asker_label=ROLE_LABELS[role_of(asker)], asker_id="{" + asker + "}", goal=AI_QA_GOALS[asker])
+        if ctx.state.preside and ctx.state.preside.in_return:
+            instruction += PRESIDING_RETURN_QA
+        return await _generate_segment(ctx, part, instruction, (asker, *shape.lay_present_ids()))
+    if part in ("luan_toi", "bao_chua"):
+        speaker = "KSV" if part == "luan_toi" else "LUAT_SU"
+        return [await _generate_speech(ctx, part, SLOT_INSTRUCTIONS[part].format(), speaker, mode="lenient",
+                                       thinking_level=None)]
+    if part in ("bi_hai_trinh_bay", "bi_cao_bo_sung", "loi_sau_cung"):
+        speaker = "BI_HAI" if part == "bi_hai_trinh_bay" else "BI_CAO"
+        return await _generate_segment(ctx, part, PRESIDING_PARTS[part].format(), (speaker,))
+    if part == "doi_dap":   # KSV first, the defence answers: one speech per AI turn
+        speaker, other = ("KSV", "luat_su") if job.progress == 0 else ("LUAT_SU", "ksv")
+        instruction = SLOT_INSTRUCTIONS["doi_dap"].format(speaker_id="{" + speaker + "}",
+                                                          opponent_label=ROLE_LABELS[other])
+        return [await _generate_speech(ctx, "doi_dap", instruction, speaker, mode="lenient", thinking_level=None)]
+    raise ValueError(f"No presiding part {part}")
+
+
+def _draft_for_prompt(decision: ChairDecision) -> str:
+    return _sanitise_student_text(decision.model_dump_json())
+
+
+def _decision_amounts(decision: ChairDecision) -> frozenset[int]:
+    return frozenset(a for a in (decision.civil_amount_vnd, decision.fine_vnd) if a)
+
+
+def _own_durations(text: str, decision: ChairDecision) -> bool:
+    """True when the text names a sentence length the draft does not hold (decision Q7: no own penalty)."""
+    allowed_months = {m for m in (decision.penalty_months, decision.probation_months) if m}
+    for match in _DURATION.finditer(text):
+        months = int(match.group(1)) * (12 if match.group(2).lower() == "năm" else 1)
+        if months not in allowed_months:
+            return True
+    return False
+
+
+async def _assessor_opinions(ctx: TrialContext) -> None:
+    """Hội thẩm comments on the student's decision DRAFT (decision 15, Q7): agree or not, a short
+    reason, never a penalty of their own. Stored in user_work only - not an utterance (Q16)."""
+    decision = stored_decision(ctx)
+    assert decision is not None, "assessor job without a decision draft"
+    instruction = ASSESSOR_INSTRUCTION.format(draft=_draft_for_prompt(decision))
+    pack = context_pack(ctx, "nghi_an")
+    feedback = ""
+    last: list[str] = []
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        result, record = await ctx.recorder.call(
+            ctx.settings, call_type="assessor", slot="y_kien_hoi_tham", attempt=attempt,
+            system_prompt=_system_prompt(ctx),
+            user_prompt=_user_prompt(ctx, instruction, ASSESSOR_IDS, "nghi_an") + feedback,
+            response_schema=ASSESSOR_SCHEMA, thinking_level=None, temperature=SPEECH_TEMPERATURE,
+        )
+        try:
+            out = _AssessorOut.model_validate(json.loads(result.text))
+        except (ValueError, ValidationError):
+            record.guard_violations, record.accepted, last = ["schema"], False, ["schema"]
+            feedback = _feedback(["schema"])
+            continue
+        opinions, violations, flags = [], [], []
+        for speaker_id, opinion in zip(ASSESSOR_IDS, (out.hoi_tham_1, out.hoi_tham_2)):
+            text = format_utterance(opinion.y_kien)
+            vs, fs = _check_utterance(ctx, speaker_id, text, (speaker_id,), pack=pack,
+                                      extra_amounts=_decision_amounts(decision))
+            if _own_durations(text, decision):
+                vs.append("assessor_penalty")
+            if len(text) > ASSESSOR_MAX_CHARS:
+                vs.append("too_long")
+            violations += vs
+            flags += fs
+            opinions.append({"speaker_id": speaker_id, "agrees": opinion.dong_y, "text": text})
+        record.guard_violations = violations
+        hard = [v for v in violations if _is_hard(v) or v.startswith(("assessor_penalty", "too_long"))]
+        if hard:
+            record.accepted, last = False, violations
+            feedback = _feedback(violations) + (" Không tự nêu mức hình phạt, số tháng hay số năm nào khác bản nháp."
+                                                if "assessor_penalty" in violations else "")
+            continue
+        ctx.user_work[ASSESSOR_KEY] = {"opinions": opinions, "flags": sorted(set(flags)),
+                                       "draft_updated_at": ctx.user_work.get("decision_updated_at")}
+        return
+    raise TrialGuardFailure("y_kien_hoi_tham", last)
+
+
+def _exhibits_text(decision: ChairDecision, case: CaseFile) -> str:
+    described = {e.id: e.description for e in case.draft.evidence}
+    parts = [f"{described.get(x.evidence_id, x.evidence_id)}: {EXHIBIT_LABELS[x.disposition]}"
+             for x in decision.exhibits]
+    return "; ".join(parts) if parts else "không có vật chứng"
+
+
+def _fees_text(decision: ChairDecision) -> str:
+    criminal = "phải" if decision.defendant_pays_criminal_fee else "không phải"
+    civil = "phải" if decision.defendant_pays_civil_fee else "không phải"
+    return (f"bị cáo {criminal} chịu án phí hình sự sơ thẩm; bị cáo {civil} chịu án phí dân sự sơ thẩm; mức án phí "
+            "theo quy định của pháp luật")
+
+
+async def _pronouncement_draft(ctx: TrialContext) -> None:
+    """The judgment text written from the LOCKED decision (phương án A): one tuyên án call, strict
+    Rule 9 and the charge citation check. Kept as a draft for the student to read before pronouncing."""
+    decision = stored_decision(ctx)
+    assert decision is not None and ctx.verdict is not None, "pronouncement without a locked decision"
+    instruction = (TUYEN_AN_INSTRUCTION.format() + "\n\nQUYẾT ĐỊNH NGHỊ ÁN:\n"
+                   + ctx.verdict.model_dump_json(exclude={"reasoning_summary"})
+                   + PRESIDING_PRONOUNCE_EXTRAS.format(exhibits=_exhibits_text(decision, ctx.case),
+                                                       fees=_fees_text(decision),
+                                                       reasoning=_sanitise_student_text(decision.reasoning_summary))
+                   + _style_card())
+    draft = await _generate_speech(ctx, "tuyen_an", instruction, "CHU_TOA", mode="strict",
+                                   thinking_level=THINKING_LEVEL_DECISION, extra_check=_charge_citation_check(ctx),
+                                   as_student=True, store=False)
+    ctx.user_work[PRONOUNCEMENT_KEY] = {"text": draft.text, "flags": draft.guard_flags}
+
+
+def decision_errors(ctx: TrialContext) -> None:
+    """409 unless a stored draft exists and has no hard error (before "decide" or the Hội thẩm call)."""
+    decision = stored_decision(ctx)
+    if decision is None:
+        raise TrialConflict("decision_missing", ctx.state)
+    check = check_decision(decision, ctx.case, ctx.pack)
+    if not check.ok:
+        raise TrialConflict("decision_invalid", ctx.state, {"errors": [f.code for f in check.errors]})
+
+
+def _apply_presiding(ctx: TrialContext, action: UserAction) -> list[Utterance]:
+    """Validate and record a Chủ tọa action; writes the procedural answers code owns (0 LLM calls)."""
+    state = ctx.state
+    outcome = apply_user_action(state, action)   # pure; raises TrialConflict on any rule break
+    if action.kind == "decide" or (action.kind == "invite" and action.item == "y_kien_hoi_tham"):
+        decision_errors(ctx)
+    student = ctx.student_id or ""
+    text = (action.text or "").strip()
+    produced: list[Utterance] = []
+    if action.kind in ("item", "invite", "return_to_questioning"):
+        key = action.item if action.kind != "return_to_questioning" else "tro_lai_xet_hoi"
+        assert key is not None
+        template = trial_presiding.template_text(key, ctx.case, state.shape)
+        said = text or template
+        own_wording = bool(text) and text != (template or "").strip()
+        if said:
+            produced.append(ctx.add(student, said, is_user=True, procedure_item=key))
+        for speaker_id, answer in trial_presiding.code_answers(key, state.shape, own_identity_question=own_wording):
+            if key == "kiem_tra_can_cuoc":
+                produced.append(ctx.add(speaker_id, _name_to_placeholder(identity_prefill(ctx.case), ctx.case)))
+            else:
+                produced.append(ctx.add(speaker_id, answer, kind="procedural", procedure_item=key))
+        if key == "moi_cong_bo_cao_trang":   # the indictment, read verbatim from the file (0 calls)
+            produced.append(ctx.add("KSV", ctx.case.draft.indictment_text, procedure_item=key))
+        if key == "kiem_tra_can_cuoc" and own_wording:   # the student's own question: an AI answer
+            ctx.state = trial_presiding.with_job(outcome.state, PresideJob("answer", key, "BI_CAO"))
+            return produced
+    elif action.kind == "ask":
+        job = outcome.state.preside.job if outcome.state.preside else None
+        produced.append(ctx.add(student, text, is_user=True, addressee=action.addressee,
+                                procedure_item=job.key if job else None))
+    elif action.kind == "remark":
+        produced.append(ctx.add(student, text, is_user=True, addressee=action.addressee, procedure_item="remark"))
+    elif action.kind == "decide":
+        decision = stored_decision(ctx)
+        assert decision is not None
+        ctx.verdict, ctx.verdict_flags = decision.to_verdict(), check_decision(decision, ctx.case, ctx.pack).flags
+        ctx.verdict_meta = {"source": "user", "extras": decision.extras(),
+                            "assessor_opinions": (ctx.user_work.get(ASSESSOR_KEY) or {}).get("opinions")}
+    elif action.kind == "pronounce":
+        draft = ctx.user_work.get(PRONOUNCEMENT_KEY) or {}
+        produced.append(ctx.add(student, render(draft.get("text", ""), ctx.case.participants), is_user=True,
+                                flags=["system_drafted"], procedure_item="tuyen_an"))
+    ctx.state = outcome.state
+    return produced
+
+
 def _student_flags(ctx: TrialContext, text: str) -> list[str]:
     """Measure-only flags on the student's own words, never shown to the client. Bị cáo: an amount or
     percent the case file does not hold (Mục 11.2.3) - recorded verbatim, never added to the ledger."""
@@ -767,6 +1051,8 @@ def _student_flags(ctx: TrialContext, text: str) -> list[str]:
 def apply_student_action(ctx: TrialContext, action: UserAction) -> list[Utterance]:
     """Validate and record the student's action. Raises TrialConflict (409) on any rule break.
     The student's text is stored verbatim; masking applies only when it is put into a prompt."""
+    if is_presiding(ctx.state):
+        return _apply_presiding(ctx, action)
     limits = text_limits(ctx.state)
     if action.kind == "speak" and action.text and limits is not None and len(action.text) > limits[1]:
         raise TrialConflict("text_too_long", ctx.state)
