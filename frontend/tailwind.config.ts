@@ -48,6 +48,12 @@ const config: Config = {
           foreground: "hsl(var(--card-foreground))"
         }
       },
+      // One stacking scale for the whole app (root stacking context): 10 sticky docks and lifted
+      // controls, 20 sticky banner, 30 menus and tooltips, 40 floating buttons, 50 drawers and
+      // sheets, dialog = dialogs that can open from any of those (rendered in a body portal).
+      zIndex: {
+        dialog: "60"
+      },
       borderRadius: {
         xl: "1rem",
         lg: "0.75rem",

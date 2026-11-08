@@ -2000,6 +2000,113 @@ for (const role of ["ksv", "bi_cao", "nguoi_xem"]) {
   await context.close();
 }
 
+// =============================== Law dialog stacking ===============================
+// Regression: the full-text dialog used to render inside the pill's own stacking context
+// ("relative z-10" on /trial/new), so later cards' pills painted over it. Every pill and every
+// positioned element behind the dialog, plus a grid of points, must hit the overlay or the dialog.
+async function lawDialogLeaks(page) {
+  await page.getByTestId("article-modal").getByText("Đoạn điều luật giả định số 30", { exact: false }).waitFor({ timeout: 10000 });
+  return page.evaluate(() => {
+    const overlay = document.querySelector('[data-testid="article-modal-overlay"]');
+    const behind = [...document.querySelectorAll("body *")].filter((el) => {
+      if (overlay.contains(el)) return false;
+      const cs = getComputedStyle(el);
+      return el.matches('button[aria-label^="Xem toàn văn"]') || cs.position === "fixed" || cs.position === "sticky" || cs.zIndex !== "auto";
+    });
+    const points = [];
+    for (const el of behind) {
+      const r = el.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      if (r.width > 0 && r.height > 0 && x >= 0 && y >= 0 && x < innerWidth && y < innerHeight) points.push([x, y, el.getAttribute("aria-label") ?? el.tagName]);
+    }
+    for (let i = 1; i < 6; i++) for (let j = 1; j < 6; j++) points.push([(innerWidth * i) / 6, (innerHeight * j) / 6, "grid"]);
+    const leaks = points.filter(([x, y]) => !overlay.contains(document.elementFromPoint(x, y))).map(([, , what]) => what);
+    const pills = behind.filter((el) => el.matches('button[aria-label^="Xem toàn văn"]')).length;
+    return { inBody: overlay.parentElement === document.body, tested: points.length, pills, leaks };
+  });
+}
+const lawDialogOk = (r) => r.inBody && r.leaks.length === 0;
+const lawDialogDesc = (r) => `${r.tested} points, ${r.pills} pills behind, leaks: ${r.leaks.join(", ") || "none"}`;
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+  const tag = `${viewport.width}x${viewport.height}`;
+  resetWorld();
+  world.config = config({ user_roles: ALL_ROLES });
+  ({ context, page } = await open({ viewport }));
+  await page.goto(`${BASE}/trial/new`);
+  await page.getByTestId("role-ksv").waitFor({ timeout: 20000 });
+  const opener = page.getByTestId("role-ksv").getByRole("button", { name: /Xem toàn văn/ }).first();
+  await opener.click();
+  let leaks = await lawDialogLeaks(page);
+  check(`law dialog /trial/new ${tag}: portal on body, nothing of the page above it (${lawDialogDesc(leaks)})`, lawDialogOk(leaks) && leaks.pills >= 5);
+  await shot(page, `law-dialog-new-${tag}`);
+  await page.emulateMedia({ media: "print" });
+  check(`law dialog /trial/new ${tag}: not printed`, await page.evaluate(() => getComputedStyle(document.querySelector('[data-testid="article-modal-overlay"]')).display === "none"));
+  await page.emulateMedia({ media: "screen" });
+  const dialogState = await page.evaluate(() => {
+    const card = document.querySelector('[data-testid="article-modal"]');
+    return { bodyLocked: getComputedStyle(document.body).overflow === "hidden", scrolls: card.scrollHeight > card.clientHeight && /(auto|scroll)/.test(getComputedStyle(card).overflowY),
+      focusInside: card.contains(document.activeElement) };
+  });
+  check(`law dialog /trial/new ${tag}: focus inside, background scroll locked, dialog scrolls inside`, dialogState.bodyLocked && dialogState.scrolls && dialogState.focusInside);
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Shift+Tab");
+  check(`law dialog /trial/new ${tag}: Tab stays inside the dialog`, await page.evaluate(() => document.querySelector('[data-testid="article-modal"]').contains(document.activeElement)));
+  await page.keyboard.press("Escape");
+  check(`law dialog /trial/new ${tag}: Esc closes, focus back on the pill, scroll unlocked`, (await page.getByTestId("article-modal").count()) === 0
+    && (await opener.evaluate((el) => el === document.activeElement)) && (await page.evaluate(() => getComputedStyle(document.body).overflow !== "hidden")));
+  const selectedBefore = await page.getByTestId("role-luat_su").getByRole("radio").getAttribute("aria-checked");
+  await opener.click();
+  await page.getByTestId("article-modal").waitFor({ timeout: 5000 });
+  // A backdrop point over the Luật sư card, outside the dialog box.
+  const luatSuBox = await page.getByTestId("role-luat_su").boundingBox();
+  const modalBox = await page.getByTestId("article-modal").boundingBox();
+  const backdropPoint = [[luatSuBox.x + 8, luatSuBox.y + 8], [luatSuBox.x + luatSuBox.width - 8, luatSuBox.y + luatSuBox.height - 8], [luatSuBox.x + 8, luatSuBox.y + luatSuBox.height - 8]]
+    .find(([x, y]) => y >= 0 && y < viewport.height && (x < modalBox.x || x > modalBox.x + modalBox.width || y < modalBox.y || y > modalBox.y + modalBox.height)) ?? [4, 4];
+  await page.mouse.click(backdropPoint[0], backdropPoint[1]);
+  check(`law dialog /trial/new ${tag}: click on the backdrop closes it and does not pick the card under it`, (await page.getByTestId("article-modal").count()) === 0
+    && (await page.getByTestId("role-luat_su").getByRole("radio").getAttribute("aria-checked")) === selectedBefore);
+  await context.close();
+}
+
+// Hearing, desktop: the case-file pill in the side panel (sticky banner, step bar and dock behind).
+resetWorld();
+({ context, page } = await open());
+await openHearing(page, baseState());
+await page.locator('aside[aria-label="Hồ sơ vụ án"]').getByRole("button", { name: /Xem toàn văn/ }).first().click();
+let lawLeaks = await lawDialogLeaks(page);
+check(`law dialog hearing 1440x900 (case file): nothing of the page above it (${lawDialogDesc(lawLeaks)})`, lawDialogOk(lawLeaks));
+await shot(page, "law-dialog-hearing-casefile");
+await context.close();
+
+// Observer on a phone: the procedure-note pill inside the sticky dock.
+resetWorld();
+({ context, page } = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }));
+await openHearing(page, baseState({ current_step: 5, allowed_actions: ["advance:6"], procedure_note: procedureNote(5) }), "nguoi_xem");
+await page.getByTestId("trial-procedure-note").getByRole("button", { name: /Xem toàn văn/ }).first().click();
+lawLeaks = await lawDialogLeaks(page);
+check(`law dialog observer 390x844 (dock): nothing of the page above it (${lawDialogDesc(lawLeaks)})`, lawDialogOk(lawLeaks));
+await context.close();
+
+// Chair on a phone: a basis pill inside the "Điều hành" drawer; Esc closes the dialog only.
+resetWorld();
+chairBodies.length = 0;
+({ context, page } = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }));
+await openChair(page, { step: 4, version: 40 });
+await page.getByTestId("chair-open-checklist").click();
+const lawDrawer = page.getByRole("dialog", { name: "Điều hành" });
+await lawDrawer.getByTestId("chair-checklist").waitFor({ timeout: 5000 });
+await lawDrawer.getByRole("button", { name: /Xem toàn văn/ }).first().click();
+lawLeaks = await lawDialogLeaks(page);
+check(`law dialog chair drawer 390x844: above the drawer, nothing of the page above it (${lawDialogDesc(lawLeaks)})`, lawDialogOk(lawLeaks));
+await shot(page, "law-dialog-chair-drawer");
+await page.keyboard.press("Escape");
+check("law dialog chair drawer: Esc closes the dialog, the drawer stays open", (await page.getByTestId("article-modal").count()) === 0 && (await lawDrawer.count()) === 1);
+await context.close();
+
 const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || m.includes(CLERK_MARK) || m.includes(DEF_MARK) || m.includes(CHAIR_MARK) || m.includes(ASSESSOR_MARK) || m.includes(PRONOUNCE_MARK) || m.includes(REASONING.slice(0, 40)) || m.includes(IDENTITY_PREFILL.slice(0, 30)) || m.includes(CLERK_PREFILL.slice(0, 40)) || /Uncaught|TypeError/.test(m));
 if (process.env.E2E_DEBUG) badConsole.forEach((m) => console.log(`  console: ${m.slice(0, 200)}`));
 // Regression: nothing may stretch the document past the record (absolutely positioned sr-only labels

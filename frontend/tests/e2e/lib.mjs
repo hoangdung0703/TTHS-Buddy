@@ -158,6 +158,12 @@ async function handleApi(route) {
   }
   const email = emailFromAuthorization(request.headers().authorization);
   world.requests.push({ method, path, email });
+  if (path.startsWith("/api/legal/articles/")) {
+    // Fictional full text, long enough that the law dialog scrolls inside itself.
+    const dieu = decodeURIComponent(path.split("/").pop());
+    return route.fulfill(json(200, { dieu_number: dieu, dieu_title: "Điều luật giả định", law_version: "BLTTHS 2015", source_document: "e2e",
+      full_text: Array.from({ length: 30 }, (_, i) => `${i + 1}. Đoạn điều luật giả định số ${i + 1}, chỉ để kiểm bố cục hộp thoại.`).join("\n") }));
+  }
   if (!path.startsWith("/api/trials")) {
     // Other features run on their built-in mock data; anything that still calls out gets a benign answer.
     const emptyLists = { "/api/chat/conversations": { conversations: [] }, "/api/notes": { notes: [] } };
