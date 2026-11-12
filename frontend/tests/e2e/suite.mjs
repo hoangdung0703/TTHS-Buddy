@@ -2026,6 +2026,8 @@ async function lawDialogLeaks(page) {
     return { inBody: overlay.parentElement === document.body, tested: points.length, pills, leaks };
   });
 }
+// Polls a page predicate until it holds; false after the timeout (never a fixed sleep).
+const lawDialogWait = (page, predicate, timeout = 5000) => page.waitForFunction(predicate, null, { timeout, polling: 50 }).then(() => true, () => false);
 const lawDialogOk = (r) => r.inBody && r.leaks.length === 0;
 const lawDialogDesc = (r) => `${r.tested} points, ${r.pills} pills behind, leaks: ${r.leaks.join(", ") || "none"}`;
 
@@ -2041,20 +2043,26 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   let leaks = await lawDialogLeaks(page);
   check(`law dialog /trial/new ${tag}: portal on body, nothing of the page above it (${lawDialogDesc(leaks)})`, lawDialogOk(leaks) && leaks.pills >= 5);
   await shot(page, `law-dialog-new-${tag}`);
-  await page.emulateMedia({ media: "print" });
-  check(`law dialog /trial/new ${tag}: not printed`, await page.evaluate(() => getComputedStyle(document.querySelector('[data-testid="article-modal-overlay"]')).display === "none"));
-  await page.emulateMedia({ media: "screen" });
-  const dialogState = await page.evaluate(() => {
+  // Three separate conditions, each polled until it holds (5s), so a failure names the one that broke.
+  check(`law dialog /trial/new ${tag}: focus moves inside the dialog`,
+    await lawDialogWait(page, () => document.querySelector('[data-testid="article-modal"]')?.contains(document.activeElement) === true));
+  check(`law dialog /trial/new ${tag}: background scroll locked`,
+    await lawDialogWait(page, () => getComputedStyle(document.body).overflow === "hidden"));
+  check(`law dialog /trial/new ${tag}: dialog scrolls inside itself`, await lawDialogWait(page, () => {
     const card = document.querySelector('[data-testid="article-modal"]');
-    return { bodyLocked: getComputedStyle(document.body).overflow === "hidden", scrolls: card.scrollHeight > card.clientHeight && /(auto|scroll)/.test(getComputedStyle(card).overflowY),
-      focusInside: card.contains(document.activeElement) };
-  });
-  check(`law dialog /trial/new ${tag}: focus inside, background scroll locked, dialog scrolls inside`, dialogState.bodyLocked && dialogState.scrolls && dialogState.focusInside);
+    return card !== null && card.scrollHeight > card.clientHeight && /(auto|scroll)/.test(getComputedStyle(card).overflowY);
+  }));
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Shift+Tab");
   check(`law dialog /trial/new ${tag}: Tab stays inside the dialog`, await page.evaluate(() => document.querySelector('[data-testid="article-modal"]').contains(document.activeElement)));
+  // Print emulation last: hiding the overlay (display: none) can blur the focused close button in
+  // the live document, which a real print never does, so it must not run before the focus checks.
+  await page.emulateMedia({ media: "print" });
+  check(`law dialog /trial/new ${tag}: not printed`,
+    await lawDialogWait(page, () => getComputedStyle(document.querySelector('[data-testid="article-modal-overlay"]')).display === "none"));
+  await page.emulateMedia({ media: "screen" });
   await page.keyboard.press("Escape");
   check(`law dialog /trial/new ${tag}: Esc closes, focus back on the pill, scroll unlocked`, (await page.getByTestId("article-modal").count()) === 0
     && (await opener.evaluate((el) => el === document.activeElement)) && (await page.evaluate(() => getComputedStyle(document.body).overflow !== "hidden")));
