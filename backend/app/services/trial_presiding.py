@@ -205,6 +205,90 @@ def is_available(state: SessionState, item: ProcedureItem) -> bool:
     return True
 
 
+BLOCKED_TEXTS: dict[str, str] = {
+    "closed": "Phiên tòa đã kết thúc.",
+    "ai_running": "Đang chờ phần trình bày của AI.",
+    "already_done": "Mục này đã làm.",
+    "prerequisite_missing": "Cần làm trước: {label}.",
+    "limit_reached": "Đã hết số câu hỏi được phép ở phần này.",
+    "debate_closed": "Đã kết thúc tranh luận.",
+    "decision_locked": "Quyết định đã chốt.",
+}
+
+
+def _blocked(code: str, prerequisite: ProcedureItem | None = None) -> dict[str, Any]:
+    text = BLOCKED_TEXTS[code].format(label=prerequisite.label if prerequisite else "")
+    return {"code": code, "prerequisite_item": prerequisite.key if prerequisite else None, "text": text}
+
+
+def blocked_reason(state: SessionState, item: ProcedureItem) -> dict[str, Any] | None:
+    """Why `item` cannot be performed now, None when it can. Walks the checks of awaiting_user and
+    is_available in the same order, so it is None exactly when the view's `available` is true."""
+    if state.status != "active":
+        return _blocked("closed")
+    if state.pending_ai:
+        return _blocked("ai_running")
+    preside = _preside(state)
+    done = preside.done
+    if item.key in done and item.kind != "ask":
+        return _blocked("already_done")
+    items = items_for(state)
+    first = next((i for i in items if i.first and i.key not in done and i.key != item.key), None)
+    if first is not None:
+        return _blocked("prerequisite_missing", first)
+    if item.last:
+        pending = next((i for i in items if i.required and i.key not in done and i.key != item.key), None)
+        if pending is not None:
+            return _blocked("prerequisite_missing", pending)
+    missing_after = next((key for key in item.after if key not in done), None)
+    if missing_after is not None:
+        return _blocked("prerequisite_missing", _catalogue_item(state, missing_after))
+    if item.kind == "ask":
+        return None if ask_addressees(state, item) else _blocked("limit_reached")
+    if item.kind == "return":
+        if "ket_thuc_tranh_luan" in done:
+            return _blocked("debate_closed")
+        return None if preside.rounds >= 1 else _blocked("prerequisite_missing", _catalogue_item(state, "moi_doi_dap"))
+    if item.key == "y_kien_hoi_tham" or item.kind == "decide":
+        if "vao_nghi_an" not in done:
+            return _blocked("prerequisite_missing", _catalogue_item(state, "vao_nghi_an"))
+        return _blocked("decision_locked") if preside.decided else None
+    if item.kind == "pronounce":
+        return None if preside.decided else _blocked("prerequisite_missing", _catalogue_item(state, "chot_quyet_dinh"))
+    if item.key in DEBATE_ITEMS and preside.job is not None:
+        return _blocked("ai_running")
+    return None
+
+
+def _catalogue_item(state: SessionState, key: str) -> ProcedureItem:
+    """The item `key` as labelled where the student is now (a return relabels shared keys), else in
+    the catalogue of any step (chot_quyet_dinh is a step-10 item checked at step 11)."""
+    everywhere = (*items_for(state), *(i for items in STEP_ITEMS.values() for i in items))
+    return next(i for i in everywhere if i.key == key)
+
+
+def catalogue() -> dict[str, dict[str, Any]]:
+    """item key -> {step, label} for every presided step, straight from STEP_ITEMS (keys are unique
+    across steps), so the client can label any `procedure_item` without copying the table."""
+    return {i.key: {"step": step, "label": i.label} for step, items in STEP_ITEMS.items() for i in items}
+
+
+def return_catalogue() -> dict[str, dict[str, Any]]:
+    """The same for the short step 5 of an Điều 323 return, whose labels differ for shared keys."""
+    return {i.key: {"step": 5, "label": i.label} for i in RETURN_ITEMS}
+
+
+def final_statement_done(state: SessionState) -> bool:
+    """The AI defendant's last words are stored (Điều 324 khoản 2 BLTTHS: no question after them).
+    The invitation is required at step 9, so any later step means they were said."""
+    if state.current_step > 9:
+        return True
+    preside = state.preside
+    if state.current_step != 9 or preside is None or "moi_loi_sau_cung" not in preside.done:
+        return False
+    return preside.job is None or preside.job.key != "moi_loi_sau_cung"
+
+
 def _question_cap(state: SessionState) -> int:
     return RETURN_MAX_QUESTIONS if _preside(state).in_return else STEP4_MAX_QUESTIONS
 
@@ -592,7 +676,7 @@ def presiding_view(state: SessionState, case: CaseFile) -> dict[str, Any]:
             "key": item.key, "label": item.label, "kind": item.kind, "required": item.required,
             "done": item.key in preside.done, "available": awaiting_user(state) and is_available(state, item),
             "template": template_text(item.key, case, state.shape), "basis": list(item.basis),
-            "ai_calls": item.ai_calls, "note": item.note,
+            "ai_calls": item.ai_calls, "note": item.note, "blocked_reason": blocked_reason(state, item),
         })
     questioning = state.current_step == 4 or (state.current_step == 5 and preside.in_return)
     return {
@@ -607,6 +691,7 @@ def presiding_view(state: SessionState, case: CaseFile) -> dict[str, Any]:
         "return_available": "return_to_questioning" in allowed_actions(state) if awaiting_user(state) else False,
         "returned": preside.returned, "in_return": preside.in_return,
         "templates_reviewed": TEMPLATES_REVIEWED,
+        "catalogue": catalogue(), "return_catalogue": return_catalogue(),
     }
 
 

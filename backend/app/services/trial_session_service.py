@@ -7,13 +7,19 @@ from typing import Any
 
 from app.core.config import Settings
 from app.models.trial import CaseFile, ChairDecision, Verdict
-from app.models.trial_api import TrialPendingQuestion, TrialStateOut, TrialSummaryOut, TrialUtteranceOut
+from app.models.trial_api import (
+    TrialInvitation,
+    TrialPendingQuestion,
+    TrialStateOut,
+    TrialSummaryOut,
+    TrialUtteranceOut,
+)
 from app.services import trial_presiding
 from app.services.trial_chair_decision import CIRCUMSTANCE_KHOANS, check_decision, is_penalty_khoan
 from app.services.trial_config import BLHS_DOCUMENT
 from app.services.trial_anonymise import anonymise_case_view
 from app.services.trial_clerk import attendance, clerk_prompt, report_prefill
-from app.services.trial_defendant import DECLINE_NOTE, IDENTITY_SLOT, identity_prefill
+from app.services.trial_defendant import DECLINE_NOTE, IDENTITY_SLOT, INVITATIONS, identity_prefill
 from app.services.trial_legal_pack import LegalPack, build_pack
 from app.services.trial_metrics import TrialCallRecorder
 from app.services.trial_names import render
@@ -148,6 +154,7 @@ def state_out(session_id: str, state: SessionState, guard_exhausted: bool = Fals
     if state.status == "active" and awaiting(state) == "ai":
         actions = [] if guard_exhausted else ["continue"]
     limits = text_limits(state)
+    pending = _pending_question(state, case, transcript)
     clerk = state.user_role == CLERK_ROLE
     slot = current_slot(state)
     report_due = (clerk and case is not None and awaiting(state) == "user" and slot is not None
@@ -161,8 +168,10 @@ def state_out(session_id: str, state: SessionState, guard_exhausted: bool = Fals
                          clerk_prompt=clerk_prompt(state.current_step) if clerk else None,
                          clerk_report={"prefill": report_prefill(case, state.shape),
                                        "attendance": attendance(case, state.shape)} if report_due else None,
-                         pending_question=_pending_question(state, case, transcript),
-                         presiding=presiding, decision=decision)
+                         pending_question=pending,
+                         presiding=presiding, decision=decision,
+                         final_statement_done=final_statement_done(state),
+                         invitation=_invitation(state, case, transcript, pending))
 
 
 def _presiding_actions(actions: list[str], decision: dict | None) -> list[str]:
@@ -251,6 +260,46 @@ def _pending_question(state: SessionState, case: CaseFile | None,
         speaker_name=shown.speaker_name, text=shown.text,
         prefill=identity_prefill(case) if slot.key == IDENTITY_SLOT and state.slot_user_turns == 0 else None,
         decline_note=DECLINE_NOTE if slot.decline else None)
+
+
+# Bị cáo: the student's optional turn -> the invitation slot right before it (trial_state_machine.STEPS).
+INVITED_SLOTS = {"bi_cao_bo_sung_bao_chua": "moi_bi_cao_bo_sung", "bi_cao_tranh_luan": "moi_bi_cao_tranh_luan"}
+LAST_WORDS_STEP = 9
+
+
+def final_statement_done(state: SessionState) -> bool | None:
+    """Bị cáo and Chủ tọa: the defendant's last words are stored; None for every other role. The
+    last-words slot closes on the student's answer (close_on_cap) and is the only slot of step 9."""
+    if state.user_role == PRESIDING_ROLE:
+        return trial_presiding.final_statement_done(state)
+    if state.user_role != DEFENDANT_ROLE:
+        return None
+    return state.current_step > LAST_WORDS_STEP or (state.current_step == LAST_WORDS_STEP
+                                                    and current_slot(state) is None)
+
+
+def _invitation(state: SessionState, case: CaseFile | None, transcript: list[Utterance] | None,
+                pending: TrialPendingQuestion | None) -> TrialInvitation | None:
+    """Bị cáo, while the student's turn of steps 7-9 is open: the Chủ tọa line that invited it, the
+    very utterance stored in the transcript (step 9: the pending last-words question)."""
+    if state.user_role != DEFENDANT_ROLE or case is None or not transcript or awaiting(state) != "user":
+        return None
+    if state.current_step == LAST_WORDS_STEP:
+        if pending is None:
+            return None
+        return TrialInvitation(seq=pending.seq, speaker_id=pending.speaker_id, speaker_role=pending.speaker_role,
+                               speaker_name=pending.speaker_name, text=pending.text)
+    slot = current_slot(state)
+    if slot is None or slot.key not in INVITED_SLOTS or state.slot_user_turns > 0:
+        return None
+    wording = INVITATIONS[INVITED_SLOTS[slot.key]]
+    line = next((u for u in reversed(transcript) if u.step == state.current_step and u.speaker_id == "CHU_TOA"
+                 and not u.is_user and u.text == wording), None)
+    if line is None:
+        return None
+    shown = utterance_out(line, case)
+    return TrialInvitation(seq=shown.seq, speaker_id=shown.speaker_id, speaker_role=shown.speaker_role,
+                           speaker_name=shown.speaker_name, text=shown.text)
 
 
 def utterance_out(u: Utterance, case: CaseFile) -> TrialUtteranceOut:

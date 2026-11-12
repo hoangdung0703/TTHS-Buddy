@@ -1173,3 +1173,12 @@ Theo số câu hỏi ở 11.7:
 - Biên bản 2/2 đủ I–IV, IV.2/IV.3 tóm tắt, 2 phụ lục (lời tuyên, biên bản nghị án).
 
 **Còn chờ:** nhóm luật duyệt danh mục mục thủ tục, toàn bộ lời mẫu, câu trả lời mẫu, câu "Không xem xét trong phạm vi mô phỏng" của phụ lục nghị án, các câu `message` của form, giả định 1–11; xác nhận cảnh báo `civil_over_claim` có nên thành lỗi cứng; đo thêm `usurps_presiding` trên nhiều phiên hơn trước khi bật cứng; giao diện Chủ tọa (chặng frontend, theo 11.4.7 và API-CONTRACT 5.4, 3.11).
+
+### 11.15 Dọn API backend (chỉ thêm trường), 13/11/2026
+
+Mục đích: frontend không phải tự dò diễn biến hay sao danh mục mục thủ tục. **Chỉ thêm trường** vào state; không trường cũ nào đổi; không route mới, không migration, 0 lời gọi Gemini. Chi tiết và ví dụ JSON: API-CONTRACT 5, 5.3, 5.4, 10.
+
+- **Chủ tọa, `presiding.items[].blocked_reason`**: `{code, prerequisite_item, text}`, `null` khi và chỉ khi `available`. Hàm `trial_presiding.blocked_reason` đi lại đúng thứ tự kiểm của `awaiting_user` + `is_available`, không quyết định gì thêm (test so khớp trên mọi tổ hợp mục đã làm, trần câu hỏi, vòng đối đáp, đã chốt, AI đang chạy, phiên đã xong). Mã: `closed`, `ai_running`, `already_done`, `prerequisite_missing`, `limit_reached`, `debate_closed`, `decision_locked`. Không có mã "sai bước" vì `items` chỉ có mục của bước hiện tại.
+- **Chủ tọa, `presiding.catalogue` / `return_catalogue`**: `{khóa: {step, label}}` lấy thẳng từ `STEP_ITEMS` / `RETURN_ITEMS` (cùng nguồn với `items[].label`), cho bước 2–11 và bước 5 thu gọn. Khóa không trùng giữa các bước của `STEP_ITEMS`; ba khóa dùng chung với bước 5 thu gọn có nhãn riêng nên tách thành `return_catalogue`.
+- **`final_statement_done`** (Chủ tọa và Bị cáo, vai khác `null`): Chủ tọa: bước > 9, hoặc bước 9 khi `moi_loi_sau_cung` đã làm và job của nó đã xong (lời của bị cáo AI đã lưu). Bị cáo: bước > 9, hoặc bước 9 khi slot lời sau cùng đã đóng (slot `close_on_cap` chỉ đóng sau câu trả lời của người dùng).
+- **Bị cáo, `invitation`**: bước 7–8, khi lượt không bắt buộc đang mở và người dùng chưa nói: dòng Chủ tọa của slot mời ngay trước (`INVITATIONS`, so khớp đúng văn bản đã lưu ở bước hiện tại, nên trùng `seq` với diễn biến kể cả sau câu nhắc nhảy cóc); bước 9: chính câu mời đang chờ (`pending_question`).

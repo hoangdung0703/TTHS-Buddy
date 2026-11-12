@@ -1,6 +1,6 @@
 # Phiên tòa giả định — API contract cho frontend
 
-Tài liệu cho agent làm frontend ở session mới. Đọc file này là đủ; nội dung được viết lại từ code thật trên nhánh `muc5-mock-trial`:
+Tài liệu cho agent làm frontend ở session mới. Đọc file này là đủ; nội dung được viết lại từ code thật trên `main` (phát triển ở các nhánh `muc5-*`, đã merge):
 - `backend/app/api/trials.py`
 - `backend/app/models/trial_api.py`
 - `backend/app/services/trial_session_service.py`
@@ -525,7 +525,9 @@ Gợi ý render: tách theo `\n\n` thành đoạn; trong mỗi đoạn, nhóm c�
   "clerk_report": null,
   "pending_question": null,
   "presiding": null,
-  "decision": null
+  "decision": null,
+  "final_statement_done": null,
+  "invitation": null
 }
 ```
 
@@ -543,6 +545,8 @@ Gợi ý render: tách theo `\n\n` thành đoạn; trong mỗi đoạn, nhóm c�
 | `presiding` | Chỉ vai `chu_toa`, bước 2–11: checklist mục thủ tục của bước, bộ đếm, người được hỏi, giới hạn độ dài (Mục 5.4). Mọi vai khác và bước 1: `null` |
 | `decision` | Chỉ vai `chu_toa`, bước 10–11: bản nháp hoặc quyết định đã chốt **của chính người dùng**, kết quả kiểm, ý kiến Hội thẩm, bản xem trước lời tuyên, lựa chọn của form (Mục 5.4). Mọi lúc khác: `null` |
 | `pending_question` | Chỉ vai `bi_cao`, khi một câu hỏi đặt cho bị cáo đang chờ trả lời (đoạn xen, Mục 5.3): người hỏi, câu hỏi, `seq` của câu hỏi trong `utterances`, lý lịch điền sẵn (câu hỏi lý lịch) và căn cứ từ chối trả lời. Mọi lúc khác và mọi vai khác: `null` |
+| `final_statement_done` | Chỉ vai `bi_cao` và `chu_toa` (`true`/`false`, mọi bước kể cả bước 1): bị cáo **đã nói** lời sau cùng (khoản 2 Điều 324: sau đó không được đặt câu hỏi). Mọi vai khác: `null` (Mục 5.3, 5.4) |
+| `invitation` | Chỉ vai `bi_cao`, khi lượt của người dùng ở bước 7, 8 hoặc 9 đang mở: câu mời của Chủ tọa (`seq`, người nói, văn bản), đúng là `utterance` có `seq` đó (Mục 5.3). Mọi lúc khác và mọi vai khác: `null` |
 
 Các dạng `allowed_actions`:
 
@@ -684,6 +688,29 @@ Người dùng là bị cáo (THIET-KE 11.2). AI đóng Hội đồng xét xử,
 | `prefill` | Chỉ câu hỏi lý lịch (bước 2, câu thứ nhất): câu trả lời dựng từ hồ sơ (tên đầy đủ, tuổi, nơi cư trú, nghề nghiệp, trình độ học vấn, tiền án, tiền sự). Điền sẵn vào ô trả lời, sửa được. Mọi câu khác: `null` |
 | `decline_note` | Có khi `decline` nằm trong `allowed_actions` (bước 4–5): giải thích quyền từ chối trả lời, hiện ở tooltip hoặc dòng nhỏ cạnh nút; `legal_basis` có thể hiện thành pill mở `ArticleModal` (Điều 61, 308 BLTTHS). `reviewed: false` = câu chữ chưa được nhóm luật duyệt; hiện nhãn trung tính, không cần nhãn chờ duyệt. Mọi lúc khác: `null` |
 
+**`invitation`** (bước 7–9, thêm 13/11/2026):
+
+```json
+"invitation": {
+  "seq": 41,
+  "speaker_id": "CHU_TOA",
+  "speaker_role": "Chủ tọa",
+  "speaker_name": "<tên>",
+  "text": "Bị cáo <tên> có bổ sung ý kiến bào chữa cho mình không?"
+}
+```
+
+| Bước | Khi nào có | Nguồn |
+|---|---|---|
+| 7 | Lượt "bổ sung ý kiến bào chữa" đang chờ (`["speak", "end_slot"]`) | Lời Chủ tọa của slot mời ngay trước lượt đó (câu cố định của server) |
+| 8 | Lượt tranh luận của bị cáo đang chờ, **trước khi** người dùng nói (`["speak", "end_slot"]`) | Như trên |
+| 9 | Câu mời nói lời sau cùng đang chờ trả lời | Trùng `seq`, người nói và `text` của `pending_question` |
+
+- Các khóa giống `pending_question` (không có `prefill`, `decline_note`); `text` đã thay tên đầy đủ như `utterances`. Ô soạn trích câu mời từ đây, **không dò** trong `utterances`; tải lại trang vẫn như cũ.
+- Mọi lúc khác (bước khác, AI đang chạy, người dùng đã nói hoặc bấm `end_slot`, phiên đã xong) và mọi vai khác: `null`.
+
+**`final_statement_done`**: `false` cho tới khi người dùng gửi lời nói sau cùng ở bước 9; từ lúc đó (state có `advance:10`) và mọi bước sau là `true`. Suy ra từ trạng thái của server (slot lời sau cùng chỉ đóng khi người dùng đã nói).
+
 **Thẻ "Vai của bạn"**: `role_brief` trong `GET /{id}` (3.3). Không có trong `state`.
 
 **Nghị án, biên bản.** Như vai KSV: AI nghị án và tuyên án; sau tuyên án có `status` "Đang lập biên bản..." và một lời gọi tóm tắt IV.2/IV.3. IV.2 gồm cả câu trả lời và câu từ chối trả lời của người dùng; IV.4 (lời nói sau cùng) là nguyên văn lời người dùng. Không có trường mới trong `GET /record`.
@@ -737,10 +764,10 @@ Không có `speak`, `end_slot`, `decline` cho vai này.
   "items": [
     { "key": "hoi_bi_cao", "label": "Hỏi bị cáo (ít nhất 1 câu)", "kind": "ask", "required": true, "done": true,
       "available": true, "template": "Đề nghị bị cáo trình bày ý kiến về bản cáo trạng và diễn biến sự việc.",
-      "basis": ["307", "309"], "ai_calls": 1, "note": null },
+      "basis": ["307", "309"], "ai_calls": 1, "note": null, "blocked_reason": null },
     { "key": "moi_hoi_tham_hoi", "label": "Mời Hội thẩm hỏi", "kind": "invite", "required": false, "done": false,
       "available": true, "template": "Mời các Hội thẩm nhân dân tham gia xét hỏi.", "basis": ["307"],
-      "ai_calls": 1, "note": null }
+      "ai_calls": 1, "note": null, "blocked_reason": null }
   ],
   "missing_required": [],
   "counters": { "questions_left": 9, "remarks_left": 5, "debate_rounds": 0 },
@@ -749,8 +776,27 @@ Không có `speak`, `end_slot`, `decline` cho vai này.
   "limits": { "item": {"min": 1, "max": 3000}, "ask": {"min": 1, "max": 1500}, "remark": {"min": 1, "max": 1500},
               "reasoning": {"min": 200, "max": 2000} },
   "return_available": false, "returned": false, "in_return": false,
-  "templates_reviewed": false
-}
+  "templates_reviewed": false,
+  "catalogue": {
+    "khai_mac": { "step": 2, "label": "Khai mạc, đọc quyết định đưa vụ án ra xét xử" },
+    "hoi_bi_cao": { "step": 4, "label": "Hỏi bị cáo (ít nhất 1 câu)" },
+    "moi_loi_sau_cung": { "step": 9, "label": "Cho bị cáo nói lời sau cùng" },
+    "...": "mọi mục của bước 2–11"
+  },
+  "return_catalogue": {
+    "hoi_lai": { "step": 5, "label": "Hỏi lại (tối đa 3 câu)" },
+    "...": "4 mục của bước 5 thu gọn"
+  }
+},
+"final_statement_done": false
+```
+
+Một mục chưa làm được (ví dụ bước 2, trước khi khai mạc):
+
+```json
+{ "key": "hoi_thay_doi", "available": false, "done": false, "...": "...",
+  "blocked_reason": { "code": "prerequisite_missing", "prerequisite_item": "khai_mac",
+                      "text": "Cần làm trước: Khai mạc, đọc quyết định đưa vụ án ra xét xử." } }
 ```
 
 | Trường | Ý nghĩa |
@@ -763,6 +809,26 @@ Không có `speak`, `end_slot`, `decline` cho vai này.
 | `counters` | `questions_left` (bước 4: trần 10; trở lại xét hỏi: 3), `remarks_left` (5 mỗi bước, bước 2–9), `debate_rounds` (bước 8) |
 | `ask_addressees`, `remark_addressees` | Danh sách người được hỏi / nhận phát biểu (id như `participants`) |
 | `return_available`, `returned`, `in_return` | Nút Điều 323 bấm được; đã dùng; đang ở bước 5 thu gọn (thanh tiến trình nên hiện "Bước 5 · Trở lại xét hỏi") |
+| `items[].blocked_reason` | `null` khi và chỉ khi `available = true`. Ngược lại `{code, prerequisite_item, text}`: `code` là mã máy (bảng dưới), `prerequisite_item` là khóa mục phải làm trước (chỉ với `prerequisite_missing`, còn lại `null`), `text` là câu tiếng Việt ngắn để hiện cạnh mục. Chỉ giải thích `available`, không đổi luật nào |
+| `catalogue` | `{khóa: {step, label}}` cho **mọi** mục của bước 2–11, cùng nguồn với `items[].label` (danh mục trong `trial_presiding.py`). Dùng để gắn nhãn `procedure_item` của `utterances`, tên mục trong `prerequisite_item` và `missing_items`, không cần sao bảng ở frontend. Khóa không trùng giữa các bước |
+| `return_catalogue` | Như `catalogue` cho bước 5 thu gọn (Điều 323): `hoi_lai` và nhãn riêng ("tối đa 3 câu") của `moi_ksv_hoi`, `moi_ls_hoi`, `ket_thuc_xet_hoi`. Trong lúc `in_return`, `items[].label` lấy từ đây |
+
+`state.final_statement_done` (ngoài `presiding`, có cả ở bước 1): `true` khi lời sau cùng của bị cáo AI **đã được lưu**: ở bước 9 sau khi `moi_loi_sau_cung` chạy xong (lúc AI còn đang nói hoặc tạm nghỉ thì vẫn `false`), và mọi bước sau. Danh sách `remark_addressees` bỏ `BI_CAO` ngay từ lúc mời (như trước), không chờ cờ này.
+
+`blocked_reason.code` (thứ tự server xét, mã đầu tiên khớp được trả về):
+
+| `code` | Khi nào | `text` |
+|---|---|---|
+| `closed` | Phiên đã kết thúc hoặc đã hủy | "Phiên tòa đã kết thúc." |
+| `ai_running` | AI đang trình bày (hoặc tạm nghỉ, chờ "Tiếp tục") | "Đang chờ phần trình bày của AI." |
+| `already_done` | Mục đã làm (không áp dụng cho mục `ask`: hỏi tiếp được tới hết trần) | "Mục này đã làm." |
+| `prerequisite_missing` | Thiếu mục phải làm trước: mục **trước tiên** của bước (`khai_mac`, `vao_nghi_an`), mọi mục bắt buộc khác khi mục là **sau cùng** (`ket_thuc_xet_hoi`, `ket_thuc_tranh_luan`), mục `after` (`moi_doi_dap` cho `vong_2`, `tro_lai_xet_hoi`), một vòng đối đáp trọn vẹn (`tro_lai_xet_hoi`), `vao_nghi_an` (ý kiến Hội thẩm, chốt), `chot_quyet_dinh` (tuyên án) | "Cần làm trước: <nhãn mục>." |
+| `limit_reached` | Mục `ask` đã hết trần câu hỏi (10 ở bước 4, 3 khi trở lại xét hỏi) | "Đã hết số câu hỏi được phép ở phần này." |
+| `debate_closed` | `tro_lai_xet_hoi` sau khi đã kết thúc tranh luận | "Đã kết thúc tranh luận." |
+| `decision_locked` | Ý kiến Hội thẩm hoặc chốt sau khi quyết định đã chốt | "Quyết định đã chốt." |
+
+- Không có mã "sai bước": `items` chỉ chứa mục của bước hiện tại.
+- `available` (và `blocked_reason`) không xét bản nháp quyết định: khi bản nháp còn lỗi cứng, `y_kien_hoi_tham` có thể `available: true` nhưng **không** có trong `allowed_actions` (và `decide` cũng vậy, Mục 3.11). Nút vẫn theo `allowed_actions`.
 
 **Trở lại xét hỏi (Điều 323).** Chỉ ở bước 8, sau ít nhất một vòng đối đáp, trước `ket_thuc_tranh_luan`, một lần mỗi phiên. Gửi `return_to_questioning`: lời (hoặc lời mẫu) ghi ở bước 8; phiên về **bước 5 thu gọn** (`in_return: true`): `hoi_lai` (người dùng hỏi tối đa 3 câu), `moi_ksv_hoi`, `moi_ls_hoi` (không bắt buộc, mỗi bên tối đa 3 câu), `ket_thuc_xet_hoi` (bắt buộc); `advance:8` về lại bước 8, phải đối đáp lại ít nhất một vòng rồi kết thúc tranh luận. Lần hai: 409 `trial_return_used`.
 
@@ -959,7 +1025,7 @@ Chuỗi nằm trong `disclaimer` (3.3). Bắt buộc hiện ở **mọi** màn h
 
 1. **Không lưu lời thoại, hồ sơ vụ án hay biên bản** vào `localStorage`, `sessionStorage`, IndexedDB, cache của service worker, URL hay query string. Chỉ được lưu trong bộ nhớ của trang và lấy lại bằng `GET /{id}`. Bản nháp người dùng đang gõ cũng không lưu. Ghi chép và bản nháp biên bản của Thư ký lưu **ở server** (3.8, 3.9), không ở trình duyệt.
 13. **Không đưa ghi chép của Thư ký vào bất kỳ request nào khác** ngoài `PUT /notes` (không gửi kèm `/turn`, không ghép vào lời báo cáo).
-15. **Phiên `chu_toa`: không tự suy ra mục nào đã xong, mục nào bắt buộc hay khi nào được chuyển bước**; chỉ đọc `state.presiding` và `state.allowed_actions`. Không tự tính lỗi của form quyết định ở client như nguồn chuẩn (có thể kiểm sơ bộ để báo sớm, nhưng hiển thị và cho chốt theo `state.decision.check`).
+15. **Phiên `chu_toa`: không tự suy ra mục nào đã xong, mục nào bắt buộc hay khi nào được chuyển bước**; chỉ đọc `state.presiding` và `state.allowed_actions`. Lý do một mục chưa làm được lấy từ `items[].blocked_reason`, nhãn mục từ `presiding.catalogue`/`return_catalogue`; không sao danh mục vào frontend. Không tự tính lỗi của form quyết định ở client như nguồn chuẩn (có thể kiểm sơ bộ để báo sớm, nhưng hiển thị và cho chốt theo `state.decision.check`).
 16. **Không hiển thị ý kiến Hội thẩm trong diễn biến phiên tòa**; chỉ trong khu nghị án, kèm nguyên văn `assessor_order_note`. Không gọi kết quả kiểm tra form là "điểm", "đúng/sai": đó là phản hồi.
 14. **`role_brief` chỉ hiện trong phiên `bi_cao`**, ở tab "Vai của bạn", kèm nguyên văn `note`; không trình bày như dữ kiện đã chứng minh, không gửi lại server, không tự điền vào ô trả lời (chỉ `pending_question.prefill` được điền sẵn).
 2. **Không ghi lời thoại hay nội dung người dùng nhập** vào `console.log`, công cụ analytics, Sentry, log lỗi hay bất kỳ dịch vụ bên thứ ba nào. Khi báo lỗi chỉ ghi mã lỗi, `session_id` và số bước.
@@ -973,3 +1039,17 @@ Chuỗi nằm trong `disclaimer` (3.3). Bắt buộc hiện ở **mọi** màn h
 10. **Không hiển thị như thật**: không gọi kết quả là "bản án", "phán quyết" ngoài khung mô phỏng; không chấm điểm người dùng.
 11. **Không gọi Gemini hay Supabase trực tiếp** cho tính năng này, và không đọc ghi các bảng `mock_trial_*` từ client. RLS chặn sẵn, mọi thứ phải đi qua backend.
 12. **Không hiện tên đầy đủ trong panel hồ sơ vụ án**: không lấy tên panel từ `participants`, dùng `case_file.display_names` (Mục 7).
+
+---
+
+## 10. Thay đổi
+
+**13/11/2026 — chỉ thêm trường** (nhánh `cleanup-api-backend`). Không xóa, không đổi tên, không đổi nghĩa trường nào; frontend cũ bỏ qua các khóa mới và chạy như trước. Không route mới, không migration, không đổi `allowed_actions` hay luật chuyển bước.
+
+| Trường mới | Vị trí | Kiểu | Mục |
+|---|---|---|---|
+| `blocked_reason` | `state.presiding.items[]` | `{code, prerequisite_item, text}` hoặc `null` | 5.4 |
+| `catalogue` | `state.presiding` | `{khóa: {step, label}}` | 5.4 |
+| `return_catalogue` | `state.presiding` | `{khóa: {step, label}}` | 5.4 |
+| `final_statement_done` | `state` | `bool` (`bi_cao`, `chu_toa`), `null` (vai khác) | 5, 5.3, 5.4 |
+| `invitation` | `state` | `{seq, speaker_id, speaker_role, speaker_name, text}` hoặc `null` (chỉ `bi_cao`) | 5, 5.3 |

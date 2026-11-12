@@ -107,6 +107,16 @@ class TrialPendingQuestion(BaseModel):
     decline_note: TrialDeclineNote | None = None
 
 
+class TrialInvitation(BaseModel):
+    """Bị cáo only: Chủ tọa's invitation to the student's optional turn (steps 7-8) or to the last words
+    (step 9), so the composer quotes it without searching the transcript. `seq` is that utterance."""
+    seq: int
+    speaker_id: str
+    speaker_role: str
+    speaker_name: str
+    text: str
+
+
 class TrialRoleBrief(BaseModel):
     """Bị cáo only ("Vai của bạn", decision 9): the defendant's own character card, as a role-play
     hint. Never sent for any other role (the key is absent from GET /{id})."""
@@ -140,6 +150,11 @@ class TrialStateOut(BaseModel):
     # Chủ tọa only (steps 10-11): the student's own decision draft or locked decision with its check,
     # the Hội thẩm comments, the judgment preview and the form's choices. Null otherwise.
     decision: dict | None = None
+    # Bị cáo and Chủ tọa only: the defendant's last words are stored (Điều 324 khoản 2 BLTTHS: no
+    # question after them). Null for every other role.
+    final_statement_done: bool | None = None
+    # Bị cáo only, while Chủ tọa's invitation (steps 7-9) waits for the student; null otherwise.
+    invitation: TrialInvitation | None = None
 
 
 class TrialUtteranceOut(BaseModel):
