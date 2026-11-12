@@ -669,6 +669,15 @@ export function chairInvitation(utterances: readonly TrialUtterance[], step: num
   return null;
 }
 
+// The invitation quoted above the box: state.invitation as the server sends it (null included);
+// the transcript search above only for an older backend without the field.
+export function defendantInvitation(
+  state: Pick<TrialState, "invitation" | "current_step">,
+  utterances: readonly TrialUtterance[]
+): Pick<TrialUtterance, "speaker_role" | "speaker_name" | "text"> | null {
+  return state.invitation !== undefined ? state.invitation : chairInvitation(utterances, state.current_step);
+}
+
 // "điểm h khoản 2 Điều 61 Bộ luật Tố tụng hình sự" -> the article and corpus law_version for an
 // ArticlePill; null when the citation names no article of a known code.
 export function legalBasisArticle(citation: string): { dieu: string; lawVersion: string } | null {
@@ -687,6 +696,11 @@ export function legalBasisArticle(citation: string): { dieu: string; lawVersion:
 
 export const DECLINE_CONFIRM_MESSAGE =
   "Từ chối trả lời câu hỏi này? Biên bản sẽ ghi “Bị cáo không trả lời câu hỏi này.” và Hội đồng xét xử có thể công bố lời khai của bạn ở giai đoạn điều tra.";
+
+// The confirm before "decline": with unsent text in the box, it also says that text goes away.
+export function declineConfirmMessage(draft: string): string {
+  return draft.trim().length > 0 ? `${DECLINE_CONFIRM_MESSAGE}\n\nPhần đang gõ sẽ bị xóa.` : DECLINE_CONFIRM_MESSAGE;
+}
 
 // --- Presiding judge (contract 5.4) --------------------------------------------------------------------
 
@@ -856,48 +870,41 @@ export function validateChairText(text: string, limits: TrialTextLimits & { opti
   return validateTrialText(text, limits);
 }
 
-// Labels of every checklist item (backend trial_presiding.STEP_ITEMS), for lines of earlier steps
-// in the transcript; the current step's labels come from state.presiding and win.
-const CHAIR_ITEM_LABELS: Record<string, string> = {
-  khai_mac: "Khai mạc, đọc quyết định đưa vụ án ra xét xử",
-  kiem_tra_can_cuoc: "Kiểm tra căn cước bị cáo",
-  kiem_tra_co_mat: "Kiểm tra sự có mặt, giới thiệu thành phần",
-  giai_thich_quyen: "Phổ biến quyền và nghĩa vụ",
-  hoi_thay_doi: "Hỏi đề nghị thay đổi người tiến hành tố tụng",
-  cam_doan_nlc: "Người làm chứng cam đoan, cách ly người làm chứng",
-  hoi_yeu_cau: "Hỏi yêu cầu triệu tập thêm, xem xét chứng cứ, hoãn phiên tòa",
-  moi_cong_bo_cao_trang: "Mời Kiểm sát viên công bố cáo trạng",
-  hoi_bi_cao: "Hỏi bị cáo",
-  cong_bo_loi_khai_bi_hai: "Công bố lời khai của bị hại vắng mặt",
-  hoi_nguoi_khac: "Hỏi người tham gia tố tụng khác",
-  moi_hoi_tham_hoi: "Mời Hội thẩm hỏi",
-  moi_ksv_hoi: "Mời Kiểm sát viên xét hỏi",
-  moi_ls_hoi: "Mời luật sư xét hỏi",
-  ket_thuc_xet_hoi: "Kết thúc xét hỏi",
-  hoi_lai: "Hỏi lại",
-  moi_luan_toi: "Mời Kiểm sát viên trình bày luận tội",
-  moi_bao_chua: "Mời luật sư bào chữa",
-  moi_bi_hai_trinh_bay: "Mời bị hại trình bày",
-  hoi_bi_cao_bo_sung: "Hỏi bị cáo có bổ sung ý kiến bào chữa",
-  moi_doi_dap: "Mời đối đáp (vòng 1)",
-  vong_2: "Mời đối đáp thêm (vòng 2)",
-  tro_lai_xet_hoi: "Trở lại việc xét hỏi",
-  ket_thuc_tranh_luan: "Kết thúc tranh luận",
-  moi_loi_sau_cung: "Cho bị cáo nói lời sau cùng",
-  vao_nghi_an: "Vào phòng nghị án",
-  tuyen_an: "Tuyên án",
-  remark: "Phát biểu khác"
-};
+// "Phát biểu khác" is an action, not a checklist item, so it is in no server catalogue.
+const CHAIR_REMARK_LABEL = "Phát biểu khác";
 
+// Label of a procedure_item / missing_items key: the current step's row, then the server's
+// catalogues (contract 5.4; the return's own labels first while it runs). An older backend without
+// the catalogues labels only the current step's rows; any other key gets null (shown unlabelled).
 export function chairItemLabel(key: string | null | undefined, presiding?: TrialPresiding | null): string | null {
   if (!key) {
     return null;
   }
-  return presiding?.items.find((item) => item.key === key)?.label ?? CHAIR_ITEM_LABELS[key] ?? null;
+  if (key === "remark") {
+    return CHAIR_REMARK_LABEL;
+  }
+  const current = presiding?.items.find((item) => item.key === key)?.label;
+  if (current !== undefined) {
+    return current;
+  }
+  const returnLabel = presiding?.return_catalogue?.[key]?.label;
+  if (presiding?.in_return && returnLabel !== undefined) {
+    return returnLabel;
+  }
+  return presiding?.catalogue?.[key]?.label ?? returnLabel ?? null;
+}
+
+// Why a checklist row cannot be done now: the server's sentence (blocked_reason.text), or the
+// generic line when an older backend sends none.
+export function chairBlockedText(item: Pick<TrialPresidingItem, "blocked_reason">): string {
+  const text = item.blocked_reason?.text?.trim();
+  return text ? text : "Chưa làm được lúc này";
 }
 
 // One line on what the student does at this step. Explanatory only.
-export function chairStepHint(step: number, presiding: TrialPresiding | null | undefined): string {
+// `finalStatementDone` is state.final_statement_done; when an older backend sends none, the step-9
+// item being done stands in for it.
+export function chairStepHint(step: number, presiding: TrialPresiding | null | undefined, finalStatementDone?: boolean | null): string {
   if (presiding?.in_return) {
     return "Trở lại xét hỏi (Điều 323): hỏi thêm nếu cần, có thể mời Kiểm sát viên, luật sư hỏi, rồi kết thúc xét hỏi để về lại bước 8.";
   }
@@ -913,7 +920,7 @@ export function chairStepHint(step: number, presiding: TrialPresiding | null | u
     case 8:
       return "Mời đối đáp; kết thúc tranh luận sau cùng.";
     case 9:
-      return presiding?.items.some((item) => item.key === "moi_loi_sau_cung" && item.done)
+      return (typeof finalStatementDone === "boolean" ? finalStatementDone : presiding?.items.some((item) => item.key === "moi_loi_sau_cung" && item.done))
         ? "Bị cáo đã nói lời sau cùng: không ai được hỏi thêm bị cáo (khoản 2 Điều 324 BLTTHS)."
         : "Cho bị cáo nói lời sau cùng.";
     case 10:

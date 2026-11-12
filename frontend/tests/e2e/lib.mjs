@@ -89,6 +89,17 @@ export const baseState = (overrides = {}) => ({
   allowed_actions: ["speak"], version: 10, text_limits: null, procedure_note: null, clerk_prompt: null, clerk_report: null, pending_question: null, ...overrides
 });
 
+// Chat: conversations { id: { title, updated_at, turns: [{ question, answer, created_at, citations }] } }.
+// `nextId` names the conversation the next question without a conversation_id starts.
+export function baseChat() {
+  return { conversations: {}, queries: [], nextId: "e2e-conv-1" };
+}
+export const CHAT_ANSWER = "Câu trả lời mẫu của trợ lý (dữ liệu giả định, chỉ để kiểm bố cục).";
+export const CHAT_CITATIONS = [
+  { dieu_number: "119", dieu_title: "Tạm giam", law_version: "BLTTHS 2015" },
+  { dieu_number: "88", dieu_title: "Thu thập chứng cứ", law_version: "BLTTHS 2015" }
+];
+
 // What the server keeps for a clerk session (user_work): notes and the IV.2/IV.3 draft.
 export const baseClerk = () => ({ notes: "", notesUpdatedAt: null, iv2: "", iv3: "", draftUpdatedAt: null, finalized: false, finalizedAt: null });
 
@@ -119,12 +130,14 @@ export const world = {
   clerkBodies: [],
   // PUT /decision (presiding judge): (route, body) => Promise; null answers 404.
   decisionPut: null,
+  // Chat (contract of /api/chat/*): stored conversations by id, and the POST /api/chat/query bodies.
+  chat: baseChat(),
   requests: []
 };
 
 export function resetWorld() {
   Object.assign(world, { flag: "on", allowedEmails: null, head: null, delay: 0, config: config(), role: "ksv", state: baseState(), utterances: makeUtterances(), turn: null, create: null,
-    clerk: baseClerk(), notesPut: null, draftPut: null, finalize: null, clerkBodies: [], decisionPut: null, requests: [] });
+    clerk: baseClerk(), notesPut: null, draftPut: null, finalize: null, clerkBodies: [], decisionPut: null, chat: baseChat(), requests: [] });
 }
 
 // Contract 3.3: role_brief only in a defendant session; for every other role the key is absent.
@@ -138,7 +151,7 @@ export const detail = () => ({
 const cors = {
   "access-control-allow-origin": BASE,
   "access-control-allow-headers": "authorization, content-type",
-  "access-control-allow-methods": "GET, POST, PUT, HEAD, DELETE, OPTIONS"
+  "access-control-allow-methods": "GET, POST, PUT, PATCH, HEAD, DELETE, OPTIONS"
 };
 const json = (status, body) => ({ status, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify(body) });
 export const fulfillJson = (route, status, body) => route.fulfill(json(status, body));
@@ -164,10 +177,20 @@ async function handleApi(route) {
     return route.fulfill(json(200, { dieu_number: dieu, dieu_title: "Điều luật giả định", law_version: "BLTTHS 2015", source_document: "e2e",
       full_text: Array.from({ length: 30 }, (_, i) => `${i + 1}. Đoạn điều luật giả định số ${i + 1}, chỉ để kiểm bố cục hộp thoại.`).join("\n") }));
   }
+  if (path.startsWith("/api/chat/")) {
+    return handleChat(route, method, path);
+  }
   if (!path.startsWith("/api/trials")) {
-    // Other features run on their built-in mock data; anything that still calls out gets a benign answer.
-    const emptyLists = { "/api/chat/conversations": { conversations: [] }, "/api/notes": { notes: [] } };
-    return route.fulfill(json(200, emptyLists[path] ?? {}));
+    // The build runs without mock data (build.sh): the other pages get empty but well-formed answers.
+    const benign = {
+      "/api/notes": { notes: [] },
+      "/api/dashboard/keywords-yesterday": { keywords: [] },
+      "/api/dashboard/weak-topics": { weak_topics: [] },
+      "/api/dashboard/stats": { total_quiz_attempts: 0, average_score: 0, dieu_studied_count: 0 },
+      "/api/quiz/sets": { quiz_sets: [] },
+      "/api/quiz/stats": { average_score_percentage: 0, correct_total: 0, questions_total: 0, quiz_sets_attempted: 0, total_quiz_sets: 0 }
+    };
+    return route.fulfill(json(200, benign[path] ?? {}));
   }
   if (world.delay > 0) {
     await new Promise((resolve) => setTimeout(resolve, world.delay));
@@ -218,6 +241,53 @@ async function handleApi(route) {
     }
   }
   return route.fulfill(json(404, { error: { code: "http_error", message: "Trial not found" } }));
+}
+
+// --- Chat routes (backend app/api/chat.py): suggestions, the SSE query, the conversation list and
+// one conversation, rename and delete. A question is stored as a turn of its conversation, so
+// /chat/<id> reads back what was answered. ---
+async function handleChat(route, method, path) {
+  const chat = world.chat;
+  if (path === "/api/chat/suggestions") {
+    return route.fulfill(json(200, { suggestions: [{ id: "sug-1", text: "Điều kiện tạm giam là gì?" }, { id: "sug-2", text: "Thời hạn tạm giữ là bao lâu?" }] }));
+  }
+  if (path === "/api/chat/query" && method === "POST") {
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    chat.queries.push(body);
+    const id = body.conversation_id ?? chat.nextId;
+    const conversation = chat.conversations[id] ?? (chat.conversations[id] = { title: body.question.slice(0, 60), updated_at: NOW(), turns: [] });
+    conversation.turns.push({ question: body.question, answer: CHAT_ANSWER, created_at: NOW() });
+    conversation.updated_at = NOW();
+    const half = Math.ceil(CHAT_ANSWER.length / 2);
+    return fulfillSse(route,
+      sseEvent("status", { message: "Đang tra cứu luật..." })
+      + sseEvent("citations", { citations: CHAT_CITATIONS, related_articles: [], conversation_id: id, rewritten_question: body.question })
+      + sseEvent("answer_delta", { delta: CHAT_ANSWER.slice(0, half) })
+      + sseEvent("answer_delta", { delta: CHAT_ANSWER.slice(half) })
+      + sseEvent("suggested_followups", { suggested_followups: [] })
+      + sseEvent("done", {}));
+  }
+  if (path === "/api/chat/conversations" && method === "GET") {
+    const conversations = Object.entries(chat.conversations).map(([conversation_id, c]) => ({ conversation_id, title: c.title, updated_at: c.updated_at }));
+    return route.fulfill(json(200, { conversations }));
+  }
+  const match = /^\/api\/chat\/conversations\/([^/]+)$/.exec(path);
+  const conversation = match ? chat.conversations[decodeURIComponent(match[1])] : undefined;
+  if (match && conversation === undefined) {
+    return route.fulfill(json(404, { detail: "Conversation not found" }));
+  }
+  if (match && method === "GET") {
+    return route.fulfill(json(200, { conversation_id: match[1], turns: conversation.turns.map(({ question, answer, created_at }) => ({ question, answer, created_at })) }));
+  }
+  if (match && method === "DELETE") {
+    delete chat.conversations[match[1]];
+    return route.fulfill({ status: 204, headers: cors });
+  }
+  if (match && method === "PATCH") {
+    conversation.title = JSON.parse(route.request().postData() ?? "{}").title ?? conversation.title;
+    return route.fulfill({ status: 204, headers: cors });
+  }
+  return route.fulfill(notFound());
 }
 
 // --- Clerk routes (contract 3.8-3.10), answered like the backend: same codes, same shapes. ---

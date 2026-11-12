@@ -69,9 +69,10 @@ const CODE_ANSWERS = { kiem_tra_can_cuoc: ["BI_CAO"], hoi_thay_doi: ["KSV", "LUA
 
 const template = (item) => (item.template !== undefined ? item.template : item.kind === "decide" || item.kind === "pronounce" ? null : `${CHAIR_MARK}: ${item.label.toLowerCase()}.`);
 
-// The server-side session. `seq` continues after the fixture transcript.
+// The server-side session. `seq` continues after the fixture transcript. `legacy: true` = a backend
+// from before blocked_reason, catalogue/return_catalogue and final_statement_done (contract 10).
 export function newChair(o = {}) {
-  return { step: 1, version: 20, done: [], questions: 0, remarks: 0, rounds: 0, returned: false, inReturn: false, seq: 200,
+  return { legacy: false, step: 1, version: 20, done: [], questions: 0, remarks: 0, rounds: 0, returned: false, inReturn: false, seq: 200,
     draft: null, draftAt: null, assessor: null, decided: false, preview: null, completed: false, slowMs: 0, ...o };
 }
 
@@ -126,23 +127,69 @@ function allowed(c) {
   return out;
 }
 
+// blocked_reason (contract 5.4): the checks of available() in the server's order, so it is null
+// exactly when the item is available. "ai_running" never shows here: the fake answers each turn whole.
+const BLOCKED_TEXTS = {
+  closed: "Phiên tòa đã kết thúc.", already_done: "Mục này đã làm.", prerequisite_missing: "Cần làm trước: {label}.",
+  limit_reached: "Đã hết số câu hỏi được phép ở phần này.", debate_closed: "Đã kết thúc tranh luận.", decision_locked: "Quyết định đã chốt."
+};
+const blocked = (code, prerequisite = null) => ({ code, prerequisite_item: prerequisite?.key ?? null, text: BLOCKED_TEXTS[code].replace("{label}", prerequisite?.label ?? "") });
+const catalogueItem = (c, key) => [...items(c), ...Object.values(STEP_ITEMS).flat()].find((i) => i.key === key);
+function blockedReason(c, item) {
+  const done = c.done;
+  if (c.completed) return blocked("closed");
+  if (done.includes(item.key) && item.kind !== "ask") return blocked("already_done");
+  const list = items(c);
+  const first = list.find((i) => i.first && !done.includes(i.key) && i.key !== item.key);
+  if (first) return blocked("prerequisite_missing", first);
+  const pending = item.last ? list.find((i) => i.required && !done.includes(i.key) && i.key !== item.key) : undefined;
+  if (pending) return blocked("prerequisite_missing", pending);
+  const after = item.after.find((key) => !done.includes(key));
+  if (after) return blocked("prerequisite_missing", catalogueItem(c, after));
+  if (item.kind === "ask") return askTo(c, item).length > 0 ? null : blocked("limit_reached");
+  if (item.kind === "return") {
+    if (done.includes("ket_thuc_tranh_luan")) return blocked("debate_closed");
+    return c.rounds >= 1 ? null : blocked("prerequisite_missing", catalogueItem(c, "moi_doi_dap"));
+  }
+  if (item.kind === "decide" || item.key === "y_kien_hoi_tham") {
+    if (!done.includes("vao_nghi_an")) return blocked("prerequisite_missing", catalogueItem(c, "vao_nghi_an"));
+    return c.decided ? blocked("decision_locked") : null;
+  }
+  if (item.kind === "pronounce") return c.decided ? null : blocked("prerequisite_missing", catalogueItem(c, "chot_quyet_dinh"));
+  return null;
+}
+// catalogue / return_catalogue (contract 5.4): every item's step and label, from the same tables.
+export const chairCatalogue = () => Object.fromEntries(Object.entries(STEP_ITEMS).flatMap(([step, list]) => list.map((i) => [i.key, { step: Number(step), label: i.label }])));
+export const chairReturnCatalogue = () => Object.fromEntries(RETURN_ITEMS.map((i) => [i.key, { step: 5, label: i.label }]));
+// final_statement_done (contract 5.4): the last words are stored; the fake answers each invite whole.
+const finalStatementDone = (c) => c.step > 9 || (c.step === 9 && c.done.includes("moi_loi_sau_cung"));
+
 function presidingView(c) {
   if (c.step === 1) return null;
+  const added = (i) => {
+    if (c.legacy) return {};
+    const reason = blockedReason(c, i);
+    // Self-check of the fake: the contract's "null exactly when available" (the fake's `available`
+    // does not look at a completed session, the server's does).
+    if (!c.completed && (reason === null) !== available(c, i)) throw new Error(`fake blocked_reason out of step for ${i.key}`);
+    return { blocked_reason: reason };
+  };
   return {
     step: c.step,
     items: items(c).map((i) => ({ key: i.key, label: i.label, kind: i.kind, required: i.required, done: c.done.includes(i.key), available: available(c, i),
-      template: template(i), basis: i.basis, ai_calls: i.ai, note: i.note })),
+      template: template(i), basis: i.basis, ai_calls: i.ai, note: i.note, ...added(i) })),
     missing_required: missing(c),
     counters: { questions_left: questioning(c) ? Math.max(0, cap(c) - c.questions) : 0, remarks_left: c.step <= 9 ? 5 - c.remarks : 0, debate_rounds: c.rounds },
     ask_addressees: askTo(c), remark_addressees: remarkTo(c),
     limits: { item: { min: 1, max: 3000 }, ask: { min: 1, max: 1500 }, remark: { min: 1, max: 1500 }, reasoning: { min: 200, max: 2000 } },
-    return_available: allowed(c).includes("return_to_questioning"), returned: c.returned, in_return: c.inReturn, templates_reviewed: false
+    return_available: allowed(c).includes("return_to_questioning"), returned: c.returned, in_return: c.inReturn, templates_reviewed: false,
+    ...(c.legacy ? {} : { catalogue: chairCatalogue(), return_catalogue: chairReturnCatalogue() })
   };
 }
 
 export function chairState(c, o = {}) {
   return baseState({ current_step: c.step, step_title: TITLES[c.step - 1], version: c.version, allowed_actions: allowed(c), text_limits: null,
-    presiding: presidingView(c), decision: decisionView(c), ...(c.completed ? { status: "completed", awaiting: "none" } : {}), ...o });
+    presiding: presidingView(c), decision: decisionView(c), ...(c.legacy ? {} : { final_statement_done: finalStatementDone(c) }), ...(c.completed ? { status: "completed", awaiting: "none" } : {}), ...o });
 }
 
 // --- Steps 10-11: the student's own decision ---------------------------------------------------------

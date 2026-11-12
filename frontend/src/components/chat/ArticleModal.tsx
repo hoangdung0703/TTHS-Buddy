@@ -6,15 +6,16 @@ import { createPortal } from "react-dom";
 
 import { FormattedAnswer } from "@/components/chat/FormattedAnswer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useModalLayer } from "@/hooks/useModalLayer";
 import { ApiError, getLegalArticle } from "@/lib/api";
 import type { Citation, LegalArticle } from "@/lib/types";
 
 interface ArticleModalProps {
   citation: Citation;
+  // The pill that was clicked (event.currentTarget), where focus returns on close.
+  opener: HTMLElement | null;
   onClose: () => void;
 }
-
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 // Citation-pill "read full article" panel (see requirements.md "Feature nhỏ - Xem toàn văn
 // Điều luật từ citation pill"). A modal instead of navigating away, per that requirement - the
@@ -22,12 +23,13 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
 // Rendered in a portal on document.body: the pills that open it sit inside cards, sticky docks
 // and drawers that create their own stacking context (e.g. "relative z-10"), and a fixed overlay
 // left inside one of those is painted under that context's later siblings.
-export function ArticleModal({ citation, onClose }: ArticleModalProps) {
+export function ArticleModal({ citation, opener, onClose }: ArticleModalProps) {
   const [article, setArticle] = useState<LegalArticle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef(opener);
   const titleId = useId();
 
   useEffect(() => {
@@ -63,49 +65,9 @@ export function ArticleModal({ citation, onClose }: ArticleModalProps) {
     };
   }, [citation.dieu_number, citation.law_version]);
 
-  // Focus moves into the dialog and back to the opener on close; the page behind does not scroll.
-  useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeRef.current?.focus();
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      if (opener?.isConnected) {
-        opener.focus();
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    // Capture phase on window, so Esc closes only this dialog and not a drawer it was opened from.
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab" || dialogRef.current === null) {
-        return;
-      }
-      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-      if (focusable.length === 0) {
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !dialogRef.current.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (active === last || !dialogRef.current.contains(active))) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose]);
+  // Scroll lock, focus trap, Esc (this dialog only, not a drawer it was opened from) and focus
+  // back to the pill that opened it.
+  useModalLayer({ open: true, containerRef: dialogRef, initialFocusRef: closeRef, returnFocusRef: openerRef, onClose });
 
   return createPortal(
     <div

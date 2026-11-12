@@ -301,6 +301,13 @@ export interface TrialState {
   // locked), its check, the assessors' comments and the judgment text written from it. Never an AI
   // decision: none exists in this role.
   decision?: TrialDecisionState | null;
+  // Defendant and presiding judge roles (contract 5.3, 5.4): the defendant's last words are stored
+  // (khoản 2 Điều 324 BLTTHS: no question after them); null for every other role. Absent on an
+  // older backend.
+  final_statement_done?: boolean | null;
+  // Defendant role only, steps 7-9 (contract 5.3): the presiding judge's invitation to the
+  // student's open turn; null at any other time. Absent on an older backend.
+  invitation?: TrialInvitation | null;
 }
 
 // --- Presiding judge: the decision form (contract 3.11, 5.4) -------------------------------------
@@ -419,7 +426,29 @@ export interface TrialPresidingItem {
   basis: string[];
   ai_calls: number;
   note: string | null;
+  // Why `available` is false, for display only; null when available. Absent on an older backend.
+  blocked_reason?: TrialBlockedReason | null;
 }
+
+export type TrialBlockedReasonCode =
+  | "closed"
+  | "ai_running"
+  | "already_done"
+  | "prerequisite_missing"
+  | "limit_reached"
+  | "debate_closed"
+  | "decision_locked";
+
+export interface TrialBlockedReason {
+  code: TrialBlockedReasonCode;
+  // The item to do first (prerequisite_missing only).
+  prerequisite_item: string | null;
+  // Short Vietnamese sentence to show next to the item.
+  text: string;
+}
+
+// item key -> its step and label (contract 5.4, catalogue / return_catalogue).
+export type TrialPresidingCatalogue = Record<string, { step: number; label: string }>;
 
 export interface TrialPresidingLimits {
   item: { min: number; max: number };
@@ -442,6 +471,10 @@ export interface TrialPresiding {
   in_return: boolean;
   // false = template wording still a draft; shown neutrally, no review badge (contract 5.4).
   templates_reviewed: boolean;
+  // Labels of every item of steps 2-11 and of the short step 5 of a return (Điều 323), for the
+  // transcript's procedure_item and for missing_items. Absent on an older backend.
+  catalogue?: TrialPresidingCatalogue;
+  return_catalogue?: TrialPresidingCatalogue;
 }
 
 export interface TrialDeclineNote {
@@ -463,6 +496,10 @@ export interface TrialPendingQuestion {
   // Present when "decline" is allowed (steps 4-5).
   decline_note: TrialDeclineNote | null;
 }
+
+// Defendant (contract 5.3): the presiding judge's line inviting the student's turn at steps 7-9;
+// the utterance with this `seq`. Same keys as TrialPendingQuestion without prefill/decline_note.
+export type TrialInvitation = Pick<TrialPendingQuestion, "seq" | "speaker_id" | "speaker_role" | "speaker_name" | "text">;
 
 // "Vai của bạn" (contract 3.3): the defendant's own character card, a role-play hint only. The key
 // is absent for every other role.

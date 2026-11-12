@@ -17,7 +17,8 @@ export function ArticlePill({
   label: string;
   className?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  // The clicked pill itself (event.currentTarget): focus returns there when the dialog closes.
+  const [opener, setOpener] = useState<HTMLElement | null>(null);
 
   return (
     <>
@@ -25,7 +26,7 @@ export function ArticlePill({
         type="button"
         onClick={(event) => {
           event.stopPropagation();
-          setOpen(true);
+          setOpener(event.currentTarget);
         }}
         className={cn(
           "inline-flex min-h-8 items-center rounded-full border border-border bg-background px-2.5 py-0.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/20",
@@ -35,8 +36,8 @@ export function ArticlePill({
       >
         {label}
       </button>
-      {open ? (
-        <ArticleModal citation={{ dieu_number: dieu, dieu_title: "", law_version: lawVersion }} onClose={() => setOpen(false)} />
+      {opener !== null ? (
+        <ArticleModal citation={{ dieu_number: dieu, dieu_title: "", law_version: lawVersion }} opener={opener} onClose={() => setOpener(null)} />
       ) : null}
     </>
   );

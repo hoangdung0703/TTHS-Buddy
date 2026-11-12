@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   askAddresseesForItem,
+  chairBlockedText,
   CHAIR_RETURN_CONFIRM_MESSAGE,
   chairItemActionable,
   chairItemInDeliberation,
@@ -158,7 +159,10 @@ const ChecklistRow = forwardRef<HTMLLIElement, ChecklistRowProps>(function Check
   const StatusIcon = item.done ? CheckCircle2 : item.required ? Circle : CircleDashed;
   // Assessors, "decide", "pronounce": done in the deliberation room, never from here.
   const inRoom = chairItemInDeliberation(item);
-  const status = item.done ? (isAsk ? "Đã hỏi" : "Đã làm") : inRoom ? "Trong phòng nghị án" : actionable ? "" : "Chưa làm được lúc này";
+  const status = item.done ? (isAsk ? "Đã hỏi" : "Đã làm") : inRoom ? "Trong phòng nghị án" : actionable ? "" : null;
+  // Why the row cannot be done now, in the server's words (contract 5.4, blocked_reason); the
+  // buttons still follow allowed_actions only.
+  const blocked = status === null ? chairBlockedText(item) : null;
 
   return (
     <li
@@ -182,6 +186,11 @@ const ChecklistRow = forwardRef<HTMLLIElement, ChecklistRowProps>(function Check
               {item.required ? "Bắt buộc" : "Tùy chọn"}
             </span>
             {status ? <span className="shrink-0 text-[0.7rem] text-muted-foreground">{status}</span> : null}
+            {blocked !== null ? (
+              <span data-testid="chair-blocked-reason" data-code={item.blocked_reason?.code} className="min-w-0 break-words text-[0.7rem] text-muted-foreground">
+                {blocked}
+              </span>
+            ) : null}
           </div>
           {item.template && !item.done && item.kind !== "return" && !inRoom ? <TemplatePreview text={item.template} /> : null}
           {item.kind === "return" ? (
@@ -267,10 +276,10 @@ interface PresidingComposerProps {
   onAddresseeChange: (id: string) => void;
   missing: string[] | null;
   onAction: (action: ComposerAction) => void;
-  // Phones: open the checklist drawer.
-  onOpenChecklist: () => void;
+  // Phones: open the checklist drawer. `opener` = the clicked button, where focus returns.
+  onOpenChecklist: (opener: HTMLElement) => void;
   // "Sang bước tiếp theo" while required items remain: point at them (no request is sent).
-  onShowMissing: () => void;
+  onShowMissing: (opener: HTMLElement) => void;
 }
 
 // The presiding judge's dock: one composer for the chosen action (an item in their own words, a
@@ -294,7 +303,7 @@ export const PresidingComposer = forwardRef<HTMLTextAreaElement, PresidingCompos
   }, [state.current_step, chosen]);
 
   const requiredLeft = presiding.missing_required.length;
-  const hint = chairStepHint(state.current_step, presiding);
+  const hint = chairStepHint(state.current_step, presiding, state.final_statement_done);
   const nextTitle = actions.advanceTo !== null ? steps.find((step) => step.number === actions.advanceTo)?.title : undefined;
   const advanceLabel = presiding.in_return ? "Về lại bước 8" : "Sang bước tiếp theo";
 
@@ -344,7 +353,7 @@ export const PresidingComposer = forwardRef<HTMLTextAreaElement, PresidingCompos
         <p id={hintId} data-testid="trial-step-hint" className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground [@media(max-height:640px)]:sr-only">
           {hint}
         </p>
-        <Button type="button" variant="outline" size="sm" className="h-9 rounded-full lg:hidden" onClick={onOpenChecklist} aria-haspopup="dialog" data-testid="chair-open-checklist">
+        <Button type="button" variant="outline" size="sm" className="h-9 rounded-full lg:hidden" onClick={(event) => onOpenChecklist(event.currentTarget)} aria-haspopup="dialog" data-testid="chair-open-checklist">
           <ListChecks className="h-4 w-4" />
           Điều hành
           <span className="text-xs text-muted-foreground">{requiredLeft > 0 ? `· còn ${requiredLeft} mục` : "· đủ mục"}</span>
@@ -456,7 +465,7 @@ export const PresidingComposer = forwardRef<HTMLTextAreaElement, PresidingCompos
           disabled={busy}
           data-testid="trial-advance"
           data-ready={actions.advanceTo !== null || undefined}
-          onClick={() => (actions.advanceTo !== null ? onAction({ action: "advance", target_step: actions.advanceTo }) : onShowMissing())}
+          onClick={(event) => (actions.advanceTo !== null ? onAction({ action: "advance", target_step: actions.advanceTo }) : onShowMissing(event.currentTarget))}
         >
           {advanceLabel}
           <ArrowRight className="h-4 w-4" />

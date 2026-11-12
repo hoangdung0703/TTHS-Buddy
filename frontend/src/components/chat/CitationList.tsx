@@ -10,11 +10,11 @@ interface CitationListProps {
   citations: Citation[];
 }
 
-function CitationPill({ citation, onOpen }: { citation: Citation; onOpen: (citation: Citation) => void }) {
+function CitationPill({ citation, onOpen }: { citation: Citation; onOpen: (citation: Citation, opener: HTMLElement) => void }) {
   return (
     <button
       type="button"
-      onClick={() => onOpen(citation)}
+      onClick={(event) => onOpen(citation, event.currentTarget)}
       className="flex min-h-11 items-center gap-1 rounded-full border border-primary/20 bg-accent px-3 py-1.5 text-left text-xs font-medium text-accent-foreground transition-colors hover:bg-primary/15"
     >
       <Hash className="h-3 w-3" />
@@ -24,7 +24,8 @@ function CitationPill({ citation, onOpen }: { citation: Citation; onOpen: (citat
 }
 
 export function CitationList({ citations }: CitationListProps) {
-  const [openCitation, setOpenCitation] = useState<Citation | null>(null);
+  // The open citation and the pill clicked for it (event.currentTarget), where focus returns.
+  const [openCitation, setOpenCitation] = useState<{ citation: Citation; opener: HTMLElement } | null>(null);
 
   if (citations.length === 0) {
     return null;
@@ -38,13 +39,13 @@ export function CitationList({ citations }: CitationListProps) {
           <CitationPill
             key={`${citation.dieu_number}-${citation.law_version}`}
             citation={citation}
-            onOpen={setOpenCitation}
+            onOpen={(picked, opener) => setOpenCitation({ citation: picked, opener })}
           />
         ))}
       </div>
 
       {openCitation !== null ? (
-        <ArticleModal citation={openCitation} onClose={() => setOpenCitation(null)} />
+        <ArticleModal citation={openCitation.citation} opener={openCitation.opener} onClose={() => setOpenCitation(null)} />
       ) : null}
     </div>
   );

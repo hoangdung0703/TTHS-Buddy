@@ -9,7 +9,7 @@ import {
   defendantQuestion, makeUtterances, procedureNote, recordText, utt, DELIBERATION_HEADING, DELIBERATION_INTRO, MINORITY_NOTE, RETURN_NOTE, SYSTEM_DRAFTED_NOTE
 } from "./fixtures.mjs";
 import {
-  BASE, baseState, check, chromium, failureCount, fulfillError, fulfillJson, fulfillSse, installStreamingTurn, newPage, noPageOverflow, signIn, signOut,
+  BASE, baseState, CHAT_ANSWER, CHAT_CITATIONS, check, chromium, failureCount, fulfillError, fulfillJson, fulfillSse, installStreamingTurn, newPage, noPageOverflow, signIn, signOut,
   openHearing, resetWorld, scrollInfo, sseEvent, world
 } from "./lib.mjs";
 import { ASSESSOR_MARK, CHAIR_MARK, DEBATE_NOTE, ORDER_NOTE, PRONOUNCE_MARK, chairDecisionPut, chairState, chairTurn, newChair } from "./chair.mjs";
@@ -26,6 +26,16 @@ const open = (options = {}) => newPage(browser, { consoleBucket: consoleMessages
 const trialRequests = (method) => world.requests.filter((r) => r.method === method && r.path === "/api/trials").length;
 const redirectsHome = (page) => page.waitForURL("**/dashboard", { timeout: 15000 }).then(() => true, () => false);
 const aiUtt = (seq, step = 5, text = `Lời mới AI số ${seq}.`) => utt(seq, step, "CHU_TOA", text);
+// Polls a condition on the Node side (requests seen, dialogs shown) until it holds; false after the
+// timeout. Never a fixed sleep.
+async function waitUntil(predicate, timeout = 5000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    if (await predicate()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return predicate();
+}
 
 // =============================== Feature flag (HEAD probe) ===============================
 resetWorld();
@@ -544,7 +554,12 @@ const waitStatus = (scope, status, timeout = 6000) =>
 // Confirm dialogs ("Chốt biên bản?") answer `dialogAnswer`; beforeunload is always accepted so a
 // navigation never hangs on unsaved text.
 let dialogAnswer = true;
-const answerDialogs = (page) => page.on("dialog", (dialog) => (dialog.type() === "confirm" && !dialogAnswer ? dialog.dismiss() : dialog.accept()));
+// The text of every dialog shown, in order (the confirm wording is part of some checks).
+const dialogMessages = [];
+const answerDialogs = (page) => page.on("dialog", (dialog) => {
+  dialogMessages.push(dialog.message());
+  return dialog.type() === "confirm" && !dialogAnswer ? dialog.dismiss() : dialog.accept();
+});
 
 // /trial/new: the card is selectable once thu_ky is in config.user_roles, and the case is created.
 resetWorld();
@@ -1117,6 +1132,64 @@ check("defendant step 9: after the last word no input or question remains",
   (await page.getByTestId("trial-input").count()) === 0 && (await pendingQuote(page).count()) === 0);
 await context.close();
 
+// "Từ chối trả lời" with unsent text: the confirm says it goes; once declined the box is empty.
+// Without text the confirm is the plain one (checked first).
+sentTurns.length = 0;
+dialogMessages.length = 0;
+resetWorld();
+world.role = "bi_cao";
+world.utterances = withLines(q4.utterance);
+({ context, page } = await open());
+answerDialogs(page);
+await openHearing(page, asking(4, q4));
+const UNSENT = `${DEF_MARK}: phần trả lời đang gõ dở.`;
+dialogAnswer = false;
+await page.getByTestId("trial-decline").click();
+check("defendant decline, empty box: the plain confirm, no 'phần đang gõ' line; cancel sends nothing",
+  (await waitUntil(() => dialogMessages.length === 1)) && dialogMessages[0].startsWith("Từ chối trả lời câu hỏi này?") && !/phần đang gõ/i.test(dialogMessages[0]) && sentTurns.length === 0);
+await page.getByTestId("trial-input").fill(UNSENT);
+await page.getByTestId("trial-decline").click();
+check("defendant decline, text in the box: the confirm says the typed part will be deleted; cancel keeps the text and sends nothing",
+  (await waitUntil(() => dialogMessages.length === 2)) && dialogMessages[1].startsWith("Từ chối trả lời câu hỏi này?") && /phần đang gõ sẽ bị xóa/i.test(dialogMessages[1])
+  && sentTurns.length === 0 && (await page.getByTestId("trial-input").inputValue()) === UNSENT);
+world.turn = answerTurn([userUtt(71, 4, "Bị cáo không trả lời câu hỏi này.", { kind: "procedural" }), q4b.utterance], asking(4, q4b, { version: 45 }));
+dialogAnswer = true;
+await page.getByTestId("trial-decline").click();
+check("defendant decline with text, confirmed: body is the plain decline, the next question waits with an empty box",
+  await page.waitForFunction((text) => document.querySelector('[data-testid="trial-pending-question"]')?.innerText.includes(text)
+    && document.querySelector('[data-testid="trial-input"]')?.value === "", q4b.pending.text, { timeout: 10000 }).then(() => true, () => false)
+  && JSON.stringify(sentTurns[0]) === JSON.stringify({ expected_step: 4, expected_version: 44, action: "decline" }));
+await context.close();
+
+// state.invitation (contract 5.3, 13/11/2026): quoted as the server sends it, never searched for in
+// the transcript; null means no quote even when the transcript has a Chủ tọa line.
+resetWorld();
+world.role = "bi_cao";
+const invitationOf = (u) => ({ seq: u.seq, speaker_id: u.speaker_id, speaker_role: u.speaker_role, speaker_name: u.speaker_name, text: u.text });
+const serverInvite7 = utt(80, 7, "CHU_TOA", "Bị cáo Trần Đức Hùng có bổ sung ý kiến bào chữa cho mình không? (câu mời của máy chủ)", { kind: "procedural" });
+// A later Chủ tọa line the transcript search would pick instead.
+const orderLine = utt(82, 7, "CHU_TOA", "Đề nghị những người tham dự giữ trật tự phiên tòa (mẫu).", { kind: "procedural" });
+world.utterances = withLines(utt(79, 7, "LUAT_SU", "Bài bào chữa mẫu."), serverInvite7, orderLine);
+({ context, page } = await open());
+answerDialogs(page);
+const step7Open = { allowed_actions: ["speak", "end_slot"], text_limits: { min: 1, max: 3000 }, final_statement_done: false };
+await openHearing(page, defState(7, { ...step7Open, invitation: invitationOf(serverInvite7) }));
+check("defendant step 7 (state.invitation): the server's invitation quoted as 'Chủ tọa mời', not the latest Chủ tọa line",
+  (await pendingQuote(page).innerText()).includes("Chủ tọa mời · Chủ tọa Nguyễn Văn An") && (await pendingQuote(page).innerText()).includes(serverInvite7.text)
+  && !(await pendingQuote(page).innerText()).includes(orderLine.text));
+await openHearing(page, defState(7, step7Open));
+check("defendant step 7 (older backend, no invitation field): the transcript's latest Chủ tọa line, as before",
+  (await pendingQuote(page).innerText()).includes(orderLine.text));
+await openHearing(page, defState(7, { ...step7Open, invitation: null }));
+check("defendant step 7 (invitation null): no quote although the transcript has Chủ tọa lines; the box is still there",
+  (await pendingQuote(page).count()) === 0 && (await page.getByTestId("trial-input").count()) === 1);
+// Step 9: the invitation equals pending_question; it stays "Câu hỏi đang chờ".
+world.utterances.push(q9.utterance);
+await openHearing(page, asking(9, q9, { text_limits: { min: 1, max: 3000 }, invitation: invitationOf(q9.utterance), final_statement_done: false }));
+check("defendant step 9 (invitation = pending_question): quoted once, as 'Câu hỏi đang chờ'",
+  (await pendingQuote(page).count()) === 1 && (await pendingQuote(page).innerText()).includes("Câu hỏi đang chờ") && (await pendingQuote(page).innerText()).includes(q9.pending.text));
+await context.close();
+
 // Record: the same layout as KSV (summary IV.2, verbatim IV.3/IV.4).
 resetWorld();
 world.role = "bi_cao";
@@ -1246,10 +1319,12 @@ check("chair step 2: side panel opens on 'Điều hành', 7 items, 6 required, h
   (await chairPanel.getByRole("tab", { name: "Điều hành" }).getAttribute("aria-selected")) === "true"
   && (await chairPanel.locator('[data-testid^="chair-item-"]').count()) === 7 && (await chairPanel.locator('[data-testid^="chair-item-"][data-required]').count()) === 6
   && (await chairRow(chairPanel, "hoi_yeu_cau").innerText()).includes("Tùy chọn") && (await chairRow(chairPanel, "khai_mac").innerText()).includes("Bắt buộc"));
-check("chair step 2: khai mạc first - only it has buttons; the others 'Chưa làm được lúc này'",
+check("chair step 2: khai mạc first - only it has buttons; the others give the server's reason (blocked_reason), not the generic line",
   (await chairRow(chairPanel, "khai_mac").getByTestId("chair-use-template").count()) === 1
   && (await chairRow(chairPanel, "kiem_tra_can_cuoc").getByTestId("chair-use-template").count()) === 0
-  && (await chairRow(chairPanel, "kiem_tra_can_cuoc").innerText()).includes("Chưa làm được lúc này"));
+  && (await chairRow(chairPanel, "kiem_tra_can_cuoc").getByTestId("chair-blocked-reason").innerText()) === "Cần làm trước: Khai mạc, đọc quyết định đưa vụ án ra xét xử."
+  && !(await chairRow(chairPanel, "kiem_tra_can_cuoc").innerText()).includes("Chưa làm được lúc này")
+  && (await chairRow(chairPanel, "khai_mac").getByTestId("chair-blocked-reason").count()) === 0);
 const khaiMacTemplate = chairRow(chairPanel, "khai_mac").getByTestId("chair-template");
 check("chair step 2: template previewed as 'Lời mẫu gợi ý' (long one clamped, 'Xem đủ'), basis pills, no review badge",
   (await khaiMacTemplate.innerText()).includes("Lời mẫu gợi ý") && (await khaiMacTemplate.getByRole("button", { name: "Xem đủ" }).count()) === 1
@@ -1989,6 +2064,60 @@ check("ksv record: no 'Biên bản nghị án', no 'Hệ thống dựng', judgme
   && !(await page.getByTestId("record-appendix").innerText()).includes(SYSTEM_DRAFTED_NOTE));
 await context.close();
 
+// Contract 5.4 additions (13/11/2026) against the same screens with and without them: blocked_reason,
+// labels from catalogue (no copy in the frontend), final_statement_done for the Điều 324 hint.
+const SERVER_KHAI_MAC = "Khai mạc phiên tòa (nhãn của máy chủ)";
+const chairLabelLine = (seq, step, key, text) => utt(seq, step, "CHU_TOA", text, { is_user: true, speaker_role: "Chủ tọa", procedure_item: key });
+const blockedText = (page, key) => chairRow(chairAside(page), key).getByTestId("chair-blocked-reason").innerText().catch(() => null);
+for (const legacy of [false, true]) {
+  const tag = legacy ? "older backend" : "new fields";
+  resetWorld();
+  chairBodies.length = 0;
+  ({ context, page } = await open());
+  answerDialogs(page);
+  // Step 2 before khai mạc.
+  await openChair(page, { step: 2, legacy });
+  check(`chair ${tag}: a blocked row says ${legacy ? "the generic 'Chưa làm được lúc này'" : "the server's blocked_reason text"}; the available row says nothing`,
+    (await blockedText(page, "hoi_thay_doi")) === (legacy ? "Chưa làm được lúc này" : "Cần làm trước: Khai mạc, đọc quyết định đưa vụ án ra xét xử.")
+    && (await chairRow(chairAside(page), "hoi_thay_doi").getByTestId("chair-blocked-reason").getAttribute("data-code")) === (legacy ? null : "prerequisite_missing")
+    && (await chairRow(chairAside(page), "khai_mac").getByTestId("chair-blocked-reason").count()) === 0);
+  // Step 8: an `after` item and the Điều 323 return before the first round.
+  await openChair(page, { step: 8, legacy });
+  check(`chair ${tag}: step 8 before round 1, vòng 2 and the return explain themselves`,
+    legacy
+      ? (await blockedText(page, "vong_2")) === "Chưa làm được lúc này" && (await blockedText(page, "tro_lai_xet_hoi")) === "Chưa làm được lúc này"
+      : (await blockedText(page, "vong_2")) === "Cần làm trước: Mời đối đáp (vòng 1)." && (await blockedText(page, "tro_lai_xet_hoi")) === "Cần làm trước: Mời đối đáp (vòng 1)."
+        && (await blockedText(page, "ket_thuc_tranh_luan")) === "Cần làm trước: Mời đối đáp (vòng 1).");
+  // Step 3: a step-2 line in the transcript is labelled from the catalogue (here a label only the
+  // server has); an older backend leaves it unlabelled rather than guessing.
+  {
+    const c = newChair({ step: 3, legacy, done: [] });
+    world.role = "chu_toa";
+    world.utterances = [thuKyLine(), chairLabelLine(2, 2, "khai_mac", "Tôi tuyên bố khai mạc phiên tòa (mẫu).")];
+    world.turn = chairTurn(world, c, chairBodies);
+    const st = chairState(c);
+    if (!legacy) st.presiding.catalogue.khai_mac.label = SERVER_KHAI_MAC;
+    await openHearing(page, st, "chu_toa");
+    const label = page.locator('[data-seq="2"]').getByTestId("trial-procedure-item");
+    check(`chair ${tag}: an earlier step's procedure_item ${legacy ? "is left unlabelled" : "is labelled from presiding.catalogue"}`,
+      legacy ? (await label.count()) === 0 : (await label.innerText()).includes(SERVER_KHAI_MAC));
+  }
+  // Step 9: the last words invited and stored, or still being said (flag false).
+  {
+    const c = newChair({ step: 9, legacy, done: ["moi_loi_sau_cung"] });
+    world.turn = chairTurn(world, c, chairBodies);
+    world.utterances = [thuKyLine()];
+    await openHearing(page, chairState(c), "chu_toa");
+    check(`chair ${tag}: step 9 after the last words, the hint cites khoản 2 Điều 324`, (await page.getByTestId("trial-step-hint").innerText()).includes("khoản 2 Điều 324"));
+    if (!legacy) {
+      await openHearing(page, chairState(c, { final_statement_done: false }), "chu_toa");
+      check("chair new fields: step 9 with final_statement_done false (last words not stored yet), no Điều 324 line although the item is done",
+        !(await page.getByTestId("trial-step-hint").innerText()).includes("Điều 324") && (await page.getByTestId("trial-step-hint").innerText()).includes("lời sau cùng"));
+    }
+  }
+  await context.close();
+}
+
 // Other roles: no presiding UI anywhere.
 for (const role of ["ksv", "bi_cao", "nguoi_xem"]) {
   resetWorld();
@@ -1997,6 +2126,173 @@ for (const role of ["ksv", "bi_cao", "nguoi_xem"]) {
   await openHearing(page, role === "nguoi_xem" ? baseState({ current_step: 5, allowed_actions: ["advance:6"], procedure_note: procedureNote(5) }) : baseState(), role);
   check(`${role}: no 'Điều hành' panel or presiding composer`, (await page.getByTestId("chair-checklist").count()) === 0 && (await page.getByTestId("chair-composer").count()) === 0
     && (await page.getByRole("tab", { name: "Điều hành" }).count()) === 0);
+  await context.close();
+}
+
+// =============================== Modal layers: expanded case file, phone drawers ===============================
+// Scroll lock, focus trap, Esc on the top layer only, focus back to the opener (also when the click
+// did not focus it, as in Safari), focus to <body> when the opener is gone.
+const SCROLLER_JS = `(() => { let c = document.querySelector('[data-testid="trial-composer-dock"]').parentElement;
+  while (c && !/(auto|scroll)/.test(getComputedStyle(c).overflowY)) c = c.parentElement; return c; })()`;
+const pageScrollTop = (page) => page.evaluate(`${SCROLLER_JS}.scrollTop`);
+const setPageScrollTop = (page, top) => page.evaluate(`(${SCROLLER_JS}).scrollTop = ${top}`);
+const focusInside = (page, name) => page.waitForFunction((label) => document.querySelector(`[role="dialog"][aria-label="${label}"]`)?.contains(document.activeElement) === true,
+  name, { timeout: 5000, polling: 50 }).then(() => true, () => false);
+const bodyLocked = (page, locked) => page.waitForFunction((want) => (getComputedStyle(document.body).overflow === "hidden") === want, locked, { timeout: 5000, polling: 50 })
+  .then(() => true, () => false);
+const isActive = (locator) => locator.evaluate((el) => el === document.activeElement).catch(() => false);
+const waitActive = (page, locator) => locator.elementHandle({ timeout: 5000 }).then((handle) => page.waitForFunction((el) => el === document.activeElement, handle, { timeout: 5000, polling: 50 }))
+  .then(() => true, () => false);
+// A wheel over the backdrop must not move the page. Proven against a second wheel over a small
+// scrolling box put inside the layer for the test: once that box has scrolled, the first wheel has
+// been handled too (no fixed wait).
+async function wheelOverBackdropIgnored(page, dialogName, [x, y]) {
+  const before = await pageScrollTop(page);
+  await page.mouse.move(x, y);
+  await page.mouse.wheel(0, -400);
+  const box = await page.evaluate((label) => {
+    const dialog = document.querySelector(`[role="dialog"][aria-label="${label}"]`);
+    const probe = document.createElement("div");
+    probe.setAttribute("data-e2e-wheel-probe", "");
+    probe.style.cssText = "position:fixed;right:8px;bottom:8px;width:80px;height:80px;overflow:auto;z-index:100;background:transparent";
+    probe.innerHTML = '<div style="height:400px"></div>';
+    dialog.appendChild(probe);
+    const r = probe.getBoundingClientRect();
+    return [r.left + r.width / 2, r.top + r.height / 2];
+  }, dialogName);
+  await page.mouse.move(box[0], box[1]);
+  await page.mouse.wheel(0, 200);
+  const probed = await page.waitForFunction(() => document.querySelector("[data-e2e-wheel-probe]").scrollTop > 0, null, { timeout: 5000, polling: 50 }).then(() => true, () => false);
+  await page.evaluate(() => document.querySelector("[data-e2e-wheel-probe]")?.remove());
+  const after = await pageScrollTop(page);
+  return { ok: probed && after === before, why: `page ${before} -> ${after}, probe scrolled: ${probed}` };
+}
+// After the layer closed, the same wheel does scroll the page (the check above can fail).
+async function wheelScrollsPage(page, [x, y]) {
+  const before = await pageScrollTop(page);
+  await page.mouse.move(x, y);
+  await page.mouse.wheel(0, -400);
+  return page.waitForFunction(([js, top]) => eval(js).scrollTop !== top, [SCROLLER_JS, before], { timeout: 5000, polling: 50 }).then(() => true, () => false);
+}
+async function tabStaysInside(page, name, presses = 12) {
+  for (let i = 0; i < presses; i++) await page.keyboard.press("Tab");
+  const forward = await page.evaluate((label) => document.querySelector(`[role="dialog"][aria-label="${label}"]`).contains(document.activeElement), name);
+  for (let i = 0; i < presses; i++) await page.keyboard.press("Shift+Tab");
+  const backward = await page.evaluate((label) => document.querySelector(`[role="dialog"][aria-label="${label}"]`).contains(document.activeElement), name);
+  return forward && backward;
+}
+
+// Desktop: "Hồ sơ vụ án (mở rộng)".
+{
+  const EXPANDED = "Hồ sơ vụ án (mở rộng)";
+  resetWorld();
+  ({ context, page } = await open({ viewport: { width: 1440, height: 900 } }));
+  await openHearing(page, baseState());
+  const expandButton = page.getByRole("button", { name: "Mở rộng hồ sơ vụ án" });
+  await expandButton.click();
+  const expanded = page.getByRole("dialog", { name: EXPANDED });
+  await expanded.waitFor({ timeout: 5000 });
+  // Scrolled after opening: clicking the opener scrolls it into view first.
+  await setPageScrollTop(page, 300);
+  check("expanded case file: rendered on <body>, focus inside, page scroll locked",
+    (await expanded.evaluate((el) => el.parentElement === document.body)) && (await focusInside(page, EXPANDED)) && (await bodyLocked(page, true)));
+  const wheel = await wheelOverBackdropIgnored(page, EXPANDED, [330, 450]);
+  check(`expanded case file: a wheel on the backdrop does not scroll the page (${wheel.why})`, wheel.ok);
+  check("expanded case file: Tab and Shift+Tab stay inside", await tabStaysInside(page, EXPANDED));
+  await page.keyboard.press("Escape");
+  check("expanded case file: Esc closes it, focus back on 'Mở rộng' without moving the page, scroll unlocked",
+    (await expanded.count()) === 0 && (await waitActive(page, expandButton)) && (await bodyLocked(page, false)) && (await pageScrollTop(page)) === 300);
+  check("expanded case file: once closed, the same wheel scrolls the page", await wheelScrollsPage(page, [330, 450]));
+  // Esc closes the top layer only: a law dialog opened from inside the expanded case file.
+  await expandButton.click();
+  await expanded.waitFor({ timeout: 5000 });
+  const innerPill = expanded.getByRole("button", { name: /Xem toàn văn/ }).first();
+  await innerPill.click();
+  await page.getByTestId("article-modal").getByText("Đoạn điều luật giả định số 30", { exact: false }).waitFor({ timeout: 10000 });
+  await page.keyboard.press("Escape");
+  check("expanded + law dialog: Esc closes the law dialog only; focus back on its pill inside the case file; still locked",
+    (await page.getByTestId("article-modal").count()) === 0 && (await expanded.count()) === 1 && (await waitActive(page, innerPill)) && (await bodyLocked(page, true)));
+  await page.keyboard.press("Escape");
+  check("expanded + law dialog: a second Esc closes the case file, focus on 'Mở rộng', unlocked",
+    (await expanded.count()) === 0 && (await waitActive(page, expandButton)) && (await bodyLocked(page, false)));
+  // A click that does not focus the button (Safari): focus still returns to it.
+  await page.evaluate(() => document.activeElement?.blur());
+  await expandButton.evaluate((el) => el.click());
+  await expanded.waitFor({ timeout: 5000 });
+  await page.keyboard.press("Escape");
+  check("expanded case file, opened by a click that did not focus the button (Safari): focus returns to 'Mở rộng'",
+    (await expanded.count()) === 0 && (await waitActive(page, expandButton)));
+  // Same for the law dialog: the pill, not document.activeElement.
+  const sidePill = page.locator('aside[aria-label="Hồ sơ vụ án"]').getByRole("button", { name: /Xem toàn văn/ }).first();
+  await page.evaluate(() => document.activeElement?.blur());
+  await sidePill.evaluate((el) => el.click());
+  await page.getByTestId("article-modal").waitFor({ timeout: 5000 });
+  await page.keyboard.press("Escape");
+  check("law dialog opened by a click that did not focus the pill (Safari): focus returns to the pill", (await page.getByTestId("article-modal").count()) === 0 && (await waitActive(page, sidePill)));
+  // The pill removed while the dialog is open: focus lands on <body>, no page error.
+  const errorsBefore = consoleMessages.filter((m) => /Uncaught|TypeError/.test(m)).length;
+  await sidePill.click();
+  await page.getByTestId("article-modal").waitFor({ timeout: 5000 });
+  await sidePill.evaluate((el) => { el.dataset.e2eGone = "1"; el.style.display = "none"; el.replaceWith(el.cloneNode(true)); });
+  await page.keyboard.press("Escape");
+  check("law dialog whose pill is gone: closes, focus on <body>, no page error",
+    (await page.getByTestId("article-modal").count()) === 0 && (await page.waitForFunction(() => document.activeElement === document.body, null, { timeout: 5000, polling: 50 }).then(() => true, () => false))
+    && consoleMessages.filter((m) => /Uncaught|TypeError/.test(m)).length === errorsBefore);
+  await context.close();
+}
+
+// Phone: the case-file drawer (every role), the clerk's notes, the presiding judge's checklist.
+for (const [label, role, state, openerName, chair] of [
+  ["Hồ sơ vụ án", "ksv", baseState(), "Hồ sơ vụ án", false],
+  ["Ghi chép", "thu_ky", baseState({ current_step: 3, allowed_actions: ["advance:4"], clerk_prompt: clerkPrompt(3) }), "Ghi chép", false],
+  ["Điều hành", "chu_toa", null, null, true]
+]) {
+  resetWorld();
+  chairBodies.length = 0;
+  ({ context, page } = await open({ viewport: { width: 390, height: 844 } }));
+  answerDialogs(page);
+  // A transcript long enough for the page to scroll.
+  if (chair) await openChair(page, { step: 4, version: 40 }, makeUtterances(24));
+  else await openHearing(page, state, role);
+  const opener = chair ? page.getByTestId("chair-open-checklist") : page.getByRole("button", { name: openerName, exact: true });
+  await opener.click();
+  const drawerLayer = page.getByRole("dialog", { name: label });
+  await drawerLayer.waitFor({ timeout: 5000 });
+  // Scrolled after opening: clicking the opener scrolls it into view first.
+  await setPageScrollTop(page, 300);
+  check(`drawer '${label}' 390x844: on <body>, focus on its close button, page scroll locked`,
+    (await drawerLayer.evaluate((el) => el.parentElement === document.body)) && (await waitActive(page, drawerLayer.getByRole("button", { name: `Đóng ${label.toLowerCase()}`, exact: true })))
+    && (await bodyLocked(page, true)));
+  const wheel = await wheelOverBackdropIgnored(page, label, [20, 420]);
+  check(`drawer '${label}': a wheel on the backdrop does not scroll the page (${wheel.why})`, wheel.ok);
+  check(`drawer '${label}': Tab and Shift+Tab stay inside`, await tabStaysInside(page, label));
+  await page.keyboard.press("Escape");
+  check(`drawer '${label}': Esc closes it, focus back on its button without moving the page, scroll unlocked`,
+    (await drawerLayer.count()) === 0 && (await waitActive(page, opener)) && (await bodyLocked(page, false)) && (await pageScrollTop(page)) === 300);
+  check(`drawer '${label}': once closed, the same wheel scrolls the page`, await wheelScrollsPage(page, [20, 420]));
+  await page.evaluate(() => document.activeElement?.blur());
+  await opener.evaluate((el) => el.click());
+  await drawerLayer.waitFor({ timeout: 5000 });
+  await page.getByRole("button", { name: `Đóng ${label.toLowerCase()}`, exact: true }).click();
+  check(`drawer '${label}', opened by a click that did not focus the button (Safari), closed with its X: focus returns to the button`,
+    (await drawerLayer.count()) === 0 && (await waitActive(page, opener)));
+  if (chair) {
+    // The step button points at the missing items by opening the drawer: Esc gives focus back to it.
+    await page.getByTestId("trial-advance").click();
+    await drawerLayer.waitFor({ timeout: 5000 });
+    await page.keyboard.press("Escape");
+    check("drawer 'Điều hành' opened by the step button: Esc returns focus to the step button", (await drawerLayer.count()) === 0 && (await waitActive(page, page.getByTestId("trial-advance"))));
+    // An action from the drawer: the composer (and its button) is replaced while the AI answers, so
+    // focus falls back to <body> instead of a stale element.
+    await opener.click();
+    await drawerLayer.waitFor({ timeout: 5000 });
+    const sent = chairBodies.length;
+    await drawerLayer.getByTestId("chair-item-moi_hoi_tham_hoi").getByTestId("chair-use-template").click();
+    check("drawer 'Điều hành': an action closes it; its opener was replaced, focus on <body>",
+      (await waitUntil(() => chairBodies.length === sent + 1)) && (await drawerLayer.count()) === 0
+      && (await page.waitForFunction(() => document.activeElement === document.body, null, { timeout: 5000, polling: 50 }).then(() => true, () => false))
+      && !(await isActive(opener)));
+  }
   await context.close();
 }
 
@@ -2114,6 +2410,83 @@ await shot(page, "law-dialog-chair-drawer");
 await page.keyboard.press("Escape");
 check("law dialog chair drawer: Esc closes the dialog, the drawer stays open", (await page.getByTestId("article-modal").count()) === 0 && (await lawDrawer.count()) === 1);
 await context.close();
+
+// =============================== Chat: the answer survives /chat -> /chat/<id> ===============================
+// The first answer of a new conversation moves the URL to /chat/<conversation_id>; the answer must
+// stay on screen (and come back from GET /api/chat/conversations/<id> after a reload). A citation chip
+// opens the law dialog above everything on the page.
+const CHAT_QUESTION = "Điều kiện tạm giam bị can là gì? (câu hỏi mẫu)";
+const answerShown = (page) => page.waitForFunction((text) => [...document.querySelectorAll("main *, body *")].some((el) => el.childElementCount === 0 && el.textContent?.includes(text.slice(0, 40))),
+  CHAT_ANSWER, { timeout: 10000, polling: 50 }).then(() => true, () => false);
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+  const tag = `${viewport.width}x${viewport.height}`;
+  resetWorld();
+  ({ context, page } = await open({ viewport }));
+  await page.goto(`${BASE}/chat`);
+  const chatBox = page.getByPlaceholder("Hỏi về Luật Tố tụng Hình sự...");
+  await chatBox.waitFor({ timeout: 20000 });
+  await chatBox.fill(CHAT_QUESTION);
+  const listReads = () => world.requests.filter((r) => r.method === "GET" && r.path === "/api/chat/conversations").length;
+  const listReadsBefore = listReads();
+  await chatBox.press("Enter");
+  const moved = await page.waitForURL("**/chat/e2e-conv-1", { timeout: 15000 }).then(() => true, () => false);
+  const detailGets = () => world.requests.filter((r) => r.method === "GET" && r.path === "/api/chat/conversations/e2e-conv-1").length;
+  // The sidebar re-reads the list on every pathname change: once it has, the /chat/<id> page has
+  // mounted and run its effects (a refetch that would clear the answer included).
+  const listRead = await waitUntil(() => listReads() > listReadsBefore);
+  const shownAfterMove = await answerShown(page);
+  const measured = {
+    url: new URL(page.url()).pathname, queries: world.chat.queries.length, firstBody: JSON.stringify(world.chat.queries[0] ?? null), detailGets: detailGets(),
+    questionShown: (await page.getByText(CHAT_QUESTION).count()) > 0, answerShown: shownAfterMove, listRead
+  };
+  if (!(measured.questionShown && measured.answerShown)) console.log(`  chat ${tag} measured: ${JSON.stringify({ ...measured, firstBody: measured.firstBody.length })}`);
+  check(`chat ${tag}: one POST /api/chat/query without conversation_id, URL moves to /chat/<id>`,
+    moved && measured.queries === 1 && JSON.stringify(world.chat.queries[0]) === JSON.stringify({ question: CHAT_QUESTION }));
+  check(`chat ${tag}: after the URL change the question and the answer are still shown (no refetch needed: ${measured.detailGets} GET)`,
+    measured.questionShown && measured.answerShown);
+  // The citation chips of the answer; one opens the law dialog, which must be the top layer.
+  const chip = page.getByRole("button", { name: `Điều ${CHAT_CITATIONS[0].dieu_number} ${CHAT_CITATIONS[0].law_version}` });
+  check(`chat ${tag}: both citation chips shown under the answer`, (await chip.count()) === 1
+    && (await page.getByRole("button", { name: `Điều ${CHAT_CITATIONS[1].dieu_number} ${CHAT_CITATIONS[1].law_version}` }).count()) === 1);
+  // Without the chips (the answer lost, see the check above) the dialog checks below fail rather
+  // than wait 30 s for a click.
+  const chipShown = (await chip.count()) === 1;
+  if (chipShown) {
+    await chip.click();
+    await page.getByTestId("article-modal").getByText("Đoạn điều luật giả định số 30", { exact: false }).waitFor({ timeout: 10000 });
+  }
+  const chatLeaks = !chipShown ? { inBody: false, tested: 0, leaks: ["no citation chip to open the dialog from"] } : await page.evaluate(() => {
+    const overlay = document.querySelector('[data-testid="article-modal-overlay"]');
+    const floating = [...document.querySelectorAll("body *")].filter((el) => {
+      if (overlay.contains(el)) return false;
+      const cs = getComputedStyle(el);
+      return /^Điều \d+ /.test(el.textContent ?? "") && el.tagName === "BUTTON" || cs.position === "fixed" || cs.position === "sticky" || cs.zIndex !== "auto";
+    });
+    const points = [];
+    for (const el of floating) {
+      const r = el.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      if (r.width > 0 && r.height > 0 && x >= 0 && y >= 0 && x < innerWidth && y < innerHeight) points.push([x, y, el.tagName]);
+    }
+    for (let i = 1; i < 6; i++) for (let j = 1; j < 6; j++) points.push([(innerWidth * i) / 6, (innerHeight * j) / 6, "grid"]);
+    const leaks = points.filter(([x, y]) => !overlay.contains(document.elementFromPoint(x, y))).map(([, , what]) => what);
+    return { inBody: overlay.parentElement === document.body, tested: points.length, leaks };
+  });
+  check(`chat ${tag}: the law dialog from a citation chip is on top (${chatLeaks.tested} points, leaks: ${chatLeaks.leaks.join(", ") || "none"})`,
+    chatLeaks.inBody && chatLeaks.leaks.length === 0);
+  await shot(page, `chat-law-dialog-${tag}`);
+  await page.keyboard.press("Escape");
+  check(`chat ${tag}: Esc closes the law dialog, focus back on the chip, the answer still there`,
+    (await page.getByTestId("article-modal").count()) === 0 && (await waitActive(page, chip)) && (await answerShown(page)));
+  // A reload of /chat/<id> reads the conversation back from the server.
+  const getsBefore = detailGets();
+  await page.reload();
+  check(`chat ${tag}: reloading /chat/<id> reads the conversation back (GET) and shows the answer`,
+    (await answerShown(page)) && detailGets() === getsBefore + 1 && (await page.getByText(CHAT_QUESTION).count()) > 0);
+  check(`chat ${tag}: no horizontal page scroll`, await noPageOverflow(page));
+  await context.close();
+}
 
 const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || m.includes(CLERK_MARK) || m.includes(DEF_MARK) || m.includes(CHAIR_MARK) || m.includes(ASSESSOR_MARK) || m.includes(PRONOUNCE_MARK) || m.includes(REASONING.slice(0, 40)) || m.includes(IDENTITY_PREFILL.slice(0, 30)) || m.includes(CLERK_PREFILL.slice(0, 40)) || /Uncaught|TypeError/.test(m));
 if (process.env.E2E_DEBUG) badConsole.forEach((m) => console.log(`  console: ${m.slice(0, 200)}`));

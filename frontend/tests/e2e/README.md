@@ -10,7 +10,7 @@ tests/e2e/build.sh          # build một bản sao ở thư mục tạm, phục
 node tests/e2e/suite.mjs    # in PASS/FAIL từng ca, mã thoát khác 0 nếu có ca hỏng
 ```
 
-- `build.sh` **không** đụng `frontend/.next` (có thể đang chạy `next dev`) và **không** chép file `.env*`. Bản build trỏ tới hai origin giả `http://api.e2e.test` và `http://supabase.e2e.test`; mọi request tới đó do `lib.mjs` trả lời.
+- `build.sh` **không** đụng `frontend/.next` (có thể đang chạy `next dev`) và **không** chép file `.env*`. Bản build trỏ tới hai origin giả `http://api.e2e.test` và `http://supabase.e2e.test` và tắt dữ liệu mẫu (`NEXT_PUBLIC_USE_MOCK_DATA=false`): mọi request tới đó, kể cả Chat, Tổng quan, Vở ghi, do `lib.mjs` trả lời.
 - Biến tùy chọn: `E2E_PORT` (mặc định 3011), `E2E_WORK_DIR` (thư mục build, mặc định `$TMPDIR/ttths-e2e`), `E2E_SHOTS=<thư mục>` để lưu ảnh màn hình, `E2E_DEBUG=1` để in thông báo console gây lỗi.
 - Dừng server: `kill $(cat ${E2E_WORK_DIR:-$TMPDIR/ttths-e2e}/server.pid)`.
 

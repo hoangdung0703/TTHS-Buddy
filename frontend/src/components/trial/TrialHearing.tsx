@@ -4,6 +4,7 @@ import { AlertCircle, ArrowDown, ArrowLeft, FileText, FolderOpen, Gavel, Maximiz
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { CaseFilePanel, type CaseFileTab } from "@/components/trial/CaseFilePanel";
 import { AssessorOpinions, DecisionForm, DecisionSummary, DeliberationDock, PronouncementPanel } from "@/components/trial/ChairDeliberation";
@@ -14,6 +15,7 @@ import { TrialComposer, type ComposerAction } from "@/components/trial/TrialComp
 import { Transcript } from "@/components/trial/Transcript";
 import { Button } from "@/components/ui/button";
 import { useClerkNotes } from "@/hooks/useClerkNotes";
+import { useModalLayer } from "@/hooks/useModalLayer";
 import { useSlowRequestNotice } from "@/hooks/useSlowRequestNotice";
 import { abandonTrial, deleteTrial, getTrial, putTrialDecision, sendTrialTurn, TrialApiError } from "@/lib/api";
 import { SLOW_REQUEST_NOTICE } from "@/lib/serverWakeup";
@@ -99,13 +101,17 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
   const [recordPending, setRecordPending] = useState(false);
   const atBottomRef = useRef(true);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
-  const expandButtonRef = useRef<HTMLButtonElement>(null);
+  const expandedRef = useRef<HTMLDivElement>(null);
   const expandedCloseRef = useRef<HTMLButtonElement>(null);
+  const expandedOpenerRef = useRef<HTMLElement | null>(null);
   const busyRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  // The control that opened the drawer (event.currentTarget); null when the app opened it itself.
+  const drawerOpenerRef = useRef<HTMLElement | null>(null);
   const slowRequest = useSlowRequestNotice();
   const { start: startSlow, stop: stopSlow } = slowRequest;
   const isClerk = detail !== null && isClerkRole(detail.user_role);
@@ -308,37 +314,17 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
     };
   }, [scrollToLatest]);
 
-  useEffect(() => {
-    if (drawer === null) {
-      return;
-    }
-    drawerCloseRef.current?.focus();
-    function onKey(event: KeyboardEvent): void {
-      if (event.key === "Escape") {
-        setDrawer(null);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [drawer]);
+  // The phone drawer and the expanded case file are modal layers: scroll lock, focus trap, Esc on
+  // the top layer only, focus back to the control that opened them.
+  const closeDrawer = useCallback(() => setDrawer(null), []);
+  const closeExpanded = useCallback(() => setExpandedOpen(false), []);
+  useModalLayer({ open: drawer !== null, containerRef: drawerRef, initialFocusRef: drawerCloseRef, returnFocusRef: drawerOpenerRef, onClose: closeDrawer });
+  useModalLayer({ open: expandedOpen, containerRef: expandedRef, initialFocusRef: expandedCloseRef, returnFocusRef: expandedOpenerRef, onClose: closeExpanded });
 
-  useEffect(() => {
-    if (!expandedOpen) {
-      return;
-    }
-    const opener = expandButtonRef.current;
-    expandedCloseRef.current?.focus();
-    function onKey(event: KeyboardEvent): void {
-      if (event.key === "Escape") {
-        setExpandedOpen(false);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      opener?.focus();
-    };
-  }, [expandedOpen]);
+  function openDrawer(kind: "case" | "notes" | "preside", opener: HTMLElement | null): void {
+    drawerOpenerRef.current = opener;
+    setDrawer(kind);
+  }
 
   async function runAction(action: ComposerAction, options: { timeoutMs?: number } = {}): Promise<void> {
     if (busyRef.current || state === null) {
@@ -349,8 +335,9 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
     abortRef.current = controller;
     const timeout = options.timeoutMs !== undefined ? setTimeout(() => cancelWait("timeout"), options.timeoutMs) : null;
     setRunningAction(action.action);
-    // Only an action that sent the box's text empties it (a one-click template keeps a draft).
-    const sentDraft = "text" in action && action.text !== undefined && action.text === draft;
+    // Only an action that sent the box's text empties it (a one-click template keeps a draft); a
+    // decline does too, as its confirm said: the answer typed for that question is moot.
+    const sentDraft = ("text" in action && action.text !== undefined && action.text === draft) || action.action === "decline";
     setBusy(true);
     setTurnError(null);
     setSoftNotice(null);
@@ -552,13 +539,13 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
 
   // Points at the required items still to do: the list under the composer, and the rows flash in
   // the checklist (side panel on desktop, drawer on phones). Sends nothing.
-  function showMissing(keys: string[]): void {
+  function showMissing(keys: string[], opener: HTMLElement | null = null): void {
     setChairMissing(keys);
     setChairFlash({ keys, nonce: Date.now() });
     if (window.matchMedia("(min-width: 1024px)").matches) {
       setSideTab("work");
     } else {
-      setDrawer("preside");
+      openDrawer("preside", opener);
     }
   }
 
@@ -693,13 +680,13 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {isClerk ? (
-                <Button variant="outline" size="sm" className="lg:hidden" onClick={() => setDrawer("notes")} aria-haspopup="dialog" data-testid="trial-notes-open">
+                <Button variant="outline" size="sm" className="lg:hidden" onClick={(event) => openDrawer("notes", event.currentTarget)} aria-haspopup="dialog" data-testid="trial-notes-open">
                   <NotebookPen className="h-4 w-4" />
                   <span className="hidden sm:inline">Ghi chép</span>
                   <span className="sr-only sm:hidden">Ghi chép</span>
                 </Button>
               ) : null}
-              <Button variant="outline" size="sm" className="lg:hidden" onClick={() => setDrawer("case")} aria-haspopup="dialog">
+              <Button variant="outline" size="sm" className="lg:hidden" onClick={(event) => openDrawer("case", event.currentTarget)} aria-haspopup="dialog">
                 <FolderOpen className="h-4 w-4" />
                 <span className="hidden sm:inline">Hồ sơ vụ án</span>
                 <span className="sr-only sm:hidden">Hồ sơ vụ án</span>
@@ -891,8 +878,8 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
               onAddresseeChange={setChairAddressee}
               missing={chairMissing}
               onAction={(action) => void runAction(action)}
-              onOpenChecklist={() => setDrawer("preside")}
-              onShowMissing={() => showMissing(presiding.missing_required)}
+              onOpenChecklist={(opener) => openDrawer("preside", opener)}
+              onShowMissing={(opener) => showMissing(presiding.missing_required, opener)}
             />
           ) : roomDock && decision !== null ? (
             <DeliberationDock
@@ -978,11 +965,13 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
             )}
             {workTab ? null : (
             <button
-              ref={expandButtonRef}
               type="button"
               aria-label="Mở rộng hồ sơ vụ án"
               aria-haspopup="dialog"
-              onClick={() => setExpandedOpen(true)}
+              onClick={(event) => {
+                expandedOpenerRef.current = event.currentTarget;
+                setExpandedOpen(true);
+              }}
               className="flex min-h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/15 hover:text-foreground"
             >
               <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -994,8 +983,10 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
         </div>
       </aside>
 
-      {expandedOpen ? (
-        <div className="fixed inset-0 z-50 hidden items-center justify-center px-6 py-8 lg:flex" role="dialog" aria-modal="true" aria-label="Hồ sơ vụ án (mở rộng)">
+      {/* Both layers are portalled to <body>: inside the page's scroll column, a wheel or swipe on
+          their backdrop would scroll the page behind (body overflow alone does not stop it). */}
+      {expandedOpen ? createPortal(
+        <div ref={expandedRef} className="fixed inset-0 z-50 hidden items-center justify-center px-6 py-8 lg:flex" role="dialog" aria-modal="true" aria-label="Hồ sơ vụ án (mở rộng)">
           <button type="button" aria-label="Đóng hồ sơ mở rộng (nhấn ra ngoài)" tabIndex={-1} onClick={() => setExpandedOpen(false)} className="absolute inset-0 bg-black/40" />
           <div data-testid="trial-casefile-expanded" className="relative flex h-full max-h-[88vh] w-full max-w-[720px] flex-col rounded-xl bg-card p-6 shadow-2xl">
             <div className="mb-3 flex items-start justify-between gap-3">
@@ -1017,11 +1008,12 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
               <CaseFilePanel caseFile={detail.case_file} isInjuryCase={isInjuryCase} tab={caseTab} onTabChange={setCaseTab} roleBrief={roleBrief} wide />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
 
-      {drawer !== null ? (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label={drawerTitle}>
+      {drawer !== null ? createPortal(
+        <div ref={drawerRef} className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label={drawerTitle}>
           <button type="button" aria-label={`Đóng ${drawerTitle.toLowerCase()} (nhấn ra ngoài)`} onClick={() => setDrawer(null)} className="absolute inset-0 bg-black/40" />
           <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-card p-4 shadow-xl">
             <div className="mb-2 flex items-center justify-between">
@@ -1040,7 +1032,8 @@ export function TrialHearing({ sessionId }: { sessionId: string }) {
               {drawer === "notes" ? <ClerkNotesPanel notes={clerkNotes} prompt={state.clerk_prompt} fill /> : drawer === "preside" && checklist !== null ? checklist : caseFilePanel}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );

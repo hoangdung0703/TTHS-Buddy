@@ -20,6 +20,8 @@ cd "$COPY_DIR"
 export NEXT_PUBLIC_SUPABASE_URL="http://supabase.e2e.test"
 export NEXT_PUBLIC_SUPABASE_ANON_KEY="e2e-placeholder-anon-key"
 export NEXT_PUBLIC_API_BASE_URL="http://api.e2e.test"
+# Real API calls everywhere (chat included), all answered by the suite's fake backend.
+export NEXT_PUBLIC_USE_MOCK_DATA=false
 export NEXT_TELEMETRY_DISABLED=1
 npx next build > "$WORK_DIR/build.log" 2>&1 || { tail -40 "$WORK_DIR/build.log"; exit 1; }
 nohup npx next start -p "$PORT" > "$WORK_DIR/server.log" 2>&1 &

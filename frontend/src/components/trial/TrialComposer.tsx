@@ -9,9 +9,9 @@ import { ObserverControls } from "@/components/trial/ObserverControls";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  chairInvitation,
   composerMode,
-  DECLINE_CONFIRM_MESSAGE,
+  declineConfirmMessage,
+  defendantInvitation,
   endSlotLabel,
   GUARD_EXHAUSTED_MESSAGE,
   isChairRole,
@@ -49,7 +49,7 @@ interface TrialComposerProps {
   userRole: string;
   steps: TrialStepInfo[];
   participants: Record<string, TrialParticipant>;
-  // The transcript, for the presiding judge's invitation before a defendant's optional turn.
+  // The transcript: the defendant's invitation fallback when the server sends no state.invitation.
   utterances?: readonly TrialUtterance[];
   // A stream is running: the composer is locked whatever the state says.
   busy: boolean;
@@ -243,10 +243,10 @@ export function TrialComposer({
   const clerkReport = isClerkRole(userRole) ? (state.clerk_report ?? null) : null;
   // Defendant (contract 5.3): the question waiting for an answer, quoted from pending_question
   // (never looked up in the transcript); before the optional turns of steps 7-8, which have no
-  // pending question, the presiding judge's invitation.
+  // pending question, the presiding judge's invitation (state.invitation).
   const isDefendant = isDefendantRole(userRole);
   const pending = isDefendant ? (state.pending_question ?? null) : null;
-  const invitation = isDefendant && pending === null ? chairInvitation(utterances, state.current_step) : null;
+  const invitation = isDefendant && pending === null ? defendantInvitation(state, utterances) : null;
   const quoted = pending ?? invitation;
   const sendLabel = state.current_step === 6 || state.current_step === 7 || (isDefendant && state.current_step === 8)
     ? "Trình bày"
@@ -257,7 +257,8 @@ export function TrialComposer({
         : "Gửi";
 
   function decline(): void {
-    if (window.confirm(DECLINE_CONFIRM_MESSAGE)) {
+    // The box is emptied once the decline is recorded, so unsent text is named in the confirm.
+    if (window.confirm(declineConfirmMessage(draft))) {
       onAction({ action: "decline" });
     }
   }

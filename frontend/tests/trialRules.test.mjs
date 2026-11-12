@@ -29,6 +29,11 @@ import {
   validateChairText,
   applyClerkDraft,
   chairInvitation,
+  chairBlockedText,
+  chairStepHint,
+  declineConfirmMessage,
+  defendantInvitation,
+  DECLINE_CONFIRM_MESSAGE,
   endSlotLabel,
   isDefendantRole,
   legalBasisArticle,
@@ -359,6 +364,22 @@ test("defendant end_slot labels: 'Không bổ sung' (7), 'Không có ý kiến' 
   assert.match(stepHint(4, "bi_cao", true), /từ chối trả lời/);
 });
 
+test("defendant invitation: state.invitation when present (null included), the transcript otherwise", () => {
+  const u = (seq, step, speaker_id) => ({ seq, step, speaker_id, speaker_role: "", speaker_name: "", is_user: false, kind: "speech", text: `t${seq}`, addressee: null });
+  const lines = [u(1, 7, "KSV"), u(2, 7, "CHU_TOA")];
+  const invitation = { seq: 9, speaker_id: "CHU_TOA", speaker_role: "Chủ tọa", speaker_name: "X", text: "Mời (server)." };
+  assert.equal(defendantInvitation({ current_step: 7, invitation }, lines).text, "Mời (server).");
+  assert.equal(defendantInvitation({ current_step: 7, invitation: null }, lines), null);
+  assert.equal(defendantInvitation({ current_step: 7 }, lines).seq, 2);
+});
+
+test("decline confirm: names the unsent text only when there is some", () => {
+  assert.equal(declineConfirmMessage(""), DECLINE_CONFIRM_MESSAGE);
+  assert.equal(declineConfirmMessage("  \n"), DECLINE_CONFIRM_MESSAGE);
+  assert.match(declineConfirmMessage("Bị cáo xin"), /phần đang gõ sẽ bị xóa/i);
+  assert.ok(declineConfirmMessage("Bị cáo xin").startsWith(DECLINE_CONFIRM_MESSAGE));
+});
+
 test("chairInvitation: latest Chủ tọa line of the step, none once the student has spoken", () => {
   const u = (seq, step, speaker_id, o = {}) => ({ seq, step, speaker_id, speaker_role: "", speaker_name: "", is_user: false, kind: "speech", text: `t${seq}`, addressee: null, ...o });
   const lines = [u(1, 7, "LUAT_SU"), u(2, 7, "CHU_TOA", { kind: "procedural" })];
@@ -449,13 +470,42 @@ test("chair: text limits from presiding.limits; an empty box sends the template 
   assert.equal(chairTextLimits("return", p).optional, true);
 });
 
-test("chair: procedure_item labels, current step first, catalogue as fallback", () => {
-  const p = presiding([chairItem("hoi_bi_cao", "ask")]);
+test("chair: procedure_item labels, current step first, then the server's catalogues", () => {
+  const catalogue = { khai_mac: { step: 2, label: "Khai mạc (server)" }, moi_ksv_hoi: { step: 5, label: "Mời KSV xét hỏi (server)" } };
+  const return_catalogue = { hoi_lai: { step: 5, label: "Hỏi lại (server)" }, moi_ksv_hoi: { step: 5, label: "Mời KSV hỏi, tối đa 3 câu (server)" } };
+  const p = presiding([chairItem("hoi_bi_cao", "ask")], { catalogue, return_catalogue });
   assert.equal(chairItemLabel("hoi_bi_cao", p), "Nhãn hoi_bi_cao");
-  assert.equal(chairItemLabel("khai_mac", p), "Khai mạc, đọc quyết định đưa vụ án ra xét xử");
+  assert.equal(chairItemLabel("khai_mac", p), "Khai mạc (server)");
+  assert.equal(chairItemLabel("moi_ksv_hoi", p), "Mời KSV xét hỏi (server)");
+  assert.equal(chairItemLabel("hoi_lai", p), "Hỏi lại (server)");
+  assert.equal(chairItemLabel("moi_ksv_hoi", { ...p, in_return: true }), "Mời KSV hỏi, tối đa 3 câu (server)");
   assert.equal(chairItemLabel("remark", null), "Phát biểu khác");
-  assert.equal(chairItemLabel("unknown_key", null), null);
+  assert.equal(chairItemLabel("unknown_key", p), null);
   assert.equal(chairItemLabel(null, p), null);
+  // An older backend without the catalogues: only the current step's rows are labelled.
+  const old = presiding([chairItem("hoi_bi_cao", "ask")]);
+  assert.equal(chairItemLabel("hoi_bi_cao", old), "Nhãn hoi_bi_cao");
+  assert.equal(chairItemLabel("khai_mac", old), null);
+});
+
+test("chair: blocked_reason text shown as sent, the generic line without it", () => {
+  const reason = { code: "prerequisite_missing", prerequisite_item: "khai_mac", text: "Cần làm trước: Khai mạc." };
+  assert.equal(chairBlockedText({ blocked_reason: reason }), "Cần làm trước: Khai mạc.");
+  assert.equal(chairBlockedText({ blocked_reason: null }), "Chưa làm được lúc này");
+  assert.equal(chairBlockedText({}), "Chưa làm được lúc này");
+  assert.equal(chairBlockedText({ blocked_reason: { ...reason, text: " " } }), "Chưa làm được lúc này");
+});
+
+test("chair step 9 hint: final_statement_done first, the item as fallback", () => {
+  const said = /khoản 2 Điều 324/;
+  const p = (done) => presiding([chairItem("moi_loi_sau_cung", "invite", { done })], { step: 9 });
+  assert.match(chairStepHint(9, p(true), true), said);
+  // The item is done while the AI is still speaking; the server flag stays false until stored.
+  assert.doesNotMatch(chairStepHint(9, p(true), false), said);
+  assert.match(chairStepHint(9, p(false), true), said);
+  assert.match(chairStepHint(9, p(true), undefined), said);
+  assert.match(chairStepHint(9, p(true), null), said);
+  assert.doesNotMatch(chairStepHint(9, p(false), undefined), said);
 });
 
 test("chair 409s: missing_items parsed; new codes have Vietnamese messages; re-sync set", () => {
