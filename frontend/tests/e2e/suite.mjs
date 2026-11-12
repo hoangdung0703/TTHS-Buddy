@@ -2488,6 +2488,53 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await context.close();
 }
 
+// Regression for the handoff race: the same answer delivered (a) in one burst, as the buffered Rule 9
+// path does, and (b) as events 150 ms apart. Either way, after the move to /chat/<id> the question,
+// the answer and the citation chips are there, and the page did not re-read the conversation.
+for (const gapMs of [0, 150]) {
+  const tag = gapMs === 0 ? "(a) one burst" : `(b) events ${gapMs} ms apart`;
+  resetWorld();
+  ({ context, page } = await open());
+  if (gapMs > 0) {
+    // Re-streams the fake's answer block by block.
+    await context.addInitScript((gap) => {
+      const original = window.fetch;
+      window.fetch = async (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (!url.endsWith("/api/chat/query")) return original(input, init);
+        const response = await original(input, init);
+        const blocks = (await response.text()).split("\n\n").filter(Boolean).map((block) => `${block}\n\n`);
+        const encoder = new TextEncoder();
+        const body = new ReadableStream({
+          async start(controller) {
+            for (const block of blocks) {
+              await new Promise((resolve) => setTimeout(resolve, gap));
+              controller.enqueue(encoder.encode(block));
+            }
+            controller.close();
+          }
+        });
+        return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+      };
+    }, gapMs);
+  }
+  await page.goto(`${BASE}/chat`);
+  const chatBox = page.getByPlaceholder("Hỏi về Luật Tố tụng Hình sự...");
+  await chatBox.waitFor({ timeout: 20000 });
+  await chatBox.fill(CHAT_QUESTION);
+  const listReadsBefore = world.requests.filter((r) => r.method === "GET" && r.path === "/api/chat/conversations").length;
+  await chatBox.press("Enter");
+  const moved = await page.waitForURL("**/chat/e2e-conv-1", { timeout: 15000 }).then(() => true, () => false);
+  // The sidebar's re-read on the new pathname: the /chat/<id> page has mounted and run its effects.
+  await waitUntil(() => world.requests.filter((r) => r.method === "GET" && r.path === "/api/chat/conversations").length > listReadsBefore);
+  const shown = await answerShown(page);
+  const chips = await page.getByRole("button", { name: /^Điều (119|88) BLTTHS 2015$/ }).count();
+  const detailGets = world.requests.filter((r) => r.method === "GET" && r.path === "/api/chat/conversations/e2e-conv-1").length;
+  check(`chat handoff ${tag}: on /chat/<id> the question, the answer and both citation chips are shown; no GET of the conversation (${detailGets})`,
+    moved && shown && (await page.getByText(CHAT_QUESTION).count()) > 0 && chips === 2 && detailGets === 0);
+  await context.close();
+}
+
 const badConsole = consoleMessages.filter((m) => m.includes(TRANSCRIPT_MARKER) || m.includes("Chú giải mẫu") || m.includes(CLERK_MARK) || m.includes(DEF_MARK) || m.includes(CHAIR_MARK) || m.includes(ASSESSOR_MARK) || m.includes(PRONOUNCE_MARK) || m.includes(REASONING.slice(0, 40)) || m.includes(IDENTITY_PREFILL.slice(0, 30)) || m.includes(CLERK_PREFILL.slice(0, 40)) || /Uncaught|TypeError/.test(m));
 if (process.env.E2E_DEBUG) badConsole.forEach((m) => console.log(`  console: ${m.slice(0, 200)}`));
 // Regression: nothing may stretch the document past the record (absolutely positioned sr-only labels

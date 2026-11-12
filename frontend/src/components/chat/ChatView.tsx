@@ -137,6 +137,8 @@ export function ChatView({ conversationId }: ChatViewProps) {
     setError(null);
 
     if (conversationId === null) {
+      // The ref follows every reset too: handleAsk builds on it (see updateMessages).
+      messagesRef.current = [];
       setMessages([]);
       setIsLoadingHistory(false);
       return;
@@ -156,6 +158,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
 
     let cancelled = false;
     setIsLoadingHistory(true);
+    messagesRef.current = [];
     setMessages([]);
 
     getConversationDetail(conversationId)
@@ -167,6 +170,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
           { id: createMessageId(), role: "user" as const, content: turn.question },
           { id: createMessageId(), role: "assistant" as const, content: turn.answer }
         ]);
+        messagesRef.current = loaded;
         setMessages(loaded);
       })
       .catch((loadError: unknown) => {
@@ -211,12 +215,13 @@ export function ChatView({ conversationId }: ChatViewProps) {
     // finally block below can hand the freshest array to pendingFreshConversationHandoff without
     // depending on the separate mirroring effect (which only flushes after a commit+paint cycle
     // - too late relative to this function's own synchronous "just finished streaming" instant).
+    // The next array is computed here, from the ref, not inside a setMessages updater: React runs
+    // updaters only at render time, so when the whole SSE body arrives in one burst (the buffered
+    // Rule 9 path) the finally block would hand off an array still missing the answer.
     function updateMessages(updater: (current: ChatMessage[]) => ChatMessage[]): void {
-      setMessages((current) => {
-        const next = updater(current);
-        messagesRef.current = next;
-        return next;
-      });
+      const next = updater(messagesRef.current);
+      messagesRef.current = next;
+      setMessages(next);
     }
 
     setError(null);
