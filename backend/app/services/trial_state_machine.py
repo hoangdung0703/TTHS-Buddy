@@ -113,12 +113,16 @@ class SlotSpec:
 class StepSpec:
     number: int
     title: str
-    legal_basis: tuple[str, ...]  # BLTTHS Điều numbers
+    # BLTTHS Điều numbers the step rests on: shown in the step list (GET steps) and a superset of the
+    # verified procedure note's basis (trial_procedure_notes, nhóm B). NOT what the prompts load or
+    # Rule 9 checks: that is trial_config.SLOT_LEGAL_SLICES / BLTTHS_STEP_SLICES, which a test holds
+    # to cover every Điều listed here.
+    legal_basis: tuple[str, ...]
     slots: tuple[SlotSpec, ...]
 
 
 STEPS: tuple[StepSpec, ...] = (
-    StepSpec(1, "Thư ký báo cáo sự có mặt", ("300", "288", "289", "290", "291", "292", "293"), (
+    StepSpec(1, "Thư ký báo cáo sự có mặt", ("300", "288", "289", "290", "291", "292", "293", "297"), (
         # A code template when the AI is Thư ký; the student's prefilled report when the student is
         # (Mục 11.3.1: 100-3.000 characters).
         SlotSpec("bao_cao_co_mat", "thu_ky", "template", min_user_turns=1, min_chars=100, max_chars=3000),
@@ -131,7 +135,7 @@ STEPS: tuple[StepSpec, ...] = (
         SlotSpec("cam_doan_nlc", "chu_toa", "segment", speakers=("chu_toa", "nguoi_lam_chung"),
                  requires="witnesses"),
     )),
-    StepSpec(3, "Công bố cáo trạng", ("306",), (
+    StepSpec(3, "Công bố cáo trạng", ("306", "298"), (
         SlotSpec("cong_bo_cao_trang", "ksv", "indictment", min_user_turns=1, min_chars=100),
     )),
     StepSpec(4, "Hội đồng xét xử xét hỏi", ("307", "308", "309", "310", "311", "312"), (
@@ -140,12 +144,12 @@ STEPS: tuple[StepSpec, ...] = (
         SlotSpec("hdxx_hoi_nguoi_khac", "chu_toa", "segment",
                  speakers=("chu_toa", "hoi_tham", "bi_hai", "nguoi_lam_chung", "nguoi_lq")),
     )),
-    StepSpec(5, "Kiểm sát viên và luật sư xét hỏi", ("307", "309", "310", "311", "317", "318"), (
+    StepSpec(5, "Kiểm sát viên và luật sư xét hỏi", ("307", "309", "310", "311", "318"), (
         SlotSpec("ksv_hoi", "ksv", "qa_loop", min_user_turns=1, max_user_turns=8, max_questions=3, decline=True),
         SlotSpec("ls_hoi", "luat_su", "qa_loop", min_user_turns=1, max_user_turns=8, max_questions=3, decline=True),
         SlotSpec("ket_thuc_xet_hoi", "chu_toa", "template"),
     )),
-    StepSpec(6, "Kiểm sát viên luận tội", ("319", "320", "321"), (
+    StepSpec(6, "Kiểm sát viên luận tội", ("319", "320", "321", "325"), (
         SlotSpec("luan_toi", "ksv", "long_speech", min_user_turns=1, min_chars=300),
     )),
     StepSpec(7, "Luật sư bào chữa", ("320", "322"), (
@@ -156,7 +160,7 @@ STEPS: tuple[StepSpec, ...] = (
         SlotSpec("bi_hai_trinh_bay", "chu_toa", "segment", speakers=("chu_toa", "bi_hai"),
                  requires="victim_present"),
     )),
-    StepSpec(8, "Tranh luận, đối đáp", ("322",), (
+    StepSpec(8, "Tranh luận, đối đáp", ("322", "323"), (
         SlotSpec("doi_dap", "ksv", "debate", opponent="luat_su", min_user_turns=1, max_user_turns=3),
         # Điều 322 BLTTHS: one optional turn of the defendant, answered by one KSV speech.
         SlotSpec("moi_bi_cao_tranh_luan", "chu_toa", "template", user_roles=_DEFENDANT_ONLY),
@@ -172,7 +176,7 @@ STEPS: tuple[StepSpec, ...] = (
         SlotSpec("vao_nghi_an", "chu_toa", "template"),
         SlotSpec("nghi_an", "hdxx", "deliberation"),
     )),
-    StepSpec(11, "Tuyên án", ("327", "260", "298"), (
+    StepSpec(11, "Tuyên án", ("327", "260", "298", "331", "333"), (
         SlotSpec("tuyen_an", "chu_toa", "long_speech"),
     )),
 )

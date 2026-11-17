@@ -1222,3 +1222,25 @@ Ghi đè 5.2 và phần "Backlog" của 11.14 khi mâu thuẫn. Không đổi AP
 | `exhibit_confiscated_property`, `acquittal_victim_fee`, `civil_fee_without_claim` | mềm | chỉ form Chủ tọa; biểu án phí (Nghị quyết 326/2016/UBTVQH14) **corpus không đủ** |
 
 **Bảng ca kiểm offline** (`backend/tests/test_trial_guard_table.py`, 0 Gemini): 46 quyết định cho Điều 134, 171, 173, 174, khoản 1-2, mỗi ca có kết quả mong đợi (qua/cảnh báo/chặn) và câu trích corpus (73 đoạn trích, đối chiếu máy với `chunks.json`, 0 lệch). Guard cũ (bản đông lạnh `tests/trial_legacy_verdict_guard.py`) sai 15 ca, guard mới sai 0. 15 ca đổi kết quả: 5 ca chặn oan nay qua hoặc chỉ cảnh báo (khoản nặng hơn cùng Điều; cải tạo không giam giữ qua khoản 3 Điều 54 ở Điều 171 khoản 1; qua khoản 1 Điều 54 ở Điều 174 khoản 2 và Điều 134 khoản 2; phạt tiền qua khoản 3 Điều 54 ở Điều 171 khoản 1), 10 ca lọt nay bị chặn (dưới khung liền kề ×2, tù dưới 03 tháng ×2, tình tiết khoản 3 Điều 51, khoản 2 Điều 52, khoản 1 Điều 51 không điểm, tình tiết không gắn sự việc, thử thách không có án treo, phạt tiền kèm tù).
+
+#### 11.16.2 legal_basis các bước (phần B)
+
+**Phát hiện:** `StepSpec.legal_basis` (`trial_state_machine.py`) **không** dùng để cắt gói luật nạp vào prompt hay cho Rule 9; nó chỉ hiện trong danh sách bước (`GET .../steps`, tooltip). Lát cắt thật là `trial_config.SLOT_LEGAL_SLICES` (bài dài, nghị án, tuyên án) và `BLTTHS_STEP_SLICES` (các slot khác). Vì vậy đã đối chiếu cả hai với legal_basis của chú giải đã kiểm (`trial_procedure_notes.py`, `procedure-notes-verification.md`).
+
+| Bước | StepSpec cũ | Chú giải | Lệch | Lát cắt AI thiếu | Đã làm |
+|---|---|---|---|---|---|
+| 1 | 300, 288, 289-293 | 300, 289-293, 297 | thiếu 297; thừa 288 | không | thêm 297; giữ 288 (khoản 1 điểm a Điều 297 dẫn 288 làm căn cứ hoãn) |
+| 2 | 301-305 | 301-305 | không | không | không |
+| 3 | 306 | 306, 298 | thiếu 298 | không | thêm 298 |
+| 4 | 307-312 | 307-311 | thừa 312 | không | giữ 312 (Xem xét vật chứng, thuộc xét hỏi) |
+| 5 | 307, 309-311, 317, 318 | 307, 309-311, 318 | thừa 317 | không | bỏ 317 khỏi StepSpec (xem dưới) |
+| 6 | 319-321 | 319-321, 325 | thiếu 325 | **thiếu 325** ở slot `luan_toi` | thêm 325 vào StepSpec **và** vào `SLOT_LEGAL_SLICES["luan_toi"]` |
+| 7 | 320, 322 | 320, 322 | không | không | không |
+| 8 | 322 | 322, 323 | thiếu 323 | không | thêm 323 |
+| 9 | 324 | 324 | không | không | không |
+| 10 | 326 | 326 | không | không | không |
+| 11 | 327, 260, 298 | 327, 331, 333 | thiếu 331, 333; thừa 260, 298 | không | thêm 331, 333; giữ 260 (Bản án), 298 (giới hạn xét xử) |
+
+- Bỏ 317 ở bước 5 chỉ khỏi danh sách hiển thị: tiêu đề Điều 317 trong corpus là "Điều tra viên, Kiểm sát viên, người khác có thẩm quyền tiến hành tố tụng, người tham gia tố tụng trình bày ý kiến", không phải việc hỏi (đã kết luận ở `procedure-notes-verification.md`). Gói luật của bước 5 (lát cắt `questioning`, Điều 307-318) **vẫn chứa 317**, nên AI vẫn dẫn được, Rule 9 không đổi.
+- Thay đổi duy nhất chạm Rule 9 là **thêm** 325 vào lát cắt luận tội. Trước đó "Điều 325 Bộ luật Tố tụng hình sự" trong luận tội bị Rule 9 loại (`unknown_pair`) dù đúng luật. Thêm một Điều (~150 token) vào prompt luận tội.
+- Test `backend/tests/test_trial_step_basis.py`: legal_basis của bước ⊇ legal_basis chú giải; mọi Điều của legal_basis nằm trong lát cắt của chính bước đó (mọi vai); Điều 325 qua Rule 9 ở luận tội. Số Điều đối chiếu với corpus (tiêu đề từ `chunks.json`, "Bộ luật TTHS.pdf").

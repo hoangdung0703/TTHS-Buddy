@@ -211,7 +211,9 @@ MAX_STATEMENT_SIMILARITY = 0.7
 CHARGE = "@charge"
 _SENTENCING = (CHARGE, "50", "51", "52", "54", "65", "38", "36", "35", "46", "47", "48")
 SLOT_LEGAL_SLICES: dict[str, dict[str, tuple[str, ...]]] = {
-    "luan_toi": {BLTTHS_DOCUMENT: ("106", "319", "320", "321"), BLHS_DOCUMENT: _SENTENCING},
+    # 325 (rút quyết định truy tố, kết luận về tội nhẹ hơn tại phiên tòa) is part of the luận tội step's
+    # basis (verified procedure note, step 6); without it here Rule 9 rejected a correct citation (nhóm B).
+    "luan_toi": {BLTTHS_DOCUMENT: ("106", "319", "320", "321", "325"), BLHS_DOCUMENT: _SENTENCING},
     "bao_chua": {BLTTHS_DOCUMENT: ("13", "320", "322"), BLHS_DOCUMENT: (CHARGE, "50", "51", "54", "65", "36", "38")},
     "doi_dap": {BLTTHS_DOCUMENT: ("13", "322", "323"), BLHS_DOCUMENT: (CHARGE, "51", "52", "54", "65")},
     "nghi_an": {BLTTHS_DOCUMENT: ("298", "326"), BLHS_DOCUMENT: _SENTENCING},
