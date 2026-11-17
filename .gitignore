@@ -10,6 +10,11 @@ __pycache__/
 # Mock-trial design + frontend contract (no sample-judgment content; checked before each commit).
 !docs/phien-toa-gia-dinh/THIET-KE.md
 !docs/phien-toa-gia-dinh/API-CONTRACT.md
+# Agent docs: CLAUDE.md and repo skills are tracked; nothing else under .claude/ (settings.local.json
+# and personal files stay out).
+!/CLAUDE.md
+!/.claude/skills/**/SKILL.md
+/.claude/settings.local.json
 /.next/
 frontend/.next/
 frontend/node_modules/
