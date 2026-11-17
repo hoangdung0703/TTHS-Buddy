@@ -1204,14 +1204,18 @@ Ghi đè 5.2 và phần "Backlog" của 11.14 khi mâu thuẫn. Không đổi AP
 | `non_custodial_not_in_frame` | cứng | khoản 1, khoản 3 Điều 54 BLHS ("chuyển sang một hình phạt khác thuộc loại nhẹ hơn" ở khung nhẹ nhất) |
 | `prison_general_range` | cứng | khoản 1 Điều 38 BLHS: "mức tối thiểu là 03 tháng và mức tối đa là 20 năm" |
 | `fine_min` | cứng | khoản 3 Điều 35 BLHS: "không được thấp hơn 1.000.000 đồng" |
-| `fine_not_in_frame`, `fine_not_main` | cứng | khoản 1 Điều 35 BLHS; khoản 3 Điều 54 BLHS; hình phạt bổ sung ngoài phạm vi mô phỏng |
+| `fine_not_in_frame` | cứng | khoản 1 Điều 35 BLHS; khoản 3 Điều 54 BLHS |
+| `fine_not_main` | cứng | (sửa 18/11/2026, 11.16.5) chỉ khi Điều tội danh không quy định phạt tiền bổ sung (Điều 134) hoặc tuyên không phạm tội: khoản 3 Điều 32 BLHS "chỉ bị áp dụng một hình phạt chính và có thể bị áp dụng một hoặc một số hình phạt bổ sung"; khoản 2 Điều 35 BLHS |
+| `fine_additional_range` | cứng | khoản 5 Điều 171, 174 ("từ 10.000.000 đồng đến 100.000.000 đồng"), khoản 5 Điều 173 ("từ 5.000.000 đồng đến 50.000.000 đồng") |
+| `fine_additional_unchecked` | mềm | không tách được mức phạt bổ sung thì không chặn |
 | `non_custodial_range`, `non_custodial_frame` | cứng | khoản 1 Điều 36 BLHS: "từ 06 tháng đến 03 năm" |
 | `non_custodial_class` | cứng | khoản 1 Điều 36 BLHS ("phạm tội ít nghiêm trọng, phạm tội nghiêm trọng"); điểm a, b khoản 1 Điều 9 BLHS ("đến 07 năm tù") |
 | `charge_article` | cứng | khoản 1 Điều 298 BLTTHS |
 | `khoan_heavier` | **mềm** | khoản 2 Điều 298 BLTTHS: "theo khoản khác với khoản mà Viện kiểm sát đã truy tố trong cùng một điều luật" (không nói "nhẹ hơn") |
 | `khoan_unknown`, `diem_unknown`, `diem_minor` | cứng | văn bản Điều truy tố; quyết định 2026-10-19 (không người dưới 18 tuổi) |
 | `circumstance_unknown` | cứng | khoản 1, 2 Điều 51 và khoản 1 Điều 52 BLHS là tình tiết; khoản 3 Điều 51 và khoản 2 Điều 52 là quy tắc ("không được coi là tình tiết ...") |
-| `circumstance_no_fact`, `circumstance_unknown_fact` | cứng | khoản 2 Điều 326 BLTTHS: "chỉ được căn cứ vào những chứng cứ, tài liệu đã được thẩm tra tại phiên tòa" |
+| `circumstance_unknown_fact` | cứng | khoản 2 Điều 326 BLTTHS: "chỉ được căn cứ vào những chứng cứ, tài liệu đã được thẩm tra tại phiên tòa" |
+| `circumstance_no_fact` | **mềm** (sửa 18/11/2026, 11.16.5) | cùng câu khoản 2 Điều 326 BLTTHS: căn cứ gồm cả lời khai tại phiên tòa và nhân thân, không có mã sự việc nên không chặn |
 | `suspended_prison`, `probation_range`, `probation_without_suspension` | cứng | khoản 1 Điều 65 BLHS: "xử phạt tù không quá 03 năm", "từ 01 năm đến 05 năm" |
 | `suspended_without_mitigating` | mềm | khoản 1 Điều 65 BLHS; điều kiện chi tiết của án treo **corpus không đủ** |
 | `civil_over_claim` | mềm | **corpus không đủ**: nguyên tắc không vượt yêu cầu là luật dân sự, không có trong corpus |
@@ -1251,7 +1255,7 @@ Ghi đè 5.2 và phần "Backlog" của 11.14 khi mâu thuẫn. Không đổi AP
 - Phân loại các lần bắt ở đo baseline (11.16.4): (a) bịa 0, (b) cùng số khác cách viết 0, (c) suy ra từ hồ sơ 0, (d) khác 1 (số tiền án phí ở tuyên án; biểu án phí là Nghị quyết 326/2016/UBTVQH14, **corpus không đủ** để chấp nhận). Theo điều kiện của chặng: **không** làm chuẩn hóa cách viết (C1) và **không** cho phép số suy ra (C2) vì không thấy nhóm (b), (c).
 - Đã làm (C3): `money_brief` (`trial_turn_service.py`) liệt kê đúng tập số tiền money guard chấp nhận (test giữ hai tập bằng nhau), dạng chuẩn `12.500.000 đồng`, kèm nhãn (định giá, chứng cứ, yêu cầu bồi thường, đã bồi thường, khoản phụ, số khai khác hồ sơ, dữ kiện tại phiên tòa, quyết định). Danh sách vào CHỈ DẪN LƯỢT của luận tội, bào chữa, đối đáp (cả lượt tranh luận của bị cáo), lời bị hại (bản người không chuyên, không có câu về mức tiền trong điều luật), tuyên án (bản chặt: "chỉ dùng đúng các số này, không tự cộng trừ"), nghị án (bản tham khảo, vì số bồi thường do Hội đồng xét xử quyết định). `TUYEN_AN_INSTRUCTION` thêm "không ghi số tiền án phí".
 - Test (`backend/tests/test_trial_money_brief.py`): số bịa (777.000.000 đồng), số tự suy ra (10.500.000 = 12.500.000 − 2.000.000) và số án phí vẫn bị loại; một bài luận tội có số bịa bị sinh lại.
-- Không làm cơ chế "lời gọi sửa". **Lỗ đã biết:** số tiền viết bằng chữ ("mười lăm triệu đồng", "15 triệu đồng") không bị mẫu nhận diện bắt, nên số bịa viết dạng đó lọt (không gây sinh lại). Chưa bắt để tránh tăng sinh lại khi chưa có số đo.
+- Không làm cơ chế "lời gọi sửa". Dạng chữ số + đơn vị ("15 triệu đồng") được nhận diện từ 11.16.5; dạng chữ thuần ("mười lăm triệu đồng") vẫn chỉ đo.
 
 #### 11.16.4 Đo (Gemini thật, 84 lời gọi, trần cứng 90)
 
@@ -1266,3 +1270,23 @@ Script `backend/evaluation/run_trial_guard_bench.py`: vụ cố định (Điều
 | Sau, vai Bị cáo (câu trả lời mẫu) | 26 | 338.160 / 10.271 / 2.210 | 0 | 0 |
 
 Cộng 1 lời gọi sinh vụ án. Rule 9 0, verdict guard 0 (cứng và mềm), tên 0, breaker không kích hoạt. Hai quyết định baseline (khoản 2, Điều 54, tù 18 và 24 tháng cho hưởng án treo) chạy lại qua guard mới: 0 mã cứng, 0 mã mềm. Mẫu nhỏ (2 + 2 phiên) nên chưa đủ để kết luận về tần suất; sự cố sinh lại 6 lần vì `unknown_amount` không tái hiện được trên vụ này.
+
+#### 11.16.5 Bước bổ sung trước deploy, 18/11/2026
+
+**Phạt tiền bổ sung (`fine_not_main`).** Trước đây luật chặn mọi `fine_vnd` khi hình phạt chính không phải phạt tiền. Corpus: điểm e khoản 2 Điều 32 BLHS xếp "Phạt tiền, khi không áp dụng là hình phạt chính" vào hình phạt bổ sung; khoản 3 Điều 32: "chỉ bị áp dụng một hình phạt chính và có thể bị áp dụng một hoặc một số hình phạt bổ sung"; khoản 5 Điều 171, 174: "còn có thể bị phạt tiền từ 10.000.000 đồng đến 100.000.000 đồng"; khoản 5 Điều 173: "từ 5.000.000 đồng đến 50.000.000 đồng"; Điều 134 không có khoản phạt tiền. Vậy luật cũ **chặn oan** phạt tiền bổ sung hợp lệ ở 171, 173, 174. `Verdict` và `ChairDecision` chỉ có một trường `fine_vnd`; hình phạt chính là `penalty_type`, nên `fine_vnd` kèm `penalty_type` khác `phat_tien` được đọc là phạt tiền bổ sung (không có trường hợp mơ hồ: hai hình phạt chính không biểu diễn được). Sửa: `fine_not_main` chỉ còn chặn khi Điều tội danh không quy định phạt tiền bổ sung hoặc khi tuyên không phạm tội; mã mới `fine_additional_range` (cứng) khi ngoài mức của khoản 5; `fine_additional_unchecked` (mềm) khi không tách được mức. Khối ràng buộc cứng của prompt nghị án nêu mức phạt bổ sung của Điều truy tố (hoặc "không quy định"). Form Chủ tọa ở frontend chưa có ô phạt tiền bổ sung (chỉ gửi `fine_vnd` khi `phat_tien`), để sau.
+
+**`circumstance_no_fact` hạ thành mềm.** Khoản 2 Điều 326 BLTTHS: "Việc nghị án chỉ được căn cứ vào những chứng cứ, tài liệu đã được thẩm tra tại phiên tòa, trên cơ sở xem xét đầy đủ, toàn diện chứng cứ của vụ án, ý kiến của Kiểm sát viên, bị cáo, người bào chữa...". Căn cứ gồm cả lời khai tại phiên tòa và nhân thân bị cáo, mà mô hình chỉ có mã sự việc cho `draft.facts`; một tình tiết hợp lệ (ví dụ thành khẩn khai báo thể hiện tại phiên tòa) có thể không có mã nào. `circumstance_unknown_fact` (mã sự việc không tồn tại) vẫn cứng.
+
+Bảng ca offline: 52 ca (thêm 3 ca phạt tiền bổ sung hợp lệ ở 171, 173, 174; 4 ca bị chặn: Điều 134, vượt mức, dưới mức, tuyên không phạm tội; ca "phạt tiền kèm tù" cũ đổi thành hợp lệ; ca không gắn sự việc thành cảnh báo). Guard cũ sai 17, guard mới sai 0; 83 đoạn trích đối chiếu máy với corpus, 0 lệch. Test Chủ tọa đổi kỳ vọng: `test_fine` (5.000.000 đồng kèm tù ở Điều 173 nay hợp lệ), `test_circumstances` (`circumstance_no_fact` nay ở `warnings`).
+
+**Money guard, dạng chữ số + đơn vị** (`backend/app/services/trial_money.py`): đọc "15 triệu đồng", "15,5 triệu", "1 tỷ 200 triệu", "200 nghìn"/"ngàn", "15 tr", "1.500 triệu" thành số nguyên rồi so như dạng chữ số đầy đủ; dùng cho guard lời AI, sổ dữ kiện, lọc `new_facts`, cờ đo lời người học. Dạng chữ thuần ("mười lăm triệu đồng") chỉ gắn cờ `amount_in_words`, không chặn. Validator sinh vụ án, Thư ký, tóm tắt biên bản giữ mẫu cũ. Chạy lại offline (0 Gemini): bench nhóm B trước đó **không lưu lời thoại** (chỉ lưu hồ sơ, câu bị bắt, quyết định), nên chạy trên phần đã lưu: 18 lần nêu số tiền trong văn bản hồ sơ, 0 bị bắt; câu án phí bị bắt trước đây vẫn bị bắt (nhóm d). Trên lời thoại 3 vụ đo thêm (209 lời): 65 lần nêu số tiền, đều dạng chữ số đầy đủ, 0 bị bắt, 0 dạng chữ thuần. Bench nay lưu toàn bộ lời thoại và mọi lần guard loại (tự phân loại đúng/oan/cần xem) ngoài repo.
+
+**Đo thêm 3 vụ** (Người xem, 1 phiên mỗi vụ, có bồi thường một phần, giảm nhẹ điểm b, s khoản 1 Điều 51; 45 lời gọi, trần 50):
+
+| Vụ (seed) | Lời gọi (sinh vụ + phiên) | Token vào / ra / thinking | Sinh lại | Cảnh báo mềm | Tạm nghỉ | Quyết định |
+|---|---|---|---|---|---|---|
+| Điều 134 khoản 1 (7402) | 1 + 14 | 175.370 / 7.467 / 2.276 | 0 | 0 | 0 | cải tạo không giam giữ 9 tháng |
+| Điều 171 khoản 1 (7403) | 1 + 14 | 174.545 / 8.046 / 3.770 | 0 | 0 | 0 | tù 9 tháng qua Điều 54 (khung nhẹ nhất), án treo |
+| Điều 173 khoản 2 (7404) | 1 + 14 | 174.169 / 7.753 / 2.361 | 0 | `release_needed` 1 | 0 | tù 24 tháng, án treo |
+
+Không lần guard loại nào nên không có ca đúng/oan để phân loại. Backend giả của e2e frontend (`frontend/tests/e2e/fixtures.mjs`) vẫn dùng ví dụ legal_basis cũ (`["307", "317"]`): làm sau, cùng lúc với frontend.

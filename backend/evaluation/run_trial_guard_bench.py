@@ -16,6 +16,8 @@ Output (all under --out, which must be OUTSIDE the repository; nothing is printe
 - runs/<label>.json: per session - calls, tokens, rejected calls by reason (Rule 9, verdict guard per
   code, money guard unknown_amount, name, other), guard pauses, breaker state, verdict guard codes
   (hard and soft) of every nghị án attempt;
+- transcripts/<label>_<n>.jsonl: the whole hearing, for offline replays of a later guard;
+- rejections/<label>.jsonl: every hard rejection (text, codes, automatic right/wrong/review);
 - money/<label>.jsonl: one line per amount the money guard caught: the amount as written, the
   sentence holding it, the valid amounts of the case at that moment and an automatic category
   (a invented, b same value written differently, c derived from case amounts, d other). Session
@@ -51,10 +53,10 @@ from app.core.logging import configure_logging
 from app.models.trial import CaseFile, CaseKnobs, CaseOptions
 from app.services import gemini_client, trial_turn_service
 from app.services.trial_case_service import CaseGenerationFailed, create_case
-from app.services.trial_case_validator import MONEY_PATTERN, parse_money
-from app.services.trial_config import get_crime
+from app.services.trial_config import BLHS_DOCUMENT, BLTTHS_DOCUMENT, get_crime
 from app.services.trial_legal_pack import LegalPack, build_pack, missing_keys, pack_request_for_crime
 from app.services.trial_metrics import TrialCallRecorder
+from app.services.trial_money import money_mentions, money_values
 from app.services.trial_defendant import identity_prefill
 from app.services.trial_state_machine import (
     CaseShape,
@@ -75,10 +77,19 @@ CHUNKS_PATH = REPO_ROOT / "ingestion" / "chunks.json"
 # Điều 51 khoản 1 points: the nghị án may go below the frame (Điều 54), choose a non-custodial or a
 # suspended sentence - the decisions the verdict guard rules are about. A civil claim and a partial
 # compensation put several amounts in play for the money guard.
+# --crime/--khoan/--seed pick another fixed case of the same shape (nhóm B+); the default is the case
+# of the nhóm B before/after runs, cached as case.json.
 FIXED_SEED = 7401
-FIXED_OPTIONS = CaseOptions(crime_key="blhs_174", user_role="nguoi_xem", victim_present=True, witness_count=1)
-FIXED_KNOBS = CaseKnobs(khoan="2", plea="nhan_toan_bo", has_compensation=True, aggravating_points=[],
-                        mitigating_points=["b", "s"])
+FIXED_CRIME, FIXED_KHOAN = "blhs_174", "2"
+
+
+def fixed_options(crime_key: str) -> CaseOptions:
+    return CaseOptions(crime_key=crime_key, user_role="nguoi_xem", victim_present=True, witness_count=1)
+
+
+def fixed_knobs(khoan: str) -> CaseKnobs:
+    return CaseKnobs(khoan=khoan, plea="nhan_toan_bo", has_compensation=True, aggravating_points=[],
+                     mitigating_points=["b", "s"])
 FIXED_HEARING_DATE = date(2026, 11, 18)
 
 # A hearing pauses on a hard guard failure; the student may press "Thử lại". The bench retries the
@@ -111,12 +122,15 @@ class CallMeter:
 
 
 @dataclass
-class MoneyCatcher:
-    """Wraps the turn service's utterance check: for every unknown_amount it writes the amount as
-    written, its sentence and the valid amounts to a file. Content goes to the file only."""
-    path: Path
+class GuardCatcher:
+    """Wraps the turn service's utterance check and verdict check. Every hard rejection is written to
+    rejections/<label>.jsonl with its text, codes and an automatic right/wrong verdict; every money
+    catch also to money/<label>.jsonl. Content goes to files outside the repository only."""
+    money_path: Path
+    reject_path: Path
     session: int = 0
-    rows: list[dict] = field(default_factory=list)
+    money_rows: list[dict] = field(default_factory=list)
+    reject_rows: list[dict] = field(default_factory=list)
 
     def install(self) -> None:
         original = trial_turn_service._check_utterance
@@ -125,36 +139,95 @@ class MoneyCatcher:
                     extra_amounts=frozenset()):
             violations, flags = original(ctx, speaker_id, text, allowed, mode, pack, as_student=as_student,
                                          extra_amounts=extra_amounts)
-            if "unknown_amount" in violations:
-                self._record(ctx, speaker_id, text, pack, extra_amounts)
+            hard = [v for v in violations if trial_turn_service._is_hard(v)]
+            if hard:
+                money = self._money(ctx, speaker_id, text, pack, extra_amounts) if "unknown_amount" in hard else []
+                self.reject_rows.append({
+                    "session": self.session, "slot": _slot(ctx), "speaker": speaker_id, "violations": hard,
+                    "judgement": judge(hard, money, ctx), "text": text})
             return violations, flags
 
         trial_turn_service._check_utterance = wrapped
+        original_verdict = trial_turn_service.check_verdict
 
-    def _record(self, ctx, speaker_id: str, text: str, pack: LegalPack | None, extra: frozenset[int]) -> None:
+        def wrapped_verdict(verdict, case, pack):
+            check = original_verdict(verdict, case, pack)
+            if check.hard:
+                self.reject_rows.append({
+                    "session": self.session, "slot": "nghi_an", "speaker": "HDXX",
+                    "violations": [f"verdict:{f.code}" for f in check.hard],
+                    # Every hard verdict rule is backed by the offline case table (0 wrong outcomes).
+                    "judgement": {f"verdict:{f.code}": "right" for f in check.hard},
+                    "text": verdict.model_dump_json(exclude={"reasoning_summary"})})
+            return check
+
+        trial_turn_service.check_verdict = wrapped_verdict
+
+    def _money(self, ctx, speaker_id: str, text: str, pack: LegalPack | None, extra: frozenset[int]) -> list[dict]:
         case_amounts, _ = trial_turn_service._known_numbers(ctx)
         valid = set(case_amounts) | set(extra)
         legal = set()
         if speaker_id in trial_turn_service.LEGAL_SPEAKER_IDS and pack is not None:
-            legal = {parse_money(m.group(1)) for a in pack.articles.values() for m in MONEY_PATTERN.finditer(a.text)}
-        slot = ctx.recorder.records[-1].slot if ctx.recorder.records else "?"
-        for match in MONEY_PATTERN.finditer(text):
-            value = parse_money(match.group(1))
-            if value in valid or value in legal:
+            legal = {v for a in pack.articles.values() for v in money_values(a.text)}
+        rows = []
+        for mention in money_mentions(text):
+            if mention.value in valid or mention.value in legal:
                 continue
-            self.rows.append({
-                "session": self.session, "slot": slot, "speaker": speaker_id, "written": match.group(0),
-                "value": value, "sentence": _sentence_around(text, match.start(), match.end()),
+            rows.append({
+                "session": self.session, "slot": _slot(ctx), "speaker": speaker_id, "written": mention.written,
+                "form": mention.form, "value": mention.value,
+                "sentence": _sentence_around(text, mention.start, mention.end),
                 "valid_case_amounts": sorted(case_amounts), "valid_extra": sorted(extra),
-                "category": classify_amount(value, case_amounts, ctx),
+                "category": classify_amount(mention.value, case_amounts, ctx),
             })
+        self.money_rows += rows
+        return rows
 
     def flush(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as out:
-            for row in self.rows:
-                out.write(json.dumps(row, ensure_ascii=False) + "\n")
-        self.rows.clear()
+        for path, rows in ((self.money_path, self.money_rows), (self.reject_path, self.reject_rows)):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as out:
+                for row in rows:
+                    out.write(json.dumps(row, ensure_ascii=False) + "\n")
+            rows.clear()
+
+
+def _slot(ctx) -> str:
+    return ctx.recorder.records[-1].slot if ctx.recorder.records else "?"
+
+
+def judge(hard: list[str], money: list[dict], ctx) -> dict[str, str]:
+    """Automatic right/wrong per rejection reason. right: the text breaks a rule the law or the case
+    file supports; wrong: a correct text was rejected; review: code cannot tell."""
+    out: dict[str, str] = {}
+    for violation in hard:
+        head = violation.split(":")[0]
+        if head == "unknown_amount":
+            categories = {row["category"].split(":")[0] for row in money}
+            wrong = categories & {"b", "c"} or any(r["category"] == "d:law_amount_outside_slice" for r in money)
+            out[violation] = "wrong" if wrong else "right"
+        elif head == "citation":
+            out[violation] = _judge_citation(violation, ctx)
+        elif head in ("lay_citation", "speaker_not_allowed", "speaker_is_student", "unknown_placeholder", "empty",
+                      "schema", "missing_charge_citation"):
+            out[violation] = "right"
+        else:   # invented_name: a pattern heuristic, needs a human eye
+            out[violation] = "review"
+    return out
+
+
+def _judge_citation(violation: str, ctx) -> str:
+    """unknown_pair / ambiguous_law on an article of the case pack is the slicing problem (a correct
+    citation the step's slice lacks): wrong. Anything outside the pack, a missing khoản/điểm, another law
+    or a missing law name in tuyên án is a real violation: right."""
+    match = re.search(r"citation:(\w+): .*?Điều (\d+\w?) (BLHS|BLTTHS|\(không nêu luật\)|văn bản khác)", violation)
+    if not match:
+        return "review"
+    kind, dieu, law = match.groups()
+    if kind not in ("unknown_pair", "ambiguous_law"):
+        return "right"
+    documents = {"BLHS": [BLHS_DOCUMENT], "BLTTHS": [BLTTHS_DOCUMENT]}.get(law, [BLHS_DOCUMENT, BLTTHS_DOCUMENT])
+    return "wrong" if any(ctx.pack.get(doc, dieu) is not None for doc in documents) else "right"
 
 
 def _sentence_around(text: str, start: int, end: int) -> str:
@@ -181,8 +254,7 @@ def classify_amount(value: int, case_amounts: set[int], ctx) -> str:
         for pct in range(1, 100):
             if value * 100 == a * pct:
                 return "c:percent"
-    full_pack_amounts = {parse_money(m.group(1)) for art in ctx.pack.articles.values()
-                         for m in MONEY_PATTERN.finditer(art.text)}
+    full_pack_amounts = {v for art in ctx.pack.articles.values() for v in money_values(art.text)}
     if value in full_pack_amounts:
         return "d:law_amount_outside_slice"
     if value in (200_000, 300_000):
@@ -313,15 +385,34 @@ async def play(ctx: TrialContext, pauses: list[dict]) -> str:
     return ctx.state.status
 
 
-async def load_or_create_case(out: Path, settings, pack: LegalPack) -> CaseFile:
-    cache = out / "case.json"
+def case_cache(out: Path, args: argparse.Namespace) -> Path:
+    if (args.crime, args.khoan, args.seed) == (FIXED_CRIME, FIXED_KHOAN, FIXED_SEED):
+        return out / "case.json"
+    return out / f"case_{args.crime}_k{args.khoan}_s{args.seed}.json"
+
+
+async def load_or_create_case(out: Path, args: argparse.Namespace, settings, pack: LegalPack) -> CaseFile:
+    cache = case_cache(out, args)
     if cache.exists():
         return CaseFile.model_validate_json(cache.read_text(encoding="utf-8"))
     recorder = TrialCallRecorder()
-    creation = await create_case(FIXED_OPTIONS, settings, None, recorder, pack=pack, seed=FIXED_SEED,
-                                 today=FIXED_HEARING_DATE, knobs=FIXED_KNOBS)
+    creation = await create_case(fixed_options(args.crime), settings, None, recorder, pack=pack, seed=args.seed,
+                                 today=FIXED_HEARING_DATE, knobs=fixed_knobs(args.khoan))
     cache.write_text(creation.case.model_dump_json(indent=1), encoding="utf-8")
     return creation.case
+
+
+def _read_jsonl(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] if path.exists() else []
+
+
+def write_transcript(path: Path, ctx: TrialContext) -> None:
+    """The whole hearing (placeholders, not names), so a later guard can be replayed offline."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as out:
+        for u in ctx.transcript:
+            out.write(json.dumps({"seq": u.seq, "step": u.step, "speaker": u.speaker_id, "is_user": u.is_user,
+                                  "kind": u.kind, "flags": u.guard_flags, "text": u.text}, ensure_ascii=False) + "\n")
 
 
 def _ledger(out: Path) -> dict:
@@ -342,7 +433,7 @@ async def main(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     ledger = _ledger(out)
     spent = sum(r["calls"] for r in ledger["runs"])
-    wanted = args.sessions * args.per_session_cap + (0 if (out / "case.json").exists() else 3)
+    wanted = args.sessions * args.per_session_cap + (0 if case_cache(out, args).exists() else 3)
     run_cap = min(wanted, args.series_cap - spent)
     if run_cap < args.per_session_cap:
         print(json.dumps({"stop": "series budget", "spent": spent, "left": args.series_cap - spent,
@@ -353,17 +444,17 @@ async def main(args: argparse.Namespace) -> int:
     trial_turn_service.STYLE_CARD_PATH = out / "no-style-card.md"   # never read data/private/
     meter = CallMeter(cap=run_cap)
     meter.install()
-    catcher = MoneyCatcher(out / "money" / f"{args.label}.jsonl")
+    catcher = GuardCatcher(out / "money" / f"{args.label}.jsonl", out / "rejections" / f"{args.label}.jsonl")
     catcher.install()
     verdict_path = out / "verdicts" / f"{args.label}.jsonl"
     verdict_path.parent.mkdir(parents=True, exist_ok=True)
     (out / "runs").mkdir(exist_ok=True)
 
-    pack = build_local_pack(FIXED_OPTIONS.crime_key)
+    pack = build_local_pack(args.crime)
     sessions: list[dict] = []
     stop: str | None = None
     try:
-        case = await load_or_create_case(out, settings, pack)
+        case = await load_or_create_case(out, args, settings, pack)
         shape = CaseShape(case.options.victim_present, case.options.witness_count, case.options.has_related_party)
         for index in range(1, args.sessions + 1):
             catcher.session = index
@@ -384,6 +475,7 @@ async def main(args: argparse.Namespace) -> int:
                 verdict_records = [r for r in ctx.recorder.records if r.call_type == "verdict"]
                 sessions.append({"session": index, **session_metrics(ctx, pauses, status),
                                  "verdict_attempts": len(verdict_records)})
+                write_transcript(out / "transcripts" / f"{args.label}_{index}.jsonl", ctx)
                 if ctx.verdict is not None:
                     with verdict_path.open("a", encoding="utf-8") as fh:
                         fh.write(json.dumps({"session": index, "verdict": json.loads(
@@ -398,14 +490,17 @@ async def main(args: argparse.Namespace) -> int:
         ledger["runs"].append({"label": args.label, "calls": meter.used})
         _save_ledger(out, ledger)
 
-    money_rows = [json.loads(line) for line in catcher.path.read_text(encoding="utf-8").splitlines()] \
-        if catcher.path.exists() else []
+    money_rows = _read_jsonl(catcher.money_path)
+    rejections = _read_jsonl(catcher.reject_path)
+    judgements = Counter(f"{reason_of(v)}:{verdict}" for row in rejections for v, verdict in row["judgement"].items())
     report = {
         "label": args.label, "role": args.role, "stop": stop, "gemini_calls_this_run": meter.used,
         "gemini_calls_series": sum(r["calls"] for r in ledger["runs"]),
         "sessions": sessions,
         "money_categories": dict(Counter(r["category"] for r in money_rows)),
         "money_by_slot": dict(Counter(r["slot"] for r in money_rows)),
+        "money_forms": dict(Counter(r["form"] for r in money_rows)),
+        "rejection_judgements": dict(sorted(judgements.items())),
     }
     (out / "runs" / f"{args.label}.json").write_text(json.dumps(report, ensure_ascii=False, indent=1),
                                                      encoding="utf-8")
@@ -419,6 +514,9 @@ if __name__ == "__main__":
     parser.add_argument("--label", required=True)
     parser.add_argument("--sessions", type=int, default=2)
     parser.add_argument("--role", choices=("nguoi_xem", "bi_cao"), default="nguoi_xem")
+    parser.add_argument("--crime", default=FIXED_CRIME, choices=("blhs_134", "blhs_171", "blhs_173", "blhs_174"))
+    parser.add_argument("--khoan", default=FIXED_KHOAN, choices=("1", "2"))
+    parser.add_argument("--seed", type=int, default=FIXED_SEED)
     parser.add_argument("--per-session-cap", type=int, default=28)
     parser.add_argument("--series-cap", type=int, default=90, help="hard cap on calls across every run in --out")
     sys.exit(asyncio.run(main(parser.parse_args())))

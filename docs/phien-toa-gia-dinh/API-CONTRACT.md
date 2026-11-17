@@ -174,7 +174,7 @@ Dùng khi mở trang phiên, sau khi tải lại trang, và sau mỗi 409. Cũng
     "BI_CAO":  { "id": "BI_CAO",  "role": "Bị cáo", "name": "<tên giả định>", "gender": "nu" }
   },
   "case_file": { "...": "xem Mục 7" },
-  "steps": [ { "number": 1, "title": "Thư ký báo cáo sự có mặt", "legal_basis": ["300", "288", "..."] } ],
+  "steps": [ { "number": 1, "title": "Thư ký báo cáo sự có mặt", "legal_basis": ["300", "288", "...", "297"] } ],
   "utterances": [ { "...": "xem Mục 4, sự kiện utterance" } ]
 }
 ```
@@ -591,7 +591,7 @@ Các bước không có ★ do AI làm hết. Người dùng chỉ thấy `advan
   "step": 5,
   "title": "Kiểm sát viên và luật sư xét hỏi",
   "text": "<đoạn văn tĩnh, tối đa 80 từ>",
-  "legal_basis": ["307", "317", "318"],
+  "legal_basis": ["307", "309", "310", "311", "318"],
   "reviewed": true
 }
 ```
@@ -883,7 +883,7 @@ Một mục chưa làm được (ví dụ bước 2, trước khi khai mạc):
 | `mitigating_points` / `aggravating_points` | Điểm của Điều 51 khoản 1 (và khoản 2: tình tiết khác, không có điểm, gửi `"diem": ""`) / Điều 52 khoản 1. Mỗi tình tiết bắt buộc chọn ≥1 sự việc trong `facts` (mô tả lấy từ `case_file.facts`) |
 | `exhibits` | Mỗi id phải có một cách xử lý (`dispositions`): trả lại · tịch thu nộp ngân sách · tịch thu tiêu hủy · lưu hồ sơ. Mô tả lấy từ `case_file.evidence` |
 | Án phí | Hai ô chọn "bị cáo chịu án phí hình sự sơ thẩm" / "… dân sự sơ thẩm". **Không có số tiền**: mức án phí không có trong corpus, lời tuyên ghi "theo quy định của pháp luật" |
-| `penalty_types` | `phat_tien` chỉ hợp lệ khi khung có phạt tiền là hình phạt chính (không khoản nào của 4 tội hiện có) hoặc qua khoản 3 Điều 54; `khong` chỉ khi không có tội. `fine_vnd` chỉ gửi khi `phat_tien` |
+| `penalty_types` | `phat_tien` chỉ hợp lệ khi khung có phạt tiền là hình phạt chính (không khoản nào của 4 tội hiện có) hoặc qua khoản 3 Điều 54; `khong` chỉ khi không có tội. `fine_vnd` chỉ gửi khi `phat_tien` (backend từ 18/11/2026 chấp nhận `fine_vnd` kèm hình phạt chính khác là phạt tiền bổ sung theo khoản 5 Điều 171, 173, 174; form chưa có ô này, làm sau) |
 
 **Kiểm tra form** (`check.errors` chặn chốt; `check.warnings` chỉ là lưu ý, vẫn chốt được; mọi mục có `field` để hiện cạnh trường và `basis` để hiện căn cứ). Đây là phản hồi, không chấm điểm:
 
@@ -893,7 +893,8 @@ Một mục chưa làm được (ví dụ bước 2, trước khi khai mạc):
 | `khoan_unknown` | lỗi | Khoản không có hoặc không phải khoản quy định khung | Điều tội danh BLHS |
 | `khoan_heavier` | **cảnh báo** | Khoản nặng hơn khoản đã truy tố (quyết định Q9) | khoản 2, 3 Điều 298 BLTTHS |
 | `diem_unknown`, `diem_minor` | lỗi | Điểm không có trong khoản; điểm liên quan người dưới 18 tuổi | Điều tội danh BLHS |
-| `circumstance_unknown`, `circumstance_no_fact`, `circumstance_unknown_fact` | lỗi | Tình tiết không có thật trong Điều 51/52; không gắn sự việc; sự việc không có | Điều 51, 52 BLHS; khoản 2 Điều 326 BLTTHS |
+| `circumstance_unknown`, `circumstance_unknown_fact` | lỗi | Tình tiết không có thật trong Điều 51/52 (khoản 3 Điều 51, khoản 2 Điều 52 là quy tắc, không phải tình tiết); sự việc không có trong hồ sơ | Điều 51, 52 BLHS; khoản 2 Điều 326 BLTTHS |
+| `circumstance_no_fact` | **cảnh báo** (từ 18/11/2026) | Tình tiết không gắn sự việc nào: căn cứ có thể là lời khai tại phiên tòa hoặc nhân thân, không có mã sự việc | khoản 2 Điều 326 BLTTHS |
 | `conviction_without_penalty` | lỗi | Có tội mà `penalty_type = khong` | điểm d khoản 3 Điều 326 BLTTHS, Điều 59 BLHS |
 | `penalty_months`, `prison_general_range` | lỗi | Không có số tháng; tù ngoài 03 tháng–20 năm | khoản 1 Điều 38 BLHS |
 | `above_frame` | lỗi | Trên mức cao nhất của khung | Điều tội danh BLHS |
@@ -901,7 +902,10 @@ Một mục chưa làm được (ví dụ bước 2, trước khi khai mạc):
 | `dieu54_conditions` | lỗi | Áp dụng Điều 54 mà chưa có 2 tình tiết khoản 1 Điều 51 | khoản 1 Điều 54 BLHS |
 | `below_adjacent_frame` | lỗi | Áp dụng Điều 54 nhưng dưới khung liền kề nhẹ hơn | khoản 1 Điều 54 BLHS |
 | `non_custodial_range`, `non_custodial_frame`, `non_custodial_class`, `non_custodial_not_in_frame` | lỗi | Cải tạo không giam giữ ngoài 06 tháng–03 năm; vượt mức của khoản; tội rất nghiêm trọng; khung không có mà không đủ điều kiện Điều 54 | khoản 1 Điều 36, khoản 1 Điều 9, khoản 1 và 3 Điều 54 BLHS |
-| `fine_min`, `fine_not_in_frame`, `fine_not_main` | lỗi | Phạt tiền < 1.000.000 đồng; khung không có phạt tiền chính; ghi tiền phạt khi hình phạt chính không phải phạt tiền | khoản 1, 3 Điều 35, khoản 3 Điều 54 BLHS |
+| `fine_min`, `fine_not_in_frame` | lỗi | Phạt tiền < 1.000.000 đồng; khung không có phạt tiền chính | khoản 1, 3 Điều 35, khoản 3 Điều 54 BLHS |
+| `fine_not_main` | lỗi | `fine_vnd` khi hình phạt chính không phải phạt tiền **và** Điều tội danh không quy định phạt tiền bổ sung (Điều 134), hoặc khi tuyên không phạm tội. Từ 18/11/2026, `fine_vnd` kèm hình phạt chính khác là **phạt tiền bổ sung**, hợp lệ ở Điều 171, 173, 174 | khoản 3 Điều 32, khoản 2 Điều 35 BLHS |
+| `fine_additional_range` | lỗi | Phạt tiền bổ sung ngoài mức của khoản 5 Điều tội danh (171, 174: 10.000.000–100.000.000 đồng; 173: 5.000.000–50.000.000 đồng) | khoản 5 Điều tội danh, điểm e khoản 2 Điều 32 BLHS |
+| `fine_additional_unchecked` | cảnh báo | Hệ thống chưa tách được mức phạt tiền bổ sung | khoản phạt bổ sung của Điều tội danh |
 | `suspended_prison`, `probation_range`, `probation_without_suspension` | lỗi | Án treo với tù > 03 năm hoặc không phải tù; thử thách ngoài 01–05 năm; thử thách mà không có án treo | khoản 1 Điều 65 BLHS |
 | `acquittal_with_penalty`, `acquittal_criminal_fee` | lỗi | Không có tội mà có hình phạt/án treo; mà bị cáo chịu án phí hình sự | khoản 3 Điều 326, khoản 2 Điều 136 BLTTHS |
 | `exhibit_missing`, `exhibit_unknown`, `exhibit_duplicate` | lỗi | Vật chứng chưa có cách xử lý; id không phải vật chứng; trùng | điểm e khoản 3 Điều 326, khoản 1 Điều 106 BLTTHS |

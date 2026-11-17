@@ -66,12 +66,10 @@ from app.prompts.trial_prompts import (
     VERDICT_SYSTEM_PROMPT,
 )
 from app.services.trial_case_validator import (
-    MONEY_PATTERN,
     PERCENT_PATTERN,
     declared_amounts,
     declared_percents,
     office_name_mismatches,
-    parse_money,
 )
 from app.services.trial_config import (
     BLHS_DOCUMENT,
@@ -91,6 +89,7 @@ from app.services.trial_defendant import (
 )
 from app.services.trial_legal_pack import LegalPack
 from app.services.trial_metrics import CallRecord, TrialCallRecorder
+from app.services.trial_money import money_mentions, money_values, word_amounts
 from app.services.trial_names import NAME_LIKE_PATTERN, placeholders_in, render
 from app.services import trial_presiding
 from app.services.trial_rule9 import (
@@ -395,8 +394,8 @@ def money_amounts(ctx: TrialContext) -> dict[int, list[str]]:
         if len(valued) > 1 or sum(valued) not in labelled:
             add(sum(valued), "tổng giá trị các chứng cứ có định giá")
     for fact in ctx.fact_ledger:
-        for match in MONEY_PATTERN.finditer(fact["fact"]):
-            add(parse_money(match.group(1)), "dữ kiện đã nêu tại phiên tòa")
+        for value in money_values(fact["fact"]):
+            add(value, "dữ kiện đã nêu tại phiên tòa")
     if ctx.verdict is not None:
         add(ctx.verdict.civil_amount_vnd or None, "số tiền bồi thường Hội đồng xét xử đã quyết định")
         add(ctx.verdict.fine_vnd or None, "mức phạt tiền Hội đồng xét xử đã quyết định")
@@ -460,7 +459,7 @@ def _known_numbers(ctx: TrialContext) -> tuple[set[int], set[int]]:
     amounts = declared_amounts(ctx.case.draft, crime)
     percents = declared_percents(ctx.case.draft, crime)
     for fact in ctx.fact_ledger:
-        amounts.update(parse_money(m.group(1)) for m in MONEY_PATTERN.finditer(fact["fact"]))
+        amounts.update(money_values(fact["fact"]))
         percents.update(int(m.group(1)) for m in PERCENT_PATTERN.finditer(fact["fact"]))
     if ctx.verdict is not None:
         if ctx.verdict.civil_amount_vnd:
@@ -527,10 +526,12 @@ def _check_utterance(ctx: TrialContext, speaker_id: str, text: str, allowed: tup
     amounts |= extra_amounts
     if speaker_id in LEGAL_SPEAKER_IDS and pack is not None:
         # Thresholds and fine ranges quoted from the articles in this call's context are not case facts.
-        amounts = amounts | {parse_money(m.group(1)) for a in pack.articles.values()
-                             for m in MONEY_PATTERN.finditer(a.text)}
-    if any(parse_money(m.group(1)) not in amounts for m in MONEY_PATTERN.finditer(text)):
+        amounts = amounts | {v for a in pack.articles.values() for v in money_values(a.text)}
+    # Digits and digit + unit forms are compared ("12,5 triệu đồng" is 12.500.000); words only are measured.
+    if any(m.value not in amounts for m in money_mentions(text)):
         violations.append("unknown_amount")
+    if word_amounts(text):
+        flags.append("amount_in_words")
     if any(int(m.group(1)) not in percents for m in PERCENT_PATTERN.finditer(text)):
         violations.append("unknown_percent")
     pattern = _SPEAKS_FOR_STUDENT.get(ctx.student_id or "")
@@ -621,8 +622,7 @@ async def _generate_segment(ctx: TrialContext, slot_key: str, instruction: str,
         for fact in out.new_facts:
             # A new "fact" carrying a money amount the case does not hold would make that amount
             # legitimate for every later turn (the ledger feeds _known_numbers): dropped.
-            if fact.about in ctx.case.participants and all(
-                    parse_money(m.group(1)) in amounts for m in MONEY_PATTERN.finditer(fact.fact)):
+            if fact.about in ctx.case.participants and money_values(fact.fact) <= amounts:
                 ctx.fact_ledger.append({"about": fact.about, "fact": fact.fact})
         return produced
     raise TrialGuardFailure(slot_key, last_violations)
@@ -1113,7 +1113,7 @@ def _student_flags(ctx: TrialContext, text: str) -> list[str]:
     if ctx.state.user_role != DEFENDANT_ROLE:
         return []
     amounts, percents = _known_numbers(ctx)
-    if (any(parse_money(m.group(1)) not in amounts for m in MONEY_PATTERN.finditer(text))
+    if (any(value not in amounts for value in money_values(text))
             or any(int(m.group(1)) not in percents for m in PERCENT_PATTERN.finditer(text))):
         return ["user_amount_off_file"]
     return []
