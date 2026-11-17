@@ -65,6 +65,8 @@ D65 = 'Đ65 k1 BLHS: "xử phạt tù không quá 03 năm ... thời gian thử 
 D298 = 'Đ298 k2 BLTTHS: "theo khoản khác với khoản mà Viện kiểm sát đã truy tố trong cùng một điều luật"'
 D51_3 = 'Đ51 k3 BLHS: "dấu hiệu định tội hoặc định khung thì không được coi là tình tiết giảm nhẹ" (quy tắc)'
 D52_2 = 'Đ52 k2 BLHS: "dấu hiệu định tội hoặc định khung hình phạt thì không được coi là tình tiết tăng nặng" (quy tắc)'
+D32 = 'Đ32 k2 điểm e BLHS: "Phạt tiền, khi không áp dụng là hình phạt chính"; k3: "chỉ bị áp dụng một hình phạt chính và có thể bị áp dụng một hoặc một số hình phạt bổ sung"'
+D173_5 = 'Đ173 k5: "còn có thể bị phạt tiền từ 5.000.000 đồng đến 50.000.000 đồng"'
 D326 = 'Đ326 k2 BLTTHS: "Việc nghị án chỉ được căn cứ vào những chứng cứ, tài liệu đã được thẩm tra tại phiên tòa"'
 
 TABLE: tuple[Case, ...] = (
@@ -127,12 +129,27 @@ TABLE: tuple[Case, ...] = (
     Case("Tình tiết khoản 1 Điều 51 không có điểm", "173", "1", {"mitigating": [{"khoan": "1", "diem": "",
                                                                                  "fact_ids": ["F2"]}]},
          "block", "circumstance_unknown", 'Đ51 k1 BLHS: các tình tiết là các điểm "a) ... x)"', "lot"),
-    Case("Tình tiết không gắn sự việc", "134", "1", {"mitigating": [{"khoan": "1", "diem": "s", "fact_ids": []}]},
-         "block", "circumstance_no_fact", D326, "lot"),
+    Case("Tình tiết không gắn sự việc (căn cứ là lời khai tại phiên tòa)", "134", "1",
+         {"mitigating": [{"khoan": "1", "diem": "s", "fact_ids": []}]}, "warn", "circumstance_no_fact", D326),
     Case("Thử thách mà không có án treo", "173", "1", {"probation_months": 24}, "block",
          "probation_without_suspension", D65, "lot"),
-    Case("Phạt tiền kèm tù (hình phạt bổ sung chưa mô phỏng)", "173", "1", {"fine_vnd": 5_000_000}, "block",
-         "fine_not_main", 'Đ35 k1 BLHS (phạt tiền là hình phạt chính); bổ sung: ngoài phạm vi mô phỏng', "lot"),
+    Case("173 tù kèm phạt tiền bổ sung 5.000.000", "173", "1", {"fine_vnd": 5_000_000}, "pass", None,
+         f"{D32}; {D173_5}"),
+    Case("171 tù kèm phạt tiền bổ sung 100.000.000", "171", "1", {"fine_vnd": 100_000_000}, "pass", None,
+         f"{D32}; Đ171 k5: \"còn có thể bị phạt tiền từ 10.000.000 đồng đến 100.000.000 đồng\""),
+    Case("174 CTKGG kèm phạt tiền bổ sung 20.000.000", "174", "1",
+         {"penalty_type": NC, "fine_vnd": 20_000_000}, "pass", None,
+         f"{D32}; Đ174 k5: \"còn có thể bị phạt tiền từ 10.000.000 đồng đến 100.000.000 đồng\""),
+    Case("134 tù kèm phạt tiền (Điều 134 không có phạt tiền bổ sung)", "134", "1", {"fine_vnd": 5_000_000},
+         "block", "fine_not_main", f"{D32}; Đ35 k2 BLHS: \"những tội phạm khác do Bộ luật này quy định\"", "lot"),
+    Case("173 phạt tiền bổ sung 60.000.000 (vượt khoản 5)", "173", "2",
+         {"khoan": "2", "penalty_months": 30, "fine_vnd": 60_000_000}, "block", "fine_additional_range", D173_5, "lot"),
+    Case("171 phạt tiền bổ sung 5.000.000 (dưới khoản 5)", "171", "1", {"fine_vnd": 5_000_000}, "block",
+         "fine_additional_range", 'Đ171 k5: "phạt tiền từ 10.000.000 đồng"', "lot"),
+    Case("Không phạm tội mà có phạt tiền", "174", "1", {"guilty": False, "penalty_type": "khong",
+                                                        "penalty_months": None, "mitigating": [],
+                                                        "fine_vnd": 10_000_000}, "block", "fine_not_main",
+         "Đ326 k3 điểm c BLTTHS; Đ32 k3 BLHS", "lot"),
     # --- unlawful, blocked before and after ---------------------------------------------------------
     Case("173k1 tù 40 tháng", "173", "1", {"penalty_months": 40}, "block", "above_frame",
          'Đ173 k1: "đến 03 năm"'),
@@ -280,6 +297,9 @@ class VerdictWiringTests(unittest.TestCase):
         lightest = hard_constraints_text(case_file("171", "1"), pack_for("blhs_171"))
         self.assertIn("phạt tù từ 12 tháng đến 60 tháng.", lightest)
         self.assertIn("khoản 3 Điều 54", lightest)
+        self.assertIn("fine_vnd từ 10000000 đến 100000000 (khoản 5 Điều 174", text)
+        no_fine = hard_constraints_text(case_file("134", "1"), pack_for("blhs_134"))
+        self.assertIn("Điều 134 Bộ luật Hình sự không quy định phạt tiền bổ sung", no_fine)
         heavy = hard_constraints_text(case_file("171", "2"), pack_for("blhs_171"))
         self.assertIn("không được phạt cải tạo không giam giữ", heavy)
         self.assertNotIn("hoặc cải tạo không giam giữ (khoản 1 Điều 54", heavy)

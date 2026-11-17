@@ -40,7 +40,7 @@ def check_decision(decision: ChairDecision, case: CaseFile, pack: LegalPack) -> 
     rules.circumstances(decision, case, pack, check)
     _reasoning(decision, check)
     rules.exhibits(decision, case, check)
-    rules.fine_and_civil_amounts(decision, case, check)
+    rules.fine_and_civil_amounts(decision, case, pack, check)
     rules.civil_over_claim(decision, case, check)
     rules.civil_fee(decision, check)
     if not decision.guilty:

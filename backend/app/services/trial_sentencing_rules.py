@@ -53,7 +53,9 @@ Severity = Literal["hard", "soft"]
 # Code -> severity: the single table both deciders read. Basis per rule is in the message's `basis`.
 RULES: dict[str, Severity] = {
     # Circumstances (Điều 51 khoản 1-2, Điều 52 khoản 1 BLHS; khoản 2 Điều 326 BLTTHS)
-    "circumstance_unknown": "hard", "circumstance_no_fact": "hard", "circumstance_unknown_fact": "hard",
+    # circumstance_no_fact is soft: khoản 2 Điều 326 BLTTHS bases nghị án on everything examined at the
+    # hearing, which includes testimony and the defendant's background - neither has a fact id (nhóm B+).
+    "circumstance_unknown": "hard", "circumstance_no_fact": "soft", "circumstance_unknown_fact": "hard",
     "mitigating_other_reason": "soft", "aggravating_frame_overlap": "soft",
     # Charge limits (Điều 298 BLTTHS) and the article text
     "charge_article": "hard", "khoan_unknown": "hard", "khoan_heavier": "soft",
@@ -64,7 +66,10 @@ RULES: dict[str, Severity] = {
     "below_adjacent_frame": "hard", "adjacent_frame_unchecked": "soft", "dieu54_conditions": "hard",
     "non_custodial_range": "hard", "non_custodial_class": "hard", "non_custodial_frame": "hard",
     "non_custodial_not_in_frame": "hard",
-    "fine_min": "hard", "fine_not_in_frame": "hard", "fine_not_main": "hard",
+    "fine_min": "hard", "fine_not_in_frame": "hard",
+    # fine_vnd beside another main penalty is an ADDITIONAL fine (điểm e khoản 2, khoản 3 Điều 32 BLHS):
+    # blocked only where the charged article provides none, or outside the article's range.
+    "fine_not_main": "hard", "fine_additional_range": "hard", "fine_additional_unchecked": "soft",
     # Án treo (Điều 65 khoản 1 BLHS)
     "suspended_prison": "hard", "probation_range": "hard", "probation_without_suspension": "hard",
     "suspended_without_mitigating": "soft",
@@ -82,6 +87,8 @@ _UNIT_MONTHS = {"năm": 12, "tháng": 1}
 _PRISON_RANGE = re.compile(r"phạt\s+tù\s+từ\s+(\d+)\s+(năm|tháng)\s+đến\s+(\d+)\s+(năm|tháng)", re.IGNORECASE)
 _NON_CUSTODIAL = re.compile(r"cải\s+tạo\s+không\s+giam\s+giữ\s+đến\s+(\d+)\s+(năm|tháng)", re.IGNORECASE)
 _FINE_MAIN = re.compile(r"phạt\s+tiền\s+từ", re.IGNORECASE)
+_ADDITIONAL_FINE = re.compile(r"còn\s+có\s+thể\s+bị\s+phạt\s+tiền", re.IGNORECASE)
+_FINE_RANGE = re.compile(r"phạt\s+tiền\s+từ\s+([\d.]+)\s+đồng\s+đến\s+([\d.]+)\s+đồng", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -108,6 +115,24 @@ def parse_penalty_frame(khoan: Khoan) -> PenaltyFrame | None:
                                   if non_custodial else None),
         fine_as_main=bool(_FINE_MAIN.search(head.split("phạt tù")[0])),
     )
+
+
+@dataclass(frozen=True)
+class AdditionalFine:
+    khoan: str
+    range_vnd: tuple[int, int] | None   # None: the khoản provides a fine but its range was not parsed
+
+
+def additional_fine(article: LegalArticle) -> AdditionalFine | None:
+    """The khoản of a crime article that provides a fine as an additional penalty ("Người phạm tội còn có
+    thể bị phạt tiền từ ... đồng đến ... đồng", khoản 5 of Điều 171, 173, 174); None when it has none."""
+    for number in sorted(article.khoans, key=int):
+        head = " ".join(article.khoans[number].head.split())
+        if _ADDITIONAL_FINE.search(head):
+            found = _FINE_RANGE.search(head)
+            bounds = (int(found.group(1).replace(".", "")), int(found.group(2).replace(".", ""))) if found else None
+            return AdditionalFine(number, bounds)
+    return None
 
 
 def is_penalty_khoan(article: LegalArticle, khoan: str) -> bool:
@@ -175,12 +200,35 @@ def circumstances(decision: Verdict, case: CaseFile, pack: LegalPack, check: Rul
                   "phạt thì không được coi là tình tiết tăng nặng.", f"khoản 2 Điều 52 {BLHS}")
 
 
-def fine_and_civil_amounts(decision: Verdict, case: CaseFile, check: RuleCheck) -> None:
+def fine_and_civil_amounts(decision: Verdict, case: CaseFile, pack: LegalPack, check: RuleCheck) -> None:
     if decision.fine_vnd is not None and decision.penalty_type != "phat_tien":
-        check.add("fine_not_main", "fine_vnd", "Chỉ ghi số tiền phạt khi hình phạt chính là phạt tiền; hình phạt "
-                  "bổ sung chưa có trong bản mô phỏng.", f"khoản 1 Điều 35 {BLHS}")
+        _additional_fine(decision, pack, check)
     if decision.civil_amount_vnd is not None and decision.civil_amount_vnd < 0:
         check.add("civil_negative", "civil_amount_vnd", "Số tiền bồi thường không được âm.", f"khoản 1 Điều 48 {BLHS}")
+
+
+def _additional_fine(decision: Verdict, pack: LegalPack, check: RuleCheck) -> None:
+    """fine_vnd with another main penalty: the decision model has one fine field, so it is the additional
+    fine of điểm e khoản 2 Điều 32 BLHS ("Phạt tiền, khi không áp dụng là hình phạt chính")."""
+    basis = (f"khoản 3 Điều 32 {BLHS}", f"khoản 2 Điều 35 {BLHS}")
+    if not decision.guilty:
+        check.add("fine_not_main", "fine_vnd", "Tuyên không phạm tội thì không có phạt tiền.", *basis)
+        return
+    article = pack.get(BLHS_DOCUMENT, decision.dieu)
+    if article is None:
+        return   # the article is not the charged one: charge_article reports it
+    provided = additional_fine(article)
+    if provided is None:
+        check.add("fine_not_main", "fine_vnd", f"Điều {decision.dieu} {BLHS} không quy định phạt tiền là hình phạt "
+                  "bổ sung: chỉ ghi số tiền phạt khi hình phạt chính là phạt tiền.", *basis)
+    elif provided.range_vnd is None:
+        check.add("fine_additional_unchecked", "fine_vnd", "Hệ thống chưa kiểm được mức phạt tiền bổ sung của điều "
+                  "luật.", f"khoản {provided.khoan} Điều {decision.dieu} {BLHS}")
+    elif not provided.range_vnd[0] <= decision.fine_vnd <= provided.range_vnd[1]:
+        low, high = (f"{v:,}".replace(",", ".") for v in provided.range_vnd)
+        check.add("fine_additional_range", "fine_vnd", f"Phạt tiền bổ sung theo khoản {provided.khoan} Điều "
+                  f"{decision.dieu} {BLHS} từ {low} đồng đến {high} đồng.",
+                  f"khoản {provided.khoan} Điều {decision.dieu} {BLHS}", f"điểm e khoản 2 Điều 32 {BLHS}")
 
 
 def civil_over_claim(decision: Verdict, case: CaseFile, check: RuleCheck) -> None:
@@ -385,7 +433,7 @@ def check_ai_decision(decision: Verdict, case: CaseFile, pack: LegalPack) -> Rul
     """Every shared rule that applies to the Verdict fields, in the Chủ tọa's order."""
     check = RuleCheck()
     circumstances(decision, case, pack, check)
-    fine_and_civil_amounts(decision, case, check)
+    fine_and_civil_amounts(decision, case, pack, check)
     civil_over_claim(decision, case, check)
     if not decision.guilty:
         acquittal_penalty(decision, check)
@@ -396,6 +444,17 @@ def check_ai_decision(decision: Verdict, case: CaseFile, pack: LegalPack) -> Rul
 
 def _months_text(months: int) -> str:
     return f"{months} tháng"
+
+
+def _additional_fine_line(dieu: str, article: LegalArticle) -> str:
+    provided = additional_fine(article)
+    if provided is None or provided.range_vnd is None:
+        return (f"- Điều {dieu} Bộ luật Hình sự không quy định phạt tiền bổ sung: nếu hình phạt chính không phải "
+                "phạt tiền thì fine_vnd để null.")
+    low, high = provided.range_vnd
+    return (f"- Phạt tiền bổ sung (khi hình phạt chính không phải phạt tiền) là tùy nghi; nếu áp dụng, fine_vnd từ "
+            f"{low} đến {high} (khoản {provided.khoan} Điều {dieu} Bộ luật Hình sự; khoản 3 Điều 32 Bộ luật Hình sự). "
+            "Không áp dụng thì để null.")
 
 
 def hard_constraints_text(case: CaseFile, pack: LegalPack) -> str:
@@ -436,7 +495,8 @@ def hard_constraints_text(case: CaseFile, pack: LegalPack) -> str:
     lines += [
         f"- Cải tạo không giam giữ: penalty_months từ {NON_CUSTODIAL_MIN_MONTHS} đến {NON_CUSTODIAL_MAX_MONTHS} "
         f"(khoản 1 Điều 36 Bộ luật Hình sự). Phạt tiền là hình phạt chính: fine_vnd không dưới {FINE_MIN_VND} "
-        "(khoản 3 Điều 35 Bộ luật Hình sự); ngoài trường hợp đó fine_vnd để null.",
+        "(khoản 3 Điều 35 Bộ luật Hình sự).",
+        _additional_fine_line(charge.dieu, article),
         f"- Án treo: chỉ khi phạt tù không quá {SUSPENDED_MAX_PRISON_MONTHS} tháng; probation_months từ "
         f"{PROBATION_MIN_MONTHS} đến {PROBATION_MAX_MONTHS}; không có án treo thì probation_months để null "
         "(khoản 1 Điều 65 Bộ luật Hình sự).",

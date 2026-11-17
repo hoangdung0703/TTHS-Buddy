@@ -95,7 +95,11 @@ class DecisionCheckTests(unittest.TestCase):
         self.assertIn("fine_not_in_frame", codes(decision(**fine, fine_vnd=5_000_000))[0])
         self.assertIn("fine_min", codes(decision(**fine, fine_vnd=500_000, applies_dieu_54=True))[0])
         self.assertEqual(codes(decision(**fine, fine_vnd=5_000_000, applies_dieu_54=True))[0], set())
-        self.assertIn("fine_not_main", codes(decision(fine_vnd=5_000_000))[0])
+        # Nhóm B+: fine_vnd beside prison is an additional fine (điểm e khoản 2, khoản 3 Điều 32 BLHS); Điều 173
+        # khoản 5 provides one "từ 5.000.000 đồng đến 50.000.000 đồng", Điều 134 none.
+        self.assertEqual(codes(decision(fine_vnd=5_000_000))[0], set())
+        self.assertIn("fine_additional_range", codes(decision(fine_vnd=1_000_000))[0])
+        self.assertIn("fine_not_main", codes(decision(dieu="134", fine_vnd=5_000_000), crime="134")[0])
 
     def test_suspended_sentence(self):
         self.assertEqual(codes(decision(suspended=True, probation_months=24))[0], set())
@@ -107,8 +111,9 @@ class DecisionCheckTests(unittest.TestCase):
     def test_circumstances(self):
         self.assertIn("circumstance_unknown", codes(decision(mitigating=[{"khoan": "1", "diem": "zz",
                                                                           "fact_ids": ["F2"]}]))[0])
+        # Nhóm B+: a warning - khoản 2 Điều 326 BLTTHS also covers testimony and background with no fact id.
         self.assertIn("circumstance_no_fact", codes(decision(mitigating=[{"khoan": "1", "diem": "s",
-                                                                          "fact_ids": []}]))[0])
+                                                                          "fact_ids": []}]))[1])
         self.assertIn("circumstance_unknown_fact", codes(decision(mitigating=[{"khoan": "1", "diem": "s",
                                                                                "fact_ids": ["F9"]}]))[0])
 
