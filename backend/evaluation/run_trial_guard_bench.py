@@ -6,7 +6,8 @@ What is fixed, so two runs compare like for like:
   Gemini ONCE and cached in --out/case.json, every later run (baseline and after) replays that exact
   file. Delete the cache only to start a new series.
 - the legal pack: built from ingestion/chunks.json (the payloads Qdrant holds), no network;
-- the role: Người xem, so every slot is an AI slot and no scripted student text is involved;
+- the role: Người xem by default, so every slot is an AI slot and no scripted student text is involved;
+  --role bi_cao answers every question with a fixed line (no LLM) to check that role end to end;
 - the optional legal-team style card is switched off (it lives in data/private/, absent in production).
 What stays random: every hearing utterance, the nghị án decision and the tuyên án text (Gemini at the
 production temperatures), hence the guard outcomes this bench measures.
@@ -54,8 +55,18 @@ from app.services.trial_case_validator import MONEY_PATTERN, parse_money
 from app.services.trial_config import get_crime
 from app.services.trial_legal_pack import LegalPack, build_pack, missing_keys, pack_request_for_crime
 from app.services.trial_metrics import TrialCallRecorder
-from app.services.trial_state_machine import CaseShape, UserAction, apply_user_action, awaiting, new_session
-from app.services.trial_turn_service import TrialContext, TrialGuardFailure, run_until_user
+from app.services.trial_defendant import identity_prefill
+from app.services.trial_state_machine import (
+    CaseShape,
+    UserAction,
+    allowed_actions,
+    apply_user_action,
+    awaiting,
+    current_slot,
+    is_interleaved,
+    new_session,
+)
+from app.services.trial_turn_service import TrialContext, TrialGuardFailure, apply_student_action, run_until_user
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHUNKS_PATH = REPO_ROOT / "ingestion" / "chunks.json"
@@ -262,7 +273,30 @@ def session_metrics(ctx: TrialContext, pauses: list[dict], status: str) -> dict:
     }
 
 
-async def play_observer(ctx: TrialContext, pauses: list[dict]) -> str:
+# Bị cáo (--role bi_cao): fixed answers, no LLM. Every question is answered the same way; the optional
+# turns of steps 7-8 are skipped. Enough to check the role still runs through all 11 steps.
+DEFENDANT_ANSWER = ("Dạ thưa Hội đồng xét xử, bị cáo xin trình bày đúng như lời khai trong hồ sơ, bị cáo không có "
+                    "ý kiến gì thêm.")
+
+
+def _student_turn(ctx: TrialContext) -> None:
+    state = ctx.state
+    slot = current_slot(state)
+    if state.user_role == "nguoi_xem" or slot is None:
+        ctx.state = apply_user_action(state, UserAction("advance", state.current_step, state.version,
+                                                        target_step=state.current_step + 1)).state
+        return
+    if is_interleaved(slot, state.user_role):
+        first_identity = slot.key == "khai_mac" and state.slot_user_turns == 0
+        text = identity_prefill(ctx.case) if first_identity else DEFENDANT_ANSWER
+        apply_student_action(ctx, UserAction("speak", state.current_step, state.version, text=text))
+    elif "end_slot" in allowed_actions(state):
+        apply_student_action(ctx, UserAction("end_slot", state.current_step, state.version))
+    else:
+        raise RuntimeError(f"unscripted student slot {slot.key}")
+
+
+async def play(ctx: TrialContext, pauses: list[dict]) -> str:
     consecutive = 0
     while ctx.state.status == "active":
         if awaiting(ctx.state) == "ai":
@@ -275,9 +309,7 @@ async def play_observer(ctx: TrialContext, pauses: list[dict]) -> str:
                 if consecutive >= BREAKER_PAUSES:
                     return "breaker"
             continue
-        state = ctx.state
-        ctx.state = apply_user_action(state, UserAction("advance", state.current_step, state.version,
-                                                        target_step=state.current_step + 1)).state
+        _student_turn(ctx)
     return ctx.state.status
 
 
@@ -335,12 +367,12 @@ async def main(args: argparse.Namespace) -> int:
         shape = CaseShape(case.options.victim_present, case.options.witness_count, case.options.has_related_party)
         for index in range(1, args.sessions + 1):
             catcher.session = index
-            ctx = TrialContext(case=case, pack=pack, state=new_session("nguoi_xem", shape), settings=settings,
+            ctx = TrialContext(case=case, pack=pack, state=new_session(args.role, shape), settings=settings,
                                recorder=TrialCallRecorder())
             pauses: list[dict] = []
             status = "error"
             try:
-                status = await play_observer(ctx, pauses)
+                status = await play(ctx, pauses)
             except BudgetStop:
                 status, stop = "budget_stop", "run cap"
             except httpx.HTTPStatusError as error:
@@ -369,7 +401,7 @@ async def main(args: argparse.Namespace) -> int:
     money_rows = [json.loads(line) for line in catcher.path.read_text(encoding="utf-8").splitlines()] \
         if catcher.path.exists() else []
     report = {
-        "label": args.label, "stop": stop, "gemini_calls_this_run": meter.used,
+        "label": args.label, "role": args.role, "stop": stop, "gemini_calls_this_run": meter.used,
         "gemini_calls_series": sum(r["calls"] for r in ledger["runs"]),
         "sessions": sessions,
         "money_categories": dict(Counter(r["category"] for r in money_rows)),
@@ -386,6 +418,7 @@ if __name__ == "__main__":
     parser.add_argument("--out", required=True, type=Path, help="output directory OUTSIDE the repository")
     parser.add_argument("--label", required=True)
     parser.add_argument("--sessions", type=int, default=2)
+    parser.add_argument("--role", choices=("nguoi_xem", "bi_cao"), default="nguoi_xem")
     parser.add_argument("--per-session-cap", type=int, default=28)
     parser.add_argument("--series-cap", type=int, default=90, help="hard cap on calls across every run in --out")
     sys.exit(asyncio.run(main(parser.parse_args())))

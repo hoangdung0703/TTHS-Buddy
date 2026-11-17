@@ -47,6 +47,9 @@ from app.prompts.trial_prompts import (
     DEFENDANT_TURN_ASK,
     DEFENDANT_TURN_CLOSE,
     DEFENDANT_VERDICT_NOTE,
+    MONEY_BRIEF_LAW_LINE,
+    MONEY_BRIEF_REFERENCE,
+    MONEY_BRIEF_STRICT,
     OBSERVER_ROLE_LINE,
     OBSERVER_RULE_ONE,
     OFFICES_LINE,
@@ -357,6 +360,70 @@ def context_pack(ctx: TrialContext, slot_key: str) -> LegalPack:
     return ctx.pack.subset(articles.values())
 
 
+def _money_text(amount: int) -> str:
+    return f"{amount:,}".replace(",", ".") + " đồng"
+
+
+def money_amounts(ctx: TrialContext) -> dict[int, list[str]]:
+    """Every money amount the money guard accepts in this context, with what it is. Same sources as
+    _known_numbers (a test holds the two sets equal): the case file, the fact ledger, the decision."""
+    draft = ctx.case.draft
+    labelled: dict[int, list[str]] = {}
+
+    def add(amount: int | None, label: str) -> None:
+        if amount is not None:
+            labelled.setdefault(amount, [])
+            if label not in labelled[amount]:
+                labelled[amount].append(label)
+
+    if get_crime(ctx.case.crime_key).measure == "value_vnd":
+        add(draft.measure_value, "giá trị tài sản theo kết luận định giá")
+    for evidence in draft.evidence:
+        add(evidence.value_vnd, f"giá trị ghi trong chứng cứ {evidence.id}")
+    if draft.civil_claim is not None:
+        add(draft.civil_claim.amount_vnd, f"số tiền {{{draft.civil_claim.claimant_id}}} yêu cầu bồi thường")
+    add(draft.compensation_vnd or None, "số tiền bị cáo đã bồi thường, khắc phục")
+    for extra in draft.extra_amounts:
+        add(extra.amount_vnd, extra.label)
+    for statement in draft.pretrial_statements:
+        for item in statement.inconsistencies:
+            add(item.claimed_amount_vnd, f"số tiền {{{statement.person_id}}} khai khác hồ sơ (chỉ nêu khi nói về "
+                                         "mâu thuẫn lời khai, không phải sự thật đã xác định)")
+    if labelled:
+        # declared_amounts also accepts the sum of the evidence values once the case holds any amount.
+        valued = [e.value_vnd for e in draft.evidence if e.value_vnd is not None]
+        if len(valued) > 1 or sum(valued) not in labelled:
+            add(sum(valued), "tổng giá trị các chứng cứ có định giá")
+    for fact in ctx.fact_ledger:
+        for match in MONEY_PATTERN.finditer(fact["fact"]):
+            add(parse_money(match.group(1)), "dữ kiện đã nêu tại phiên tòa")
+    if ctx.verdict is not None:
+        add(ctx.verdict.civil_amount_vnd or None, "số tiền bồi thường Hội đồng xét xử đã quyết định")
+        add(ctx.verdict.fine_vnd or None, "mức phạt tiền Hội đồng xét xử đã quyết định")
+    return labelled
+
+
+# Turns that talk about money (nhóm B, Mục 11.16.3): the case amounts go into their instruction.
+# Lay speakers may not quote law, so their list has no line about amounts in the articles.
+_MONEY_STRICT_SLOTS = frozenset({"luan_toi", "bao_chua", "doi_dap", "bi_cao_tranh_luan", "tuyen_an"})
+_MONEY_LAY_SLOTS = frozenset({"bi_hai_trinh_bay"})
+_MONEY_REFERENCE_SLOTS = frozenset({"nghi_an"})
+
+
+def money_brief(ctx: TrialContext, slot_key: str) -> str:
+    slot = slot_key.split(":")[0]
+    if slot not in _MONEY_STRICT_SLOTS | _MONEY_LAY_SLOTS | _MONEY_REFERENCE_SLOTS:
+        return ""
+    amounts = money_amounts(ctx)
+    lines = "\n".join(f"- {_money_text(a)}: {'; '.join(labels)}" for a, labels in sorted(amounts.items()) if a > 0)
+    if not lines:
+        return ""
+    if slot in _MONEY_REFERENCE_SLOTS:
+        return MONEY_BRIEF_REFERENCE.format(lines=lines)
+    law_line = "" if slot in _MONEY_LAY_SLOTS else MONEY_BRIEF_LAW_LINE
+    return MONEY_BRIEF_STRICT.format(law_line=law_line, lines=lines)
+
+
 def _user_prompt(ctx: TrialContext, instruction: str, speakers: tuple[str, ...], slot_key: str) -> str:
     charged = ctx.case.draft.charge.dieu
     legal = "\n\n".join(a.prompt_block() for a in
@@ -364,13 +431,14 @@ def _user_prompt(ctx: TrialContext, instruction: str, speakers: tuple[str, ...],
     step = STEP_BY_NUMBER[ctx.state.current_step]
     ledger = "\n".join(f"- {{{f['about']}}}: {f['fact']}" for f in ctx.fact_ledger) or "(trống)"
     allowed = ", ".join("{" + s + "}" for s in speakers)
+    money = money_brief(ctx, slot_key)
     return "\n\n".join([
         "=== HỒ SƠ VỤ ÁN ===\n" + _case_block(ctx.case),
         "=== QUY ĐỊNH PHÁP LUẬT ===\n" + legal,
         "=== SỔ DỮ KIỆN ===\n" + ledger,
         "=== DIỄN BIẾN PHIÊN TÒA ===\n" + _transcript_block(ctx),
         f"=== CHỈ DẪN LƯỢT ===\nĐang ở bước {step.number}: {step.title}.\n{instruction}\n"
-        f"Chỉ những người sau được nói: {allowed}.",
+        + (f"{money}\n" if money else "") + f"Chỉ những người sau được nói: {allowed}.",
     ])
 
 

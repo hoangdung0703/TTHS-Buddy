@@ -1244,3 +1244,25 @@ Ghi đè 5.2 và phần "Backlog" của 11.14 khi mâu thuẫn. Không đổi AP
 - Bỏ 317 ở bước 5 chỉ khỏi danh sách hiển thị: tiêu đề Điều 317 trong corpus là "Điều tra viên, Kiểm sát viên, người khác có thẩm quyền tiến hành tố tụng, người tham gia tố tụng trình bày ý kiến", không phải việc hỏi (đã kết luận ở `procedure-notes-verification.md`). Gói luật của bước 5 (lát cắt `questioning`, Điều 307-318) **vẫn chứa 317**, nên AI vẫn dẫn được, Rule 9 không đổi.
 - Thay đổi duy nhất chạm Rule 9 là **thêm** 325 vào lát cắt luận tội. Trước đó "Điều 325 Bộ luật Tố tụng hình sự" trong luận tội bị Rule 9 loại (`unknown_pair`) dù đúng luật. Thêm một Điều (~150 token) vào prompt luận tội.
 - Test `backend/tests/test_trial_step_basis.py`: legal_basis của bước ⊇ legal_basis chú giải; mọi Điều của legal_basis nằm trong lát cắt của chính bước đó (mọi vai); Điều 325 qua Rule 9 ở luận tội. Số Điều đối chiếu với corpus (tiêu đề từ `chunks.json`, "Bộ luật TTHS.pdf").
+
+#### 11.16.3 Số tiền ngoài hồ sơ (phần C)
+
+- Money guard (`unknown_amount`, cứng) không đổi: chỉ chấp nhận số tiền trong hồ sơ, sổ dữ kiện, quyết định nghị án, và với người tiến hành tố tụng thì thêm mức tiền trong văn bản điều luật của lát cắt. Mẫu nhận diện vẫn là chữ số + "đồng"/"đ"/"VNĐ".
+- Phân loại các lần bắt ở đo baseline (11.16.4): (a) bịa 0, (b) cùng số khác cách viết 0, (c) suy ra từ hồ sơ 0, (d) khác 1 (số tiền án phí ở tuyên án; biểu án phí là Nghị quyết 326/2016/UBTVQH14, **corpus không đủ** để chấp nhận). Theo điều kiện của chặng: **không** làm chuẩn hóa cách viết (C1) và **không** cho phép số suy ra (C2) vì không thấy nhóm (b), (c).
+- Đã làm (C3): `money_brief` (`trial_turn_service.py`) liệt kê đúng tập số tiền money guard chấp nhận (test giữ hai tập bằng nhau), dạng chuẩn `12.500.000 đồng`, kèm nhãn (định giá, chứng cứ, yêu cầu bồi thường, đã bồi thường, khoản phụ, số khai khác hồ sơ, dữ kiện tại phiên tòa, quyết định). Danh sách vào CHỈ DẪN LƯỢT của luận tội, bào chữa, đối đáp (cả lượt tranh luận của bị cáo), lời bị hại (bản người không chuyên, không có câu về mức tiền trong điều luật), tuyên án (bản chặt: "chỉ dùng đúng các số này, không tự cộng trừ"), nghị án (bản tham khảo, vì số bồi thường do Hội đồng xét xử quyết định). `TUYEN_AN_INSTRUCTION` thêm "không ghi số tiền án phí".
+- Test (`backend/tests/test_trial_money_brief.py`): số bịa (777.000.000 đồng), số tự suy ra (10.500.000 = 12.500.000 − 2.000.000) và số án phí vẫn bị loại; một bài luận tội có số bịa bị sinh lại.
+- Không làm cơ chế "lời gọi sửa". **Lỗ đã biết:** số tiền viết bằng chữ ("mười lăm triệu đồng", "15 triệu đồng") không bị mẫu nhận diện bắt, nên số bịa viết dạng đó lọt (không gây sinh lại). Chưa bắt để tránh tăng sinh lại khi chưa có số đo.
+
+#### 11.16.4 Đo (Gemini thật, 84 lời gọi, trần cứng 90)
+
+Script `backend/evaluation/run_trial_guard_bench.py`: vụ cố định (Điều 174 khoản 2 điểm c, nhận tội toàn bộ, đã bồi thường một phần, giảm nhẹ điểm b, s khoản 1 Điều 51, có bị hại, 1 người làm chứng, seed 7401), sinh một lần rồi dùng lại; gói luật từ `chunks.json`; vai Người xem; không thẻ văn phong. Vẫn ngẫu nhiên: mọi lời AI, quyết định nghị án, lời tuyên.
+
+| Phiên | Lời gọi | Token vào / ra / thinking | Sinh lại theo lý do | Tạm nghỉ |
+|---|---|---|---|---|
+| Trước 1 | 14 | 174.101 / 7.797 / 1.072 | 0 | 0 |
+| Trước 2 | 15 | 195.639 / 9.389 / 2.781 | money `unknown_amount` 1 (tuyên án, án phí) | 0 |
+| Sau 1 | 14 | 175.317 / 7.755 / 253 | 0 | 0 |
+| Sau 2 | 14 | 175.090 / 7.562 / 2.054 | 0 | 0 |
+| Sau, vai Bị cáo (câu trả lời mẫu) | 26 | 338.160 / 10.271 / 2.210 | 0 | 0 |
+
+Cộng 1 lời gọi sinh vụ án. Rule 9 0, verdict guard 0 (cứng và mềm), tên 0, breaker không kích hoạt. Hai quyết định baseline (khoản 2, Điều 54, tù 18 và 24 tháng cho hưởng án treo) chạy lại qua guard mới: 0 mã cứng, 0 mã mềm. Mẫu nhỏ (2 + 2 phiên) nên chưa đủ để kết luận về tần suất; sự cố sinh lại 6 lần vì `unknown_amount` không tái hiện được trên vụ này.

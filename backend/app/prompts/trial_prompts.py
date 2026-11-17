@@ -285,11 +285,22 @@ TUYEN_AN_INSTRUCTION = (
     "NAM\"; tóm tắt nhận định của Hội đồng xét xử về hành vi, chứng cứ, tình tiết; phần QUYẾT ĐỊNH: tuyên bố bị cáo "
     "{{BI_CAO}} phạm tội (hoặc không phạm tội), căn cứ điểm, khoản, Điều Bộ luật Hình sự áp dụng (kể cả Điều 51, 52, "
     "54, 65 nếu có), mức hình phạt, trách nhiệm dân sự, xử lý vật chứng, án phí theo quy định của pháp luật (không "
-    "viện dẫn văn bản về án phí), quyền kháng cáo trong thời hạn theo Bộ luật Tố tụng hình sự. Phần QUYẾT ĐỊNH viết "
+    "viện dẫn văn bản về án phí, không ghi số tiền án phí), quyền kháng cáo trong thời hạn theo Bộ luật Tố tụng hình sự. Phần QUYẾT ĐỊNH viết "
     "theo đúng thứ tự: tội danh; hình phạt; trách nhiệm dân sự (nếu có); xử lý vật chứng; án phí; quyền kháng cáo - "
     "mỗi mục một đoạn riêng. Phần nhận định chia đoạn theo từng nội dung. Mọi viện dẫn PHẢI ghi "
     "đủ tên luật. Khoảng 350-600 từ. Một người nói duy nhất: {{CHU_TOA}}."
 )
+
+# Money amounts of the case, listed by code (trial_turn_service.money_brief) in the instruction of the
+# turns that talk about money (nhóm B, design doc Mục 11.16.3). The list is exactly what the money
+# guard accepts, so a speech that keeps to it is never rejected for unknown_amount.
+MONEY_BRIEF_STRICT = (
+    "SỐ TIỀN TRONG HỒ SƠ: khi nêu số tiền, chỉ dùng đúng các số dưới đây và viết đúng dạng này; không tự cộng, "
+    "trừ, chia hay ước tính ra số tiền mới (nói \"phần còn lại\", \"toàn bộ\" thay vì tự tính); không nêu số tiền "
+    "nào khác.{law_line}\n{lines}"
+)
+MONEY_BRIEF_LAW_LINE = " Mức tiền ghi trong điều luật chỉ được trích nguyên văn khi viện dẫn điều luật đó."
+MONEY_BRIEF_REFERENCE = "SỐ TIỀN TRONG HỒ SƠ (để đối chiếu khi quyết định trách nhiệm dân sự):\n{lines}"
 
 # --- Biên bản summaries (chặng 3E) ----------------------------------------------------------------
 
