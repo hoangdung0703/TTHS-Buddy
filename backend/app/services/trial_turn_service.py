@@ -124,6 +124,7 @@ from app.services.trial_state_machine import (
     text_limits,
 )
 from app.services.trial_text_format import format_speech, format_utterance
+from app.services.trial_sentencing_rules import hard_constraints_text
 from app.services.trial_verdict_guard import check_verdict, normalise_verdict
 
 logger = get_logger(__name__)
@@ -638,12 +639,13 @@ async def _deliberate(ctx: TrialContext) -> None:
     feedback = ""
     last: list[str] = []
     base = VERDICT_SYSTEM_PROMPT + (DEFENDANT_VERDICT_NOTE if ctx.state.user_role == DEFENDANT_ROLE else "")
+    constraints = hard_constraints_text(ctx.case, ctx.pack)
+    instruction = "Hội đồng xét xử nghị án và trả về quyết định có cấu trúc." + (f"\n{constraints}" if constraints else "")
     for attempt in range(1, MAX_ATTEMPTS + 1):
         result, record = await ctx.recorder.call(
             ctx.settings, call_type="verdict", slot="nghi_an", attempt=attempt,
             system_prompt=_system_prompt(ctx, base),
-            user_prompt=_user_prompt(ctx, "Hội đồng xét xử nghị án và trả về quyết định có cấu trúc.",
-                                     ("CHU_TOA", "HOI_THAM_1", "HOI_THAM_2"), "nghi_an") + feedback,
+            user_prompt=_user_prompt(ctx, instruction, ("CHU_TOA", "HOI_THAM_1", "HOI_THAM_2"), "nghi_an") + feedback,
             response_schema=VERDICT_RESPONSE_SCHEMA, thinking_level=THINKING_LEVEL_DECISION,
             temperature=VERDICT_TEMPERATURE,
         )
@@ -654,10 +656,11 @@ async def _deliberate(ctx: TrialContext) -> None:
             feedback = _feedback(["schema"])
             continue
         check = check_verdict(verdict, ctx.case, ctx.pack)
-        record.guard_violations = [*check.errors, *check.flags]
+        # Codes only: "verdict:<code>" rejected the decision, "soft:<code>" is measured (Mục 11.16).
+        record.guard_violations = check.labels()
         if check.errors:
             record.accepted = False
-            last = check.errors
+            last = [label for label in check.labels() if label.startswith("verdict:")]
             feedback = "\n\nQUYẾT ĐỊNH TRƯỚC BỊ TỪ CHỐI vì:\n" + "\n".join(f"- {e}" for e in check.errors)
             continue
         ctx.verdict, ctx.verdict_flags = verdict, check.flags

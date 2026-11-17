@@ -331,7 +331,11 @@ class VerdictGuardTests(unittest.TestCase):
 
     def test_limits_of_trial_dieu_298(self):
         self.assertTrue(self.check(dieu="174").errors)
-        self.assertTrue(self.check(khoan="2", penalty_months=30).errors)  # heavier than charged
+        # Nhóm B: Điều 298 khoản 2 BLTTHS allows "khoản khác ... trong cùng một điều luật" without saying
+        # lighter, so a heavier khoản is measured (soft), no longer blocked.
+        heavier = self.check(khoan="2", penalty_months=30)
+        self.assertEqual(heavier.errors, [])
+        self.assertIn("khoan_heavier", {f.code for f in heavier.soft})
 
     def test_suspended_sentence_rules(self):
         self.assertEqual(self.check(suspended=True, probation_months=24).errors, [])
@@ -356,7 +360,8 @@ class VerdictGuardTests(unittest.TestCase):
         pack.articles = dict(self.pack.articles)
         original = self.pack.get(BLHS_DOCUMENT, "173")
         khoans = dict(original.khoans)
-        khoans["1"] = Khoan("1", "1. Người nào trộm cắp tài sản thì bị xử lý theo quy định.", frozenset())
+        # A khoản that sets a prison penalty (so it is a frame) but in words the parser cannot read.
+        khoans["1"] = Khoan("1", "1. Người nào trộm cắp tài sản thì bị phạt tù theo quy định.", frozenset())
         pack.articles[(BLHS_DOCUMENT, "173")] = type(original)(
             original.source_document, original.dieu_number, original.dieu_title, original.text, khoans,
             original.cross_refs)

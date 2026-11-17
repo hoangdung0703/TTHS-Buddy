@@ -174,15 +174,14 @@ class DecisionCheckTests(unittest.TestCase):
         self.assertIn("circumstance_unknown", codes(decision(mitigating=[{"khoan": "1", "diem": "",
                                                                           "fact_ids": ["F2"]}]))[0])
 
-    def test_the_ai_guard_of_other_roles_is_unchanged(self):
-        # Decision Q10: the gaps of check_verdict (heavier khoản blocked, no adjacent-frame floor) stay.
+    def test_the_ai_guard_shares_these_rules(self):
+        # Nhóm B (Mục 11.16): the AI nghị án guard reads the same rules - hard blocks, soft is measured.
         pack, file = pack_for("blhs_173"), case()
-        heavier = decision(khoan="2", penalty_months=30).to_verdict()
-        self.assertTrue(check_verdict(heavier, file, pack).errors)
-        below = decision(khoan="1", penalty_months=1, applies_dieu_54=True).to_verdict()
-        self.assertEqual(check_verdict(below, file, pack).errors, [])
+        heavier = check_verdict(decision(khoan="2", penalty_months=30).to_verdict(), file, pack)
+        self.assertEqual((heavier.errors, {f.code for f in heavier.soft}), ([], {"khoan_heavier"}))
+        below = check_verdict(decision(khoan="1", penalty_months=1, applies_dieu_54=True).to_verdict(), file, pack)
+        self.assertEqual({f.code for f in below.hard}, {"prison_general_range"})
         self.assertIn("prison_general_range", codes(decision(penalty_months=1, applies_dieu_54=True))[0])
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -346,6 +346,8 @@ Code kiểm `verdict_json` trước khi sinh lời tuyên án:
 - **Khung hình phạt:** tách "phạt tù từ X năm đến Y năm" (cùng các dạng "cải tạo không giam giữ", "phạt tiền từ … đến …") từ chính văn bản khoản đã chọn. Mức tuyên phải nằm trong khung, trừ khi quyết định có áp dụng Điều 54 **và** có ít nhất 2 tình tiết giảm nhẹ khoản 1 Điều 51 (nhóm luật duyệt cách kiểm). Án treo: mức tù ≤ 3 năm (Điều 65). Không tách được khung thì không chặn, nhưng gắn cờ `penalty_unchecked` để eval đếm.
 - Tình tiết Điều 51/52 nêu trong quyết định phải trỏ tới `fact_ids` có thật.
 
+> Cập nhật 18/11/2026 (nhóm B): luật kiểm của guard này nay dùng chung với form Chủ tọa, có mức cứng/mềm; khoản nặng hơn của cùng Điều là mềm (khoản 2 Điều 298 BLTTHS). Xem 11.16; mục 11.16 ghi đè đoạn trên khi mâu thuẫn.
+
 ### 5.3 Guard vai và dữ kiện (mọi đoạn AI)
 
 - `speaker_id` ngoài enum hoặc trùng vai người dùng → loại đoạn, sinh lại 1 lần. Enum ở tầng API nên trường hợp này gần như không xảy ra, guard là lớp dự phòng.
@@ -1157,7 +1159,7 @@ Theo số câu hỏi ở 11.7:
 
 **Code cũ cản thiết kế:** (a) `trial_repository` ghi `user_work` không kèm version (đã thêm ngoại lệ cho vai này, Q1); (b) code tự ghi câu mang tên `CHU_TOA` (tạm nghỉ, nhắc nhảy cóc, câu mẫu kết thúc phần): ở vai này đổi sang `HE_THONG` hoặc chỉ ghi khi người dùng làm mục; (c) `_dispatch` của `tuyen_an` tự nghị án khi thiếu quyết định: vai này đi đường riêng, `_deliberate` từ chối; (d) `Verdict` không có vật chứng, án phí: thêm `ChairDecision` riêng, `Verdict` không đổi; (e) 3 test cũ khẳng định `chu_toa` bị từ chối đã đổi sang vai không tồn tại.
 
-**Backlog: guard nghị án AI cũ (`check_verdict`, không sửa theo Q10):**
+**Backlog: guard nghị án AI cũ (`check_verdict`, không sửa theo Q10). Đã sửa ở nhóm B, xem 11.16:**
 - Điều 298 khoản 2: chặn khoản nặng hơn trong cùng Điều, văn bản không giới hạn như vậy (chặn chặt hơn luật).
 - Điều 54 khoản 3: chặn cải tạo không giam giữ ở khung nhẹ nhất không có loại này (ví dụ Điều 171 khoản 1 kèm Điều 54): **chặn oan**.
 - Điều 54 khoản 1: không kiểm sàn khung liền kề nhẹ hơn (lỏng).
@@ -1182,3 +1184,41 @@ Mục đích: frontend không phải tự dò diễn biến hay sao danh mục m
 - **Chủ tọa, `presiding.catalogue` / `return_catalogue`**: `{khóa: {step, label}}` lấy thẳng từ `STEP_ITEMS` / `RETURN_ITEMS` (cùng nguồn với `items[].label`), cho bước 2–11 và bước 5 thu gọn. Khóa không trùng giữa các bước của `STEP_ITEMS`; ba khóa dùng chung với bước 5 thu gọn có nhãn riêng nên tách thành `return_catalogue`.
 - **`final_statement_done`** (Chủ tọa và Bị cáo, vai khác `null`): Chủ tọa: bước > 9, hoặc bước 9 khi `moi_loi_sau_cung` đã làm và job của nó đã xong (lời của bị cáo AI đã lưu). Bị cáo: bước > 9, hoặc bước 9 khi slot lời sau cùng đã đóng (slot `close_on_cap` chỉ đóng sau câu trả lời của người dùng).
 - **Bị cáo, `invitation`**: bước 7–8, khi lượt không bắt buộc đang mở và người dùng chưa nói: dòng Chủ tọa của slot mời ngay trước (`INVITATIONS`, so khớp đúng văn bản đã lưu ở bước hiện tại, nên trùng `seq` với diễn biến kể cả sau câu nhắc nhảy cóc); bước 9: chính câu mời đang chờ (`pending_question`).
+
+### 11.16 Nhóm B — guard nghị án dùng chung, legal_basis các bước, số tiền ngoài hồ sơ, 18/11/2026
+
+Ghi đè 5.2 và phần "Backlog" của 11.14 khi mâu thuẫn. Không đổi API, không migration.
+
+#### 11.16.1 Luật kiểm dùng chung (phần A)
+
+- Một module duy nhất `backend/app/services/trial_sentencing_rules.py` giữ luật kiểm quyết định hình phạt: bảng `RULES` (mã → `hard`/`soft`), khung hình phạt (`parse_penalty_frame`), các hàm kiểm. Code được chuyển nguyên văn từ `trial_chair_decision.py`, giữ thứ tự và câu `message`.
+- Vai Chủ tọa: `check_decision` = luật chung + luật hình thức riêng (`reasoning_length`). Cứng → `errors` (chặn "Chốt quyết định"), mềm → `warnings`. Hành vi không đổi: mọi test Chủ tọa cũ pass nguyên văn, trừ một test vốn khẳng định guard AI "không đổi" (đổi thành khẳng định hai bên dùng chung luật).
+- Nghị án AI (mọi vai trừ Chủ tọa): `check_verdict` gọi `check_ai_decision` (các luật áp được cho trường của `Verdict`; vật chứng, án phí, độ dài nhận định không có trong `Verdict` nên không chạy). Cứng → loại và sinh lại như cũ (một lần, rồi tạm nghỉ), phản hồi sinh lại kèm căn cứ. Mềm → chỉ ghi mã vào log lời gọi (`soft:<mã>` trong `guard_violations`, lời gọi vẫn `accepted`). Nhãn log là mã (`verdict:<mã>`), không còn là câu chữ.
+- Prompt nghị án AI có thêm khối "RÀNG BUỘC CỨNG CỦA VỤ ÁN NÀY" do code tính từ khoản truy tố (`hard_constraints_text`): khung của khoản, sàn tù 03 tháng, khung liền kề nhẹ hơn hoặc khoản 3 Điều 54 nếu là khung nhẹ nhất, loại tội theo Điều 9 (cấm cải tạo không giam giữ, phạt tiền chính khi trên 07 năm), giới hạn cải tạo không giam giữ, phạt tiền, án treo, khoản hợp lệ của tình tiết. Câu cũ "đúng khoản đã truy tố hoặc khoản nhẹ hơn" trong `VERDICT_SYSTEM_PROMPT` đổi theo đúng chữ khoản 2 Điều 298.
+
+| Mã | Mức | Căn cứ (corpus) |
+|---|---|---|
+| `above_frame`, `below_frame` | cứng | khung của khoản áp dụng; khoản 1 Điều 54 BLHS |
+| `below_adjacent_frame` | cứng | khoản 1 Điều 54 BLHS: "phải trong khung hình phạt liền kề nhẹ hơn của điều luật" |
+| `dieu54_conditions` | cứng | khoản 1 Điều 54 BLHS: "ít nhất hai tình tiết giảm nhẹ quy định tại khoản 1 Điều 51" |
+| `non_custodial_not_in_frame` | cứng | khoản 1, khoản 3 Điều 54 BLHS ("chuyển sang một hình phạt khác thuộc loại nhẹ hơn" ở khung nhẹ nhất) |
+| `prison_general_range` | cứng | khoản 1 Điều 38 BLHS: "mức tối thiểu là 03 tháng và mức tối đa là 20 năm" |
+| `fine_min` | cứng | khoản 3 Điều 35 BLHS: "không được thấp hơn 1.000.000 đồng" |
+| `fine_not_in_frame`, `fine_not_main` | cứng | khoản 1 Điều 35 BLHS; khoản 3 Điều 54 BLHS; hình phạt bổ sung ngoài phạm vi mô phỏng |
+| `non_custodial_range`, `non_custodial_frame` | cứng | khoản 1 Điều 36 BLHS: "từ 06 tháng đến 03 năm" |
+| `non_custodial_class` | cứng | khoản 1 Điều 36 BLHS ("phạm tội ít nghiêm trọng, phạm tội nghiêm trọng"); điểm a, b khoản 1 Điều 9 BLHS ("đến 07 năm tù") |
+| `charge_article` | cứng | khoản 1 Điều 298 BLTTHS |
+| `khoan_heavier` | **mềm** | khoản 2 Điều 298 BLTTHS: "theo khoản khác với khoản mà Viện kiểm sát đã truy tố trong cùng một điều luật" (không nói "nhẹ hơn") |
+| `khoan_unknown`, `diem_unknown`, `diem_minor` | cứng | văn bản Điều truy tố; quyết định 2026-10-19 (không người dưới 18 tuổi) |
+| `circumstance_unknown` | cứng | khoản 1, 2 Điều 51 và khoản 1 Điều 52 BLHS là tình tiết; khoản 3 Điều 51 và khoản 2 Điều 52 là quy tắc ("không được coi là tình tiết ...") |
+| `circumstance_no_fact`, `circumstance_unknown_fact` | cứng | khoản 2 Điều 326 BLTTHS: "chỉ được căn cứ vào những chứng cứ, tài liệu đã được thẩm tra tại phiên tòa" |
+| `suspended_prison`, `probation_range`, `probation_without_suspension` | cứng | khoản 1 Điều 65 BLHS: "xử phạt tù không quá 03 năm", "từ 01 năm đến 05 năm" |
+| `suspended_without_mitigating` | mềm | khoản 1 Điều 65 BLHS; điều kiện chi tiết của án treo **corpus không đủ** |
+| `civil_over_claim` | mềm | **corpus không đủ**: nguyên tắc không vượt yêu cầu là luật dân sự, không có trong corpus |
+| `conviction_without_penalty`, `acquittal_with_penalty` | cứng | điểm c, d khoản 3 Điều 326 BLTTHS |
+| `penalty_unchecked`, `adjacent_frame_unchecked` | mềm | không tách được khung thì không chặn (quyết định 2026-10-19) |
+| `mitigating_other_reason`, `aggravating_frame_overlap`, `release_needed` | mềm | khoản 2 Điều 51, khoản 2 Điều 52 BLHS; Điều 328 BLTTHS (chỉ nhắc kiểm tra) |
+| `exhibit_*`, `acquittal_criminal_fee`, `civil_negative`, `reasoning_length` | cứng | chỉ form Chủ tọa (trừ `civil_negative`): Điều 106, 136, 260 BLTTHS; khoản 1 Điều 48 BLHS |
+| `exhibit_confiscated_property`, `acquittal_victim_fee`, `civil_fee_without_claim` | mềm | chỉ form Chủ tọa; biểu án phí (Nghị quyết 326/2016/UBTVQH14) **corpus không đủ** |
+
+**Bảng ca kiểm offline** (`backend/tests/test_trial_guard_table.py`, 0 Gemini): 46 quyết định cho Điều 134, 171, 173, 174, khoản 1-2, mỗi ca có kết quả mong đợi (qua/cảnh báo/chặn) và câu trích corpus (73 đoạn trích, đối chiếu máy với `chunks.json`, 0 lệch). Guard cũ (bản đông lạnh `tests/trial_legacy_verdict_guard.py`) sai 15 ca, guard mới sai 0. 15 ca đổi kết quả: 5 ca chặn oan nay qua hoặc chỉ cảnh báo (khoản nặng hơn cùng Điều; cải tạo không giam giữ qua khoản 3 Điều 54 ở Điều 171 khoản 1; qua khoản 1 Điều 54 ở Điều 174 khoản 2 và Điều 134 khoản 2; phạt tiền qua khoản 3 Điều 54 ở Điều 171 khoản 1), 10 ca lọt nay bị chặn (dưới khung liền kề ×2, tù dưới 03 tháng ×2, tình tiết khoản 3 Điều 51, khoản 2 Điều 52, khoản 1 Điều 51 không điểm, tình tiết không gắn sự việc, thử thách không có án treo, phạt tiền kèm tù).
